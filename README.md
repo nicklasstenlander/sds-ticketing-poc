@@ -484,6 +484,38 @@ supabase functions deploy admin-delete-event --no-verify-jwt
 
 ---
 
+## 11. ScenPass-designmockupen (landningssida, /evenemang, riktig QR, admin-wizard, dashboard)
+
+Arbetsnamnet "ScenPass" (se `src/lib/constants.ts`, `APP_NAME`) är inte ett
+slutgiltigt produktnamn.
+
+Nya routes: `/` (statisk landningssida), `/evenemang` (ersätter gamla `/`
+- listar publicerade event), `/admin/dashboard` (sålt/kapacitet per event,
+byggt enbart från redan hämtad `admin-events`-data, ingen ny
+backend-aggregering).
+
+**`order-status` är ändrad** - returnerar nu `tickets: { ticket_code,
+qr_url }[]` när `status = 'paid'`, byggt från den befintliga publika
+Storage-bucketen `qr` (samma bilder som redan mailas ut, inget nytt
+lagras). Bekräftelsesidan visar dessa i ett biljett-kort per köpt
+biljett istället för ett fejk-QR-mönster. **Denna redeploy gjordes INTE
+av mig i den här körningen** (miljön hade varken Supabase CLI-inloggning
+eller webbläsarautomation tillgänglig) - kör:
+
+```bash
+supabase functions deploy order-status --no-verify-jwt
+```
+
+innan bekräftelsesidan visar riktiga QR-koder i produktion.
+
+Admin: "Skapa nytt event" öppnar en 3-stegswizard
+(`src/pages/admin/CreateEventWizard.tsx`) som anropar det befintliga
+`admin-create-event` - inget nytt på backend-sidan, ingen redeploy krävs
+för wizarden. Redigering av befintliga event använder fortsatt det
+tidigare enstegsformuläret, och tvåkolumnslayouten i admin är oförändrad.
+
+---
+
 ## Arkitekturbeslut och medvetna förenklingar
 
 - **Biljettkod:** 128 bitars slumpmässighet (`crypto.getRandomValues`,
