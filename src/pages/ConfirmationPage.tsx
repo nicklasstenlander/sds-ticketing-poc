@@ -68,12 +68,12 @@ export function ConfirmationPage() {
   if (!orderId) {
     return (
       <Layout>
-        <p className="text-slate-600 mb-4">
+        <p className="text-[var(--text-muted)] mb-4">
           Vi hittar ingen orderinformation att visa (sidan öppnades förmodligen direkt, utan att
           gå via köpflödet).
         </p>
         {slug && (
-          <Link to={`/kop/${slug}`} className="text-slate-900 underline">
+          <Link to={`/kop/${slug}`} className="link-accent">
             Tillbaka till köpsidan
           </Link>
         )}
@@ -83,47 +83,47 @@ export function ConfirmationPage() {
 
   return (
     <Layout>
-      <div className="border border-slate-200 rounded-lg p-4 bg-white mb-6">
-        <div className="text-sm text-slate-500 mb-2">Ordernummer</div>
-        <div className="font-mono text-sm break-all">{orderId}</div>
+      <div className="card mb-6">
+        <div className="text-sm text-[var(--text-muted)] mb-2">Ordernummer</div>
+        <div className="font-mono text-sm break-all text-[var(--text)]">{orderId}</div>
       </div>
 
       {wasCancelled && status !== 'paid' && (
-        <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-sm">
-          Betalningen avbröts i Stripe. Platserna släpps automatiskt när reservationen går ut - du
-          kan försöka igen direkt.
+        <p className="text-amber-800 bg-amber-50 rounded-[var(--radius-sm)] p-4 mb-6 text-sm">
+          Betalningen avbröts. Din plats släpps automatiskt inom kort - du kan försöka igen direkt.
         </p>
       )}
 
       {(status === null || status === 'pending') && (
-        <div className="border border-slate-200 rounded-lg p-6 bg-white text-center">
-          <p className="font-semibold mb-2">Biljetterna är på väg…</p>
-          <p className="text-slate-500 text-sm">
-            Vi väntar på bekräftelse från Stripe. Det brukar ta några sekunder - lämna inte sidan.
+        <div className="card text-center">
+          <p className="font-semibold mb-2 text-[var(--text)]">Ett ögonblick bara.</p>
+          <p className="text-[var(--text-muted)] text-sm">
+            Vi bekräftar din betalning - det brukar bara ta några sekunder. Lämna gärna sidan
+            öppen.
           </p>
           {pollError && <p className="text-red-600 text-sm mt-3">{pollError}</p>}
         </div>
       )}
 
       {status === 'paid' && (
-        <div className="border border-green-200 bg-green-50 rounded-lg p-6 text-center">
-          <p className="font-semibold mb-2">Tack för din bokning!</p>
-          <p className="text-slate-600 text-sm">
-            {ticketCount === 1 ? '1 biljett' : `${ticketCount ?? ''} biljetter`} är bokade. Ett
-            mail med QR-koder skickas till din e-postadress inom kort - kolla skräpposten om det
-            inte dyker upp direkt.
+        <div className="card text-center border-t-4 border-[var(--accent)]">
+          <p className="font-semibold mb-2 text-[var(--text)]">Vi ses på föreställningen.</p>
+          <p className="text-[var(--text-muted)] text-sm">
+            {ticketCount === 1 ? '1 biljett' : `${ticketCount ?? ''} biljetter`} väntar i din
+            inkorg - vi har skickat ett mail med QR-koder till dig. Dyker det inte upp direkt,
+            kolla skräpposten.
           </p>
         </div>
       )}
 
       {status === 'expired' && (
-        <div className="border border-red-200 bg-red-50 rounded-lg p-6 text-center">
-          <p className="font-semibold mb-2">Betalningen hann gå ut</p>
-          <p className="text-slate-600 text-sm mb-4">
-            Reservationen är inte längre giltig. Du har inte debiterats - försök gärna igen.
+        <div className="card text-center">
+          <p className="font-semibold mb-2 text-[var(--text)]">Tiden hann rinna ut</p>
+          <p className="text-[var(--text-muted)] text-sm mb-4">
+            Din plats är inte längre reserverad, och du har inte debiterats. Försök gärna igen.
           </p>
           {slug && (
-            <Link to={`/kop/${slug}`} className="text-slate-900 underline">
+            <Link to={`/kop/${slug}`} className="link-accent">
               Tillbaka till köpsidan
             </Link>
           )}
@@ -131,10 +131,10 @@ export function ConfirmationPage() {
       )}
 
       {status === 'cancelled' && (
-        <div className="border border-slate-200 rounded-lg p-6 bg-white text-center">
-          <p className="font-semibold mb-2">Bokningen avbröts</p>
+        <div className="card text-center">
+          <p className="font-semibold mb-2 text-[var(--text)]">Bokningen avbröts</p>
           {slug && (
-            <Link to={`/kop/${slug}`} className="text-slate-900 underline">
+            <Link to={`/kop/${slug}`} className="link-accent">
               Tillbaka till köpsidan
             </Link>
           )}
@@ -142,16 +142,16 @@ export function ConfirmationPage() {
       )}
 
       {status === 'timeout' && (
-        <div className="border border-amber-200 bg-amber-50 rounded-lg p-6 text-center">
-          <p className="font-semibold mb-2">Det tar längre tid än väntat</p>
-          <p className="text-slate-600 text-sm mb-4">
-            Betalningen kan fortfarande gå igenom - ladda om sidan om en liten stund för att se
-            aktuell status. Ordernumret ovan gäller om du behöver kontakta oss.
+        <div className="card text-center">
+          <p className="font-semibold mb-2 text-[var(--text)]">Det tar lite längre tid än vanligt</p>
+          <p className="text-[var(--text-muted)] text-sm mb-4">
+            Din betalning kan fortfarande gå igenom - ladda om sidan om en liten stund för att se
+            var det landade. Ordernumret ovan gäller om du behöver höra av dig till oss.
           </p>
         </div>
       )}
 
-      <Link to="/" className="inline-block mt-6 text-slate-900 underline">
+      <Link to="/" className="link-accent inline-block mt-8">
         Till startsidan
       </Link>
     </Layout>

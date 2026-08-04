@@ -78,7 +78,7 @@ export function PurchasePage() {
   if (notFound) {
     return (
       <Layout>
-        <p className="text-slate-600">Eventet hittades inte, eller är inte publicerat.</p>
+        <p className="text-[var(--text-muted)]">Eventet hittades inte, eller är inte publicerat.</p>
       </Layout>
     )
   }
@@ -86,7 +86,7 @@ export function PurchasePage() {
   if (!event) {
     return (
       <Layout>
-        <p className="text-slate-500">Laddar…</p>
+        <p className="text-[var(--text-muted)]">Laddar…</p>
       </Layout>
     )
   }
@@ -96,31 +96,31 @@ export function PurchasePage() {
 
   return (
     <Layout>
-      <h1 className="text-2xl font-bold mb-1">{event.title}</h1>
-      <p className="text-slate-500 mb-1">
+      <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
+      <p className="text-[var(--text-muted)] mb-1">
         {new Date(event.starts_at).toLocaleString('sv-SE', {
           dateStyle: 'long',
           timeStyle: 'short',
         })}
         {event.venue ? ` · ${event.venue}` : ''}
       </p>
-      <p className="text-slate-500 mb-1">
+      <p className="text-[var(--text-muted)] mb-2">
         {soldOut ? 'Slutsålt' : `${remaining} platser kvar av ${event.capacity}`}
       </p>
-      <p className="text-slate-700 font-medium mb-6">
+      <p className="font-medium mb-8 text-[var(--text)]">
         {(event.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
-        <span className="text-slate-400 font-normal"> (varav moms {event.vat_rate}%)</span>
+        <span className="text-[var(--text-muted)] font-normal"> (varav moms {event.vat_rate}%)</span>
       </p>
 
       {soldOut ? (
-        <div className="border border-slate-200 rounded-lg p-6 bg-white text-center">
-          <p className="font-semibold mb-2">Tyvärr, det här eventet är slutsålt.</p>
-          <p className="text-slate-500 text-sm">Håll utkik efter fler tillfällen.</p>
+        <div className="card text-center">
+          <p className="font-semibold mb-2 text-[var(--text)]">Tyvärr, det här eventet är slutsålt.</p>
+          <p className="text-[var(--text-muted)] text-sm">Håll utkik efter fler tillfällen.</p>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="border border-slate-200 rounded-lg p-6 bg-white space-y-4">
+        <form onSubmit={handleSubmit} className="card space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="name">
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]" htmlFor="name">
               Namn
             </label>
             <input
@@ -128,11 +128,11 @@ export function PurchasePage() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="email">
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]" htmlFor="email">
               E-post
             </label>
             <input
@@ -141,18 +141,18 @@ export function PurchasePage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="qty">
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]" htmlFor="qty">
               Antal biljetter
             </label>
             <select
               id="qty"
               value={qty}
               onChange={(e) => setQty(Number(e.target.value))}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             >
               {Array.from({ length: Math.min(6, remaining) }, (_, i) => i + 1).map((n) => (
                 <option key={n} value={n}>
@@ -164,11 +164,7 @@ export function PurchasePage() {
 
           {formError && <p className="text-red-600 text-sm">{formError}</p>}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-slate-900 text-white rounded-md py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
-          >
+          <button type="submit" disabled={submitting} className="btn-primary w-full py-2">
             {submitting ? 'Skickar dig till Stripe…' : 'Gå till betalning'}
           </button>
         </form>

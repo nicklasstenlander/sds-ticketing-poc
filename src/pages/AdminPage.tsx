@@ -91,24 +91,20 @@ function PinGate({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="max-w-sm mx-auto border border-slate-200 rounded-lg p-6 bg-white">
-      <h1 className="text-xl font-bold mb-4">Admin - logga in</h1>
-      <form onSubmit={handleSubmit} className="space-y-3">
+    <div className="card max-w-sm mx-auto">
+      <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Admin - logga in</h1>
+      <form onSubmit={handleSubmit} className="space-y-4">
         <input
           type="password"
           inputMode="numeric"
           placeholder="PIN-kod"
           value={pin}
           onChange={(e) => setPin(e.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2"
+          className="field"
           autoFocus
         />
         {error && <p className="text-red-600 text-sm">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-slate-900 text-white rounded-md py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
-        >
+        <button type="submit" disabled={loading} className="btn-primary w-full">
           {loading ? 'Kontrollerar…' : 'Logga in'}
         </button>
       </form>
@@ -259,8 +255,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Admin</h1>
-        <button onClick={handleLogout} className="text-sm text-slate-500 hover:text-slate-800">
+        <h1 className="text-2xl font-bold text-[var(--text)]">Admin</h1>
+        <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
           Logga ut
         </button>
       </div>
@@ -273,32 +269,32 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           omordnings-logik. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <section className="order-1">
-          <h2 className="font-semibold mb-4">Befintliga events</h2>
+          <h2 className="font-semibold mb-4 text-[var(--text)]">Befintliga events</h2>
           {error && <p className="text-red-600">{error}</p>}
           {rowError && <p className="text-red-600 mb-2">{rowError}</p>}
-          {events === null && !error && <p className="text-slate-500">Laddar…</p>}
+          {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
           {events !== null && events.length === 0 && (
-            <p className="text-slate-500">Inga events skapade ännu.</p>
+            <p className="text-[var(--text-muted)]">Inga events skapade ännu.</p>
           )}
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {events?.map((event) => {
               const cancelled = event.status === 'cancelled'
               const isEditing = event.id === editingEventId
               return (
                 <li
                   key={event.id}
-                  className={`border rounded-lg p-4 transition-colors ${
+                  className={`card p-4 transition-colors ${
                     isEditing
-                      ? 'border-slate-200 border-l-4 border-l-[#dd5c86] bg-rose-50'
+                      ? 'border-l-4 border-l-[#dd5c86] bg-rose-50'
                       : cancelled
-                        ? 'border-slate-200 bg-slate-50 opacity-70'
-                        : 'border-slate-200 bg-white'
+                        ? 'opacity-70'
+                        : ''
                   }`}
                 >
                   <div className="flex items-center justify-between gap-4">
                     <Link to={`/admin/event/${event.id}`} className="min-w-0 flex-1 hover:underline">
-                      <div className="font-semibold">{event.title}</div>
-                      <div className="text-sm text-slate-500">
+                      <div className="font-semibold text-[var(--text)]">{event.title}</div>
+                      <div className="text-sm text-[var(--text-muted)]">
                         {new Date(event.starts_at).toLocaleString('sv-SE', {
                           dateStyle: 'medium',
                           timeStyle: 'short',
@@ -312,7 +308,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       </div>
                     </Link>
                     <div className="text-right shrink-0">
-                      <div className="text-sm">
+                      <div className="text-sm text-[var(--text)]">
                         {event.sold_count} / {event.capacity} sålda
                       </div>
                       <span
@@ -330,7 +326,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
 
                   {!cancelled && (
-                    <div className="flex gap-3 mt-3 pt-3 border-t border-slate-100 text-sm">
+                    <div className="flex gap-4 mt-4 pt-4 border-t border-[var(--border)] text-sm">
                       <button
                         type="button"
                         onClick={() => startEdit(event)}
@@ -357,53 +353,51 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <div className="order-2 lg:sticky lg:top-4 space-y-6">
           <section
             ref={formSectionRef}
-            className={`border rounded-lg p-6 bg-white ${
-              editingEventId ? 'border-slate-200 border-l-4 border-l-[#dd5c86]' : 'border-slate-200'
-            }`}
+            className={`card ${editingEventId ? 'border-l-4 border-l-[#dd5c86]' : ''}`}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">
+              <h2 className="font-semibold text-[var(--text)]">
                 {editingEventId ? `Redigerar: ${editingEvent?.title ?? ''}` : 'Skapa nytt event'}
               </h2>
               {editingEventId && (
-                <button type="button" onClick={resetForm} className="text-sm text-slate-500 hover:text-slate-800">
+                <button type="button" onClick={resetForm} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
                   Avbryt redigering
                 </button>
               )}
             </div>
-            <form onSubmit={handleSubmitForm} className="space-y-3">
+            <form onSubmit={handleSubmitForm} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Titel</label>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</label>
             <input
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Plats</label>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
             <input
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Datum &amp; tid</label>
+              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
               <input
                 type="datetime-local"
                 required
                 value={startsAt}
                 onChange={(e) => setStartsAt(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2"
+                className="field"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
+              <label className="block text-sm font-medium mb-2 text-[var(--text)]">
                 Platsantal
-                {editingEvent && <span className="font-normal text-slate-500"> ({editingEvent.sold_count} sålda)</span>}
+                {editingEvent && <span className="font-normal text-[var(--text-muted)]"> ({editingEvent.sold_count} sålda)</span>}
               </label>
               <input
                 type="number"
@@ -411,9 +405,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 required
                 value={capacity}
                 onChange={(e) => setCapacity(Number(e.target.value))}
-                className={`w-full rounded-md border px-3 py-2 ${
-                  capacityTooLow ? 'border-red-400' : 'border-slate-300'
-                }`}
+                className={`field ${capacityTooLow ? 'border-red-400' : ''}`}
               />
               {capacityTooLow && (
                 <p className="text-red-600 text-xs mt-1">
@@ -422,9 +414,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Pris (kr)</label>
+              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
               <input
                 type="number"
                 min={0}
@@ -432,15 +424,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 required
                 value={priceKr}
                 onChange={(e) => setPriceKr(Number(e.target.value))}
-                className="w-full rounded-md border border-slate-300 px-3 py-2"
+                className="field"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Momssats</label>
+              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
               <select
                 value={vatRate}
                 onChange={(e) => setVatRate(Number(e.target.value))}
-                className="w-full rounded-md border border-slate-300 px-3 py-2"
+                className="field"
               >
                 <option value={6}>6 % (standard, scenframträdande)</option>
                 <option value={12}>12 %</option>
@@ -451,11 +443,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
 
               {createError && <p className="text-red-600 text-sm">{createError}</p>}
-              <button
-                type="submit"
-                disabled={creating || capacityTooLow}
-                className="bg-slate-900 text-white rounded-md px-4 py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
-              >
+              <button type="submit" disabled={creating || capacityTooLow} className="btn-primary">
                 {creating ? 'Sparar…' : editingEventId ? 'Spara ändringar' : 'Skapa event'}
               </button>
             </form>
@@ -519,9 +507,9 @@ function ExportSection({ events }: { events: EventRow[] }) {
   }
 
   return (
-    <section className="border border-slate-200 rounded-lg p-6 bg-white mt-8">
-      <h2 className="font-semibold mb-1">Exportera försäljning</h2>
-      <p className="text-sm text-slate-500 mb-4">
+    <section className="card">
+      <h2 className="font-semibold mb-2 text-[var(--text)]">Exportera försäljning</h2>
+      <p className="text-sm text-[var(--text-muted)] mb-4">
         CSV för kalkylark, SIE4 för bokföring (Fortnox m.fl.). Läser endast betalda ordrar och
         använder alltid priset/momsen som gällde vid köptillfället, inte eventets nuvarande
         värden.{' '}
@@ -557,34 +545,34 @@ function ExportSection({ events }: { events: EventRow[] }) {
 
       {scope === 'day' && (
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Datum</label>
+          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum</label>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-md border border-slate-300 px-3 py-2"
+            className="field"
           />
         </div>
       )}
 
       {scope === 'range' && (
-        <div className="flex gap-3 mb-4">
+        <div className="flex gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Från</label>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Från</label>
             <input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Till</label>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Till</label>
             <input
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2"
+              className="field"
             />
           </div>
         </div>
@@ -592,11 +580,11 @@ function ExportSection({ events }: { events: EventRow[] }) {
 
       {scope === 'event' && (
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Event</label>
+          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Event</label>
           <select
             value={eventId}
             onChange={(e) => setEventId(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2"
+            className="field"
           >
             {events.length === 0 && <option value="">Inga events</option>}
             {events.map((e) => (
@@ -610,21 +598,11 @@ function ExportSection({ events }: { events: EventRow[] }) {
 
       {exportError && <p className="text-red-600 text-sm mb-3">{exportError}</p>}
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={() => handleDownload('csv')}
-          disabled={downloading !== null}
-          className="bg-slate-900 text-white rounded-md px-4 py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
-        >
+      <div className="flex gap-4">
+        <button type="button" onClick={() => handleDownload('csv')} disabled={downloading !== null} className="btn-primary">
           {downloading === 'csv' ? 'Laddar ner…' : 'Ladda ner CSV'}
         </button>
-        <button
-          type="button"
-          onClick={() => handleDownload('sie')}
-          disabled={downloading !== null}
-          className="bg-white text-slate-900 border border-slate-300 rounded-md px-4 py-2 font-medium hover:bg-slate-50 disabled:opacity-50"
-        >
+        <button type="button" onClick={() => handleDownload('sie')} disabled={downloading !== null} className="btn-secondary">
           {downloading === 'sie' ? 'Laddar ner…' : 'Ladda ner SIE'}
         </button>
       </div>
