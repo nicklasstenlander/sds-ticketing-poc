@@ -1,25 +1,20 @@
 // create-order
 //
 // Publik funktion (anropas från /kop/:slug). Reserverar kapacitet atomiskt,
-// skapar order + biljetter med kryptografiskt slumpmässiga koder, genererar
-// en QR-PNG per biljett, laddar upp den till Storage-bucketet "qr" och
-// mailar köparen kvittot via Resend.
+// skapar en order i status "pending" med en frusen pris/moms-ögonblicksbild
+// från eventet, och skapar en Stripe Checkout Session i Test mode.
 //
-// QR-generering: vi använder npm-paketet "qrcode" (ren JS, ingen
-// canvas/native-dependency krävs för PNG-output - det använder pngjs
-// internt) via Denos npm:-specifier-stöd. Det är ett väldokumenterat,
-// vedertaget bibliotek - inget hemmabygge och inget anrop till en extern
-// QR-webbtjänst.
+// Biljetter skapas INTE här längre - det görs först av stripe-webhook när
+// betalningen faktiskt bekräftats (checkout.session.completed). Detta
+// förhindrar att någon får biljetter utan att betala: fram tills webhooken
+// kör finns bara en "pending"-order och en reserverad plats, inga biljetter.
 //
-// QR-koden innehåller ENDAST den råa ticket_code-strängen som klartext -
-// ingen URL, ingen JSON, ingen signatur. Scannern slår upp koden mot
-// databasen server-side (scan-ticket), så det finns inget att förfalska
-// genom att bara läsa QR-bilden.
+// Returnerar { checkout_url } - frontenden gör en fullständig
+// sidomdirigering (window.location.href) dit, inte en fetch/XHR, eftersom
+// Stripe Checkout är en hostad sida som kräver en riktig navigering.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { generateTicketCode } from '../_shared/base32.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
-// @deno-types="npm:@types/qrcode@1"
-import QRCode from 'npm:qrcode@1.5.3'
+import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.ts'
 
 interface CreateOrderBody {
   slug?: string
@@ -59,11 +54,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Antal biljetter måste vara mellan 1 och 6.' }, 400)
   }
 
+  const frontendBaseUrl = (Deno.env.get('FRONTEND_BASE_URL') ?? '').replace(/\/+$/, '')
+  if (!frontendBaseUrl) {
+    return jsonResponse({ error: 'FRONTEND_BASE_URL är inte konfigurerad på servern.' }, 500)
+  }
+
   const supabase = createAdminClient()
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, capacity, sold_count, status')
+    .select('id, slug, title, venue, starts_at, capacity, sold_count, status, price_ore, vat_rate')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -74,11 +74,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
-  // Atomisk kapacitetsreservation - detta enda UPDATE-anrop är det som
-  // avgör om det finns plats. Villkoret sold_count + qty <= capacity
-  // kontrolleras av databasen i samma sats som uppdateringen, så två
-  // samtidiga köp kan aldrig båda lyckas över kapacitetsgränsen (ingen
-  // read-then-write-race).
+  // Atomisk kapacitetsreservation - se motivering i den ursprungliga
+  // kommentaren (bevarad): detta enda UPDATE-anrop är det som avgör om det
+  // finns plats, atomiskt via WHERE-villkoret i samma sats.
   const { data: reserved, error: reserveError } = await supabase.rpc(
     'reserve_event_capacity',
     { p_event_id: event.id, p_qty: qty },
@@ -91,7 +89,13 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'slutsålt' }, 409)
   }
 
-  // Skapa order
+  const expiresAt = new Date(Date.now() + CHECKOUT_EXPIRY_MINUTES * 60 * 1000)
+
+  // Skapa order i status "pending" - pris/moms fryses här (ögonblicksbild
+  // från eventet vid köptillfället, se migrationskommentaren i
+  // 20260101000300_stripe_vat_export.sql) så att en senare ändring av
+  // eventets pris/momssats aldrig kan ändra bokföringen för denna order i
+  // efterhand.
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
@@ -99,7 +103,10 @@ Deno.serve(async (req: Request) => {
       buyer_name: buyerName,
       buyer_email: buyerEmail,
       qty,
-      status: 'confirmed',
+      status: 'pending',
+      price_ore: event.price_ore,
+      vat_rate: event.vat_rate,
+      expires_at: expiresAt.toISOString(),
     })
     .select()
     .single()
@@ -110,115 +117,64 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte skapa order: ${orderError?.message}` }, 500)
   }
 
-  // Skapa biljetter med slumpmässiga koder
-  const ticketCodes = Array.from({ length: qty }, () => generateTicketCode())
-  const ticketRows = ticketCodes.map((code) => ({
-    order_id: order.id,
-    event_id: event.id,
-    ticket_code: code,
-    holder_name: buyerName,
-    status: 'valid' as const,
-  }))
-
-  const { data: tickets, error: ticketsError } = await supabase
-    .from('tickets')
-    .insert(ticketRows)
-    .select()
-
-  if (ticketsError || !tickets) {
-    return jsonResponse({ error: `Kunde inte skapa biljetter: ${ticketsError?.message}` }, 500)
-  }
-
-  // Generera QR-PNG per biljett och ladda upp till Storage-bucketet "qr".
-  const qrUrls: string[] = []
-  for (const ticket of tickets) {
-    const pngBuffer: Uint8Array = await QRCode.toBuffer(ticket.ticket_code, {
-      type: 'png',
-      margin: 2,
-      width: 320,
-      errorCorrectionLevel: 'M',
-    })
-
-    const path = `${order.id}/${ticket.id}.png`
-    const { error: uploadError } = await supabase.storage
-      .from('qr')
-      .upload(path, pngBuffer, { contentType: 'image/png', upsert: true })
-
-    if (uploadError) {
-      return jsonResponse({ error: `Kunde inte ladda upp QR-kod: ${uploadError.message}` }, 500)
-    }
-
-    const { data: publicUrlData } = supabase.storage.from('qr').getPublicUrl(path)
-    qrUrls.push(publicUrlData.publicUrl)
-  }
-
-  // Skicka bekräftelsemail via Resend.
-  const resendApiKey = Deno.env.get('RESEND_API_KEY')
-  const resendFrom = Deno.env.get('RESEND_FROM') ?? 'biljett@resend.dev'
-
-  if (resendApiKey) {
-    const eventDate = new Date(event.starts_at).toLocaleString('sv-SE', {
-      dateStyle: 'long',
-      timeStyle: 'short',
-      timeZone: 'Europe/Stockholm',
-    })
-
-    // OBS: Vi bäddar in QR-bilderna som <img src="https://...supabase.co/.../qr/...">
-    // som pekar på Storage-URL:en - INTE som data-URI. Gmail (och flera
-    // andra klienter) blockerar/renderar inte data-URI-bilder i mail, så en
-    // riktig https-URL krävs. Som fallback (om bilden av någon anledning
-    // inte visas) skriver vi även ut koden i klartext under varje QR-bild.
-    const ticketsHtml = tickets
-      .map((ticket, i) => {
-        return `
-          <div style="margin:24px 0;padding:16px;border:1px solid #ddd;border-radius:8px;text-align:center;">
-            <img src="${qrUrls[i]}" alt="QR-kod för biljett" width="220" height="220" style="display:block;margin:0 auto 12px;" />
-            <div style="font-family:monospace;font-size:16px;letter-spacing:2px;">${ticket.ticket_code}</div>
-          </div>
-        `
-      })
-      .join('')
-
-    const html = `
-      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
-        <h1 style="font-size:20px;">Din biljett till ${event.title}</h1>
-        <p>Hej ${buyerName},</p>
-        <p>Tack för ditt köp! Här är din/dina biljett(er) till <strong>${event.title}</strong>${event.venue ? ` på ${event.venue}` : ''}, ${eventDate}.</p>
-        <p>Visa QR-koden vid entrén, eller uppge koden i klartext om bilden inte laddas.</p>
-        ${ticketsHtml}
-        <p style="color:#666;font-size:13px;">Ordernummer: ${order.id}</p>
-      </div>
-    `
-
-    const emailResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
+  // Skapa Stripe Checkout Session (Test mode - se _shared/stripe.ts).
+  let session
+  try {
+    const stripe = createStripeClient()
+    session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: buyerEmail,
+      client_reference_id: order.id,
+      line_items: [
+        {
+          quantity: qty,
+          price_data: {
+            currency: 'sek',
+            unit_amount: event.price_ore,
+            product_data: {
+              name: event.title,
+              description: event.venue ? `${event.venue}` : undefined,
+            },
+          },
+        },
+      ],
+      expires_at: Math.floor(expiresAt.getTime() / 1000),
+      success_url: `${frontendBaseUrl}/#/kop/${event.slug}/klar?order=${order.id}`,
+      // Går tillbaka till köpsidan (inte bekräftelsesidan) om kunden avbryter
+      // i Stripe Checkout utan att betala - ordern förblir "pending" (den
+      // sätts inte "cancelled" av detta) och städas bort av
+      // checkout.session.expired-webhooken eller release-expired-orders när
+      // expires_at passeras, så kunden kan bara försöka igen direkt.
+      cancel_url: `${frontendBaseUrl}/#/kop/${event.slug}`,
+      metadata: {
+        order_id: order.id,
+        event_id: event.id,
       },
-      body: JSON.stringify({
-        from: resendFrom,
-        to: buyerEmail,
-        subject: `Din biljett till ${event.title}`,
-        html,
-      }),
     })
-
-    if (!emailResponse.ok) {
-      // Vi låter köpet lyckas ändå (biljetterna finns i databasen och visas
-      // i klartext på klar-sidan) men loggar felet för felsökning.
-      const errText = await emailResponse.text()
-      console.error('Resend-fel:', errText)
-    }
-  } else {
-    console.warn('RESEND_API_KEY saknas - hoppar över mailutskick (endast för lokal utveckling).')
+  } catch (err) {
+    // Rulla tillbaka både kapacitetsreservationen och ordern om Stripe-
+    // anropet misslyckas, så att köparen inte lämnas med en pending-order
+    // som aldrig kommer kunna betalas.
+    await supabase.from('orders').delete().eq('id', order.id)
+    await supabase.rpc('release_event_capacity', { p_event_id: event.id, p_qty: qty })
+    const message = err instanceof Error ? err.message : 'Okänt Stripe-fel.'
+    return jsonResponse({ error: `Kunde inte skapa Stripe Checkout-session: ${message}` }, 502)
   }
 
-  return jsonResponse(
-    {
-      order_id: order.id,
-      tickets: tickets.map((t) => ({ id: t.id, ticket_code: t.ticket_code })),
-    },
-    201,
-  )
+  if (!session.url) {
+    await supabase.from('orders').delete().eq('id', order.id)
+    await supabase.rpc('release_event_capacity', { p_event_id: event.id, p_qty: qty })
+    return jsonResponse({ error: 'Stripe returnerade ingen checkout-URL.' }, 502)
+  }
+
+  const { error: updateError } = await supabase
+    .from('orders')
+    .update({ stripe_session_id: session.id })
+    .eq('id', order.id)
+
+  if (updateError) {
+    return jsonResponse({ error: `Kunde inte spara Stripe-session: ${updateError.message}` }, 500)
+  }
+
+  return jsonResponse({ checkout_url: session.url }, 200)
 })

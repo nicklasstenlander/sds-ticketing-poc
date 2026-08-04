@@ -1,0 +1,30 @@
+name: Release expired orders
+
+# Säkerhetsnät utöver checkout.session.expired-webhooken - se
+# supabase/functions/release-expired-orders/index.ts. Körs var 10:e minut
+# och anropar edge-funktionen som städar bort pending-ordrar vars
+# expires_at har passerat, och återför deras reserverade kapacitet.
+#
+# Kräver två repo-secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_FUNCTIONS_URL  - t.ex. https://<ref>.supabase.co/functions/v1
+#   CRON_SECRET             - samma värde som satts som Supabase secret
+#                              (supabase secrets set CRON_SECRET=...)
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  release-expired:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Anropa release-expired-orders
+        run: |
+          curl -sS -X POST \
+            "${SUPABASE_FUNCTIONS_URL}/release-expired-orders" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --fail-with-body
+        env:
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

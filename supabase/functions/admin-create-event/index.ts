@@ -15,7 +15,11 @@ interface CreateEventBody {
   capacity?: number
   slug?: string
   status?: 'draft' | 'published'
+  price_ore?: number
+  vat_rate?: number
 }
+
+const VALID_VAT_RATES = [0, 6, 12, 25]
 
 function slugify(input: string): string {
   return input
@@ -67,6 +71,19 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Platsantal måste vara ett heltal >= 1.' }, 400)
   }
 
+  // price_ore/vat_rate: pris i öre (kronor * 100, konverterat i frontend
+  // innan anropet) och momssats i procent. Momssats defaultar till 6 %
+  // (standard för scenframträdande/kulturevenemang) om inget skickas.
+  const priceOre = body.price_ore === undefined ? 0 : Number(body.price_ore)
+  const vatRate = body.vat_rate === undefined ? 6 : Number(body.vat_rate)
+
+  if (!Number.isInteger(priceOre) || priceOre < 0) {
+    return jsonResponse({ error: 'Pris måste vara ett heltal (öre) >= 0.' }, 400)
+  }
+  if (!VALID_VAT_RATES.includes(vatRate)) {
+    return jsonResponse({ error: 'Momssats måste vara 0, 6, 12 eller 25 procent.' }, 400)
+  }
+
   const baseSlug = body.slug?.trim() ? slugify(body.slug) : slugify(title)
   if (!baseSlug) return jsonResponse({ error: 'Kunde inte generera slug från titeln.' }, 400)
 
@@ -93,6 +110,8 @@ Deno.serve(async (req: Request) => {
       starts_at: new Date(startsAt).toISOString(),
       capacity,
       status,
+      price_ore: priceOre,
+      vat_rate: vatRate,
     })
     .select()
     .single()

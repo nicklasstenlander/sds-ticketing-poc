@@ -2,21 +2,32 @@
 #
 # verify_jwt = false på VARJE funktion nedan, av samma anledning för alla:
 # ingen av dem tar emot en Supabase-utfärdad JWT i Authorization-headern.
-#   - create-order: publik, ingen Authorization-header alls.
+#   - create-order / order-status: publika, ingen Authorization-header alls
+#     (order-status tar emot order_id som query-param).
 #   - scan-ticket / list-events: statisk SCANNER_BEARER_TOKEN (iOS-appen).
 #   - admin-auth: publik (tar emot PIN-koden i body, inte headern).
-#   - admin-create-event / admin-events / admin-event-tickets: egen
-#     HMAC-signerad admin-sessionstoken (se supabase/functions/_shared/adminToken.ts),
-#     inte en Supabase JWT.
+#   - admin-create-event / admin-events / admin-event-tickets / export-sales:
+#     egen HMAC-signerad admin-sessionstoken (se
+#     supabase/functions/_shared/adminToken.ts), inte en Supabase JWT.
+#   - stripe-webhook: Stripe skickar en stripe-signature-header, ingen
+#     Supabase-JWT och inget Authorization-Bearer alls (Stripe stöder inte
+#     egna headers på webhook-endpoints).
+#   - release-expired-orders: statisk CRON_SECRET (schemalagt GitHub
+#     Actions-jobb, se .github/workflows/release-expired-orders.yml).
 #
 # Utan detta avvisar Supabase-gatewayen ALLA dessa anrop med 401 INNAN
 # funktionskoden ens körs - då spelar det ingen roll att koden i sig
 # jämför rätt token, den koden nås aldrig. Se README.md, avsnittet
 # "Verifiera verify_jwt med curl" för hur man bekräftar att detta faktiskt
-# är aktivt efter deploy.
+# är aktivt efter deploy. Kom ihåg --no-verify-jwt vid varje deploy också
+# (se README) - känd CLI-flakiness (supabase/cli#4059) gör att config.toml
+# ensamt ibland inte räcker vid en redeploy.
 project_id = "sds-ticketing-poc"
 
 [functions.create-order]
+verify_jwt = false
+
+[functions.order-status]
 verify_jwt = false
 
 [functions.scan-ticket]
@@ -35,4 +46,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.admin-event-tickets]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.release-expired-orders]
+verify_jwt = false
+
+[functions.export-sales]
 verify_jwt = false

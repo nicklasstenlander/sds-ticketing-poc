@@ -10,6 +10,8 @@ export interface EventRow {
   sold_count: number
   status: EventStatus
   created_at: string
+  price_ore: number
+  vat_rate: number
 }
 
 export type TicketStatus = 'valid' | 'checked_in' | 'void'
@@ -25,12 +27,19 @@ export interface TicketRow {
   checked_in_by: string | null
 }
 
+export type OrderStatus = 'pending' | 'paid' | 'expired' | 'cancelled'
+
 export interface OrderRow {
   id: string
   event_id: string
   buyer_name: string
   buyer_email: string
   qty: number
-  status: string
+  status: OrderStatus
   created_at: string
+  stripe_session_id: string | null
+  expires_at: string | null
+  paid_at: string | null
+  price_ore: number | null
+  vat_rate: number | null
 }

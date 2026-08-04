@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 
 interface CreateOrderResponse {
-  order_id: string
-  tickets: { id: string; ticket_code: string }[]
+  checkout_url: string
 }
 
 export function PurchasePage() {
   const { slug } = useParams<{ slug: string }>()
-  const navigate = useNavigate()
 
   const [event, setEvent] = useState<EventRow | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -55,14 +53,9 @@ export function PurchasePage() {
         method: 'POST',
         body: { slug: event.slug, name, email, qty },
       })
-      navigate(`/kop/${event.slug}/klar`, {
-        state: {
-          orderId: result.order_id,
-          tickets: result.tickets,
-          eventTitle: event.title,
-          email,
-        },
-      })
+      // Fullständig sidomdirigering (inte en klientroutning) - Stripe
+      // Checkout är en hostad sida, ingen komponent i denna app.
+      window.location.href = result.checkout_url
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setFormError('Tyvärr, eventet är slutsålt.')
@@ -111,8 +104,12 @@ export function PurchasePage() {
         })}
         {event.venue ? ` · ${event.venue}` : ''}
       </p>
-      <p className="text-slate-500 mb-6">
+      <p className="text-slate-500 mb-1">
         {soldOut ? 'Slutsålt' : `${remaining} platser kvar av ${event.capacity}`}
+      </p>
+      <p className="text-slate-700 font-medium mb-6">
+        {(event.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+        <span className="text-slate-400 font-normal"> (varav moms {event.vat_rate}%)</span>
       </p>
 
       {soldOut ? (
@@ -172,7 +169,7 @@ export function PurchasePage() {
             disabled={submitting}
             className="w-full bg-slate-900 text-white rounded-md py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
           >
-            {submitting ? 'Bokar…' : 'Boka (ingen betalning i PoC)'}
+            {submitting ? 'Skickar dig till Stripe…' : 'Gå till betalning'}
           </button>
         </form>
       )}

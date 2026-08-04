@@ -17,35 +17,47 @@ fungerande.
 | Steg | Status |
 |---|---|
 | Nytt Supabase-projekt skapat (org "SDS Biljett PoC", projekt `sds-ticketing-poc`, project-ref `oyqgxnmwojjjpoubdlfa`, region North EU/Stockholm) | ✅ Klart |
-| Databasmigrationer körda, RLS bekräftat aktiverat på alla fyra tabeller | ✅ Klart |
+| Databasmigrationer körda, RLS bekräftat aktiverat på alla tabeller | ✅ Klart |
 | Storage-bucket `qr` bekräftat skapad och publik | ✅ Klart |
 | `.env` ifylld med riktig `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` | ✅ Klart |
 | Secrets satta (`RESEND_API_KEY`, `ADMIN_PIN`, `SCANNER_BEARER_TOKEN`) | ⬜ Återstår - se avsnitt 3 |
 | Resend konfigurerat | ⬜ Återstår - se avsnitt 4 |
 | Edge Functions deployade med `verify_jwt` av | ⬜ Återstår - se avsnitt 5 |
-| curl-verifiering av samtliga sju funktioner | ⬜ Återstår - se avsnitt 5 |
+| curl-verifiering av samtliga funktioner | ⬜ Återstår - se avsnitt 5 |
 | Frontend deployad | ⬜ Återstår - se avsnitt 7 |
+| Stripe Checkout (Test mode) - `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` | ✅ Redan satta av kontoägaren (enligt Tilläggsorder) |
+| Ny migration för Stripe/moms/export - körd i SQL Editor | ⬜ Återstår - se avsnitt 8 |
+| `FRONTEND_BASE_URL`, `CRON_SECRET` secrets | ⬜ Återstår - se avsnitt 8 |
+| Schemalagt jobb för `release-expired-orders` (GitHub Actions) | ⬜ Återstår - se avsnitt 8 |
+| Kontonummer för SIE-export konfigurerade (annars används exempelvärden) | ⬜ Återstår - se avsnitt 9 |
 
-De tre återstående secrets-värdena, Resend-nyckeln och CLI-inloggningen är
+De återstående secrets-värdena, Resend-nyckeln och CLI-inloggningen är
 sådant bara du kan göra - se respektive avsnitt nedan för exakta kommandon.
 
 ## Vad ingår
 
-- `/admin` - PIN-skyddad admin-vy: skapa event, se sålda biljetter per
-  event, se biljettstatus och incheckningstid.
-- `/kop/:slug` - publik köpsida (namn, e-post, antal 1-6, ingen betalning).
-- `/kop/:slug/klar` - bekräftelsesida med ordernummer och biljettkoder i
-  klartext (fallback om mailet inte når fram).
-- Fyra publika/interna Edge Functions (`create-order`, `scan-ticket`,
-  `list-events`, `admin-auth`) samt fyra admin-interna Edge Functions
-  (`admin-create-event`, `admin-events`, `admin-event-tickets`) - se
-  "Arkitekturbeslut" nedan för varför de sistnämnda behövdes.
+- `/admin` - PIN-skyddad admin-vy: skapa event (inkl. pris och momssats),
+  se sålda biljetter per event, se biljettstatus och incheckningstid, samt
+  exportera betald försäljning som CSV/SIE4.
+- `/kop/:slug` - publik köpsida (namn, e-post, antal 1-6) som skickar
+  vidare till **Stripe Checkout (Test mode)** för betalning.
+- `/kop/:slug/klar` - bekräftelsesida som pollar orderstatus tills
+  betalningen är bekräftad (eller sessionen gått ut/avbrutits).
+- Publika/interna Edge Functions: `create-order`, `order-status`,
+  `stripe-webhook`, `release-expired-orders`, `scan-ticket`, `list-events`,
+  `admin-auth`.
+- Admin-interna Edge Functions: `admin-create-event`, `admin-events`,
+  `admin-event-tickets`, `export-sales` - se "Arkitekturbeslut" nedan för
+  varför dessa behövdes utöver spec-listan.
 
 ## Vad ingår INTE (medvetet)
 
-Betalning, flera biljettyper, PDF-generering, Apple/Google Wallet,
-återbetalning/avbokning, offline-stöd, reservationstimeout/pending-orders,
-inloggning utöver PIN-koden, SODSS-varumärkesanpassad design.
+Flera biljettyper eller momssatser per event, PDF-generering, Apple/Google
+Wallet, återbetalning/avbokning i UI (hanteras manuellt i Stripe
+Dashboard), offline-stöd, inloggning utöver PIN-koden,
+SODSS-varumärkesanpassad design, Stripe Connect/split till separat
+arrangörskonto, Swish, Stripe Invoicing/fakturering, automatisk
+schemalagd SIE-export (manuell nedladdning i v1).
 
 ---
 
@@ -298,6 +310,132 @@ skulle annars ge 404 från GitHub, inte appen. Se `src/App.tsx` och
 `vite.config.ts` (`base: '/sds-ticketing-poc/'` - byt ut repo-namnet där om
 det faktiska GitHub-repot heter något annat).
 
+## 8. Stripe Checkout (Test mode), moms och det utgångna-jobbet
+
+> **VIKTIGT:** hela denna PoC är kopplad mot Stripe **Test mode**.
+> `STRIPE_SECRET_KEY` ska alltid vara en `sk_test_...`-nyckel -
+> `_shared/stripe.ts` vägrar aktivt att starta om nyckeln inte börjar med
+> `sk_test_`, som ett skyddsnät mot att av misstag koppla in en riktig
+> live-nyckel. Byt aldrig till en `sk_live_...`-nyckel utan en uttrycklig,
+> separat instruktion.
+
+**Redan gjort av kontoägaren** (enligt Tilläggsordern): `STRIPE_SECRET_KEY`
+och `STRIPE_WEBHOOK_SECRET` är redan satta som Supabase secrets, och en
+webhook är konfigurerad i Stripe Dashboard mot
+
+```
+https://oyqgxnmwojjjpoubdlfa.supabase.co/functions/v1/stripe-webhook
+```
+
+med händelserna `checkout.session.completed` och `checkout.session.expired`.
+
+### Vad som återstår
+
+1. **Kör den nya migrationen** (`supabase/migrations/20260101000300_stripe_vat_export.sql`)
+   - via `supabase db push` eller manuellt i SQL Editor, samma mönster som
+   avsnitt 2. Den lägger till `price_ore`/`vat_rate` på `events`,
+   Stripe-/moms-/utgångsfälten på `orders`, tabellen `webhook_events` samt
+   databasfunktionen `release_expired_orders()`.
+
+2. **Sätt `FRONTEND_BASE_URL`** (används av `create-order` för att bygga
+   Stripe Checkouts `success_url`/`cancel_url`, och är INTE hemlig - det är
+   bara webbplatsens publika adress):
+   ```bash
+   supabase secrets set FRONTEND_BASE_URL=https://<användarnamn>.github.io/sds-ticketing-poc
+   ```
+
+3. **Sätt `CRON_SECRET`** - en egen hemlighet (som `SCANNER_BEARER_TOKEN`)
+   som skyddar `release-expired-orders` mot att anropas av någon annan än
+   det schemalagda jobbet:
+   ```bash
+   supabase secrets set CRON_SECRET=$(openssl rand -hex 32)
+   ```
+
+4. **Deploya de nya funktionerna** (samma `--no-verify-jwt`-krav som övriga,
+   se avsnitt 5 - `config.toml` är redan uppdaterad med samtliga):
+   ```bash
+   supabase functions deploy create-order --no-verify-jwt
+   supabase functions deploy order-status --no-verify-jwt
+   supabase functions deploy stripe-webhook --no-verify-jwt
+   supabase functions deploy release-expired-orders --no-verify-jwt
+   supabase functions deploy admin-create-event --no-verify-jwt
+   supabase functions deploy export-sales --no-verify-jwt
+   ```
+
+5. **Schemalägg `release-expired-orders`.** Detta är ett komplement till
+   `checkout.session.expired`-webhooken (webhooken kör normalt långt innan
+   detta jobb hinner titta på ordern - jobbet är bara ett säkerhetsnät om en
+   webhook-leverans skulle utebli). Ett GitHub Actions-workflow
+   (`.github/workflows/release-expired-orders.yml`) kör var 10:e minut och
+   anropar funktionen - kräver två repository secrets under Settings →
+   Secrets and variables → Actions:
+   - `SUPABASE_FUNCTIONS_URL` = `https://oyqgxnmwojjjpoubdlfa.supabase.co/functions/v1`
+   - `CRON_SECRET` = samma värde som sattes i steg 3
+
+### Varför `expires_at` är 30 minuter, inte 15
+
+Tilläggsordern föreslog 15 minuters giltighetstid för Checkout-sessionen.
+Stripes API kräver dock att ett anpassat `expires_at` för en Checkout
+Session är **minst 30 minuter** framåt i tiden - ett värde under det
+avvisas av Stripe med ett valideringsfel. `CHECKOUT_EXPIRY_MINUTES` i
+`supabase/functions/_shared/stripe.ts` är därför satt till Stripes
+minimivärde, 30 minuter, och `orders.expires_at`/`release_expired_orders()`
+använder samma värde så att databasens och Stripes uppfattning om när
+ordern går ut alltid stämmer överens.
+
+### Moms och prisfält
+
+- **Event:** `price_ore` (pris per biljett, i öre) och `vat_rate` (6/12/25/0
+  %, default 6 - standard för scenframträdande) sätts vid eventskapande i
+  `/admin` och kan i nuläget inte redigeras i efterhand (det finns ingen
+  redigera-event-funktion i denna PoC, bara skapa).
+- **Order:** `price_ore`/`vat_rate` kopieras (snapshot) från eventet vid
+  köptillfället och ändras ALDRIG efteråt - se kommentaren i
+  `20260101000300_stripe_vat_export.sql`. All bokföringsexport (avsnitt 9)
+  läser alltid ordrens egna värden, aldrig eventets nuvarande.
+- **Orderstatus-livscykel:** `pending` → `paid` (via `stripe-webhook`) eller
+  `pending` → `expired` (via webhookens `checkout.session.expired` ELLER
+  `release-expired-orders`-jobbet). `cancelled` finns i schemat för en
+  eventuell framtida admin-avbokningsfunktion men sätts inte av något
+  flöde i denna PoC.
+
+## 9. Exportera försäljning (CSV och SIE4)
+
+`/admin` har en exportsektion längst ner: tre lägen (dagens datum, valfri
+period, helt evenemang) och två filformat.
+
+- **CSV** - en rad per betald order (`datum, order_id, event, antal,
+  brutto_ore, moms_ore, netto_ore, momssats, betalsätt,
+  stripe_session_id`). UTF-8 med BOM, öppnas rätt direkt i Excel.
+- **SIE4** - en verifikation per dag och betalsätt (grupperas dessutom per
+  momssats om samma dag/period skulle innehålla flera momssatser).
+  Kontering: debet avräkningskonto med bruttobeloppet, kredit
+  intäktskonto med nettobeloppet, kredit utgående moms-konto med
+  momsbeloppet. CP437-kodad enligt SIE4-standarden.
+
+> **VIKTIGT - granska första SIE-filen manuellt.** SIE4 har ett strikt
+> filhuvud och en ovanlig teckenkodning. Strukturen i
+> `supabase/functions/export-sales/index.ts` följer SIE4-skelettet, men
+> **den första riktiga exporten bör granskas av en redovisningskonsult
+> innan den importeras skarpt i Fortnox** - ett formatfel upptäcks annars
+> inte förrän det redan ligger i bokföringen.
+
+### Konfigurera kontoplan (valfritt - annars används exempelkonton)
+
+Kontonumren nedan är EXEMPEL från Tilläggsordern, inte bekräftade riktiga
+konton för Moon Movements AB. Sätt dem som Supabase secrets när de riktiga
+kontona är klara:
+
+```bash
+supabase secrets set SIE_ACCOUNT_RECEIVABLE=1580   # avräkningskonto (Stripe)
+supabase secrets set SIE_ACCOUNT_REVENUE=3041       # biljettintäkter
+supabase secrets set SIE_ACCOUNT_VAT_6=2631         # utgående moms 6 %
+supabase secrets set SIE_ACCOUNT_VAT_12=2621        # utgående moms 12 %
+supabase secrets set SIE_ACCOUNT_VAT_25=2611        # utgående moms 25 %
+```
+
+Om ingen av dessa sätts används default-värdena ovan automatiskt.
+
 ---
 
 ## Arkitekturbeslut och medvetna förenklingar
@@ -380,10 +518,50 @@ det faktiska GitHub-repot heter något annat).
   ska visa antal INCHECKADE, inte antal sålda - med två entréer igång kan
   ingen enskild enhet räkna det lokalt, den ser bara sina egna scanningar.
 
-- **`verify_jwt = false` på samtliga sju funktioner:** se avsnitt 5 ovan
-  för fullständig motivering - ingen av funktionerna använder en riktig
+- **`verify_jwt = false` på samtliga funktioner:** se avsnitt 5 ovan för
+  fullständig motivering - ingen av funktionerna använder en riktig
   Supabase-utfärdad JWT, så gatewayens standardkrav måste stängas av för
-  alla, inte bara de två som pratar med iOS-appen.
+  alla, inte bara de som pratar med iOS-appen. `stripe-webhook` är ett
+  specialfall: Stripe skickar varken en Supabase-JWT eller ett
+  `Authorization: Bearer`-värde alls (Stripe stöder inte egna headers på
+  webhook-endpoints) - `stripe-signature`-verifieringen är där den enda
+  auktoriseringen.
+
+- **Biljetter skapas ENDAST av `stripe-webhook`, aldrig av `create-order`:**
+  `create-order` reserverar kapacitet och skapar en `pending`-order + en
+  Stripe Checkout Session, men rör aldrig `tickets`-tabellen. Detta är en
+  medveten säkerhetsgräns - ingen kan få en biljett utan att Stripe
+  faktiskt bekräftat en betalning via webhooken, oavsett vad en klient
+  skickar till API:et.
+
+- **Idempotens på Stripe-webhooken:** `webhook_events` (unik på
+  `(provider, provider_event_id)`) skrivs INNAN någon databasändring görs.
+  Misslyckas den INSERT:en med `23505` (unique violation) är eventet redan
+  hanterat och funktionen svarar `200` direkt utan att upprepa arbetet -
+  annars skulle en Stripe-retry (t.ex. efter ett tillfälligt nätverksfel på
+  vår sida) kunna skapa dubbla biljetter eller skicka mailet två gånger.
+
+- **Mailutskick i bakgrunden:** `stripe-webhook` köar bekräftelsemailet via
+  `EdgeRuntime.waitUntil()` istället för att invänta Resend-anropet innan
+  den svarar Stripe. Stripe förväntar sig ett snabbt `200` på webhooken -
+  ett långsamt eller misslyckat mailanrop ska inte riskera att Stripe
+  räknar leveransen som misslyckad och kör en retry av hela
+  betalningshanteringen.
+
+- **`order-status` istället för en bred RLS-policy:** bekräftelsesidans
+  polling går via en liten, admin-oberoende Edge Function som ENDAST
+  returnerar `status`/`ticket_count` - inte en `create policy ... on orders
+  for select to anon using (true)`-policy, som skulle exponera hela
+  order-raden (inklusive `buyer_email`/`buyer_name`) till anon-nyckeln så
+  fort någon annan del av frontend gjorde en bredare `select` någon gång.
+  Samma säkerhetsmönster som `scan-ticket`/`admin-event-tickets` redan
+  använder i resten av repot.
+
+- **Pris/moms-ögonblicksbild på ordern:** se avsnitt 8 - `orders.price_ore`/
+  `orders.vat_rate` kopieras från eventet vid köptillfället och ändras
+  aldrig efteråt. Utan detta skulle en ändring av ett events momssats i
+  efterhand retroaktivt kunna ändra redovisningen för redan betalda,
+  bokförda ordrar.
 
 ## Definition of done - manuell testkedja
 
@@ -401,6 +579,33 @@ När ni har satt upp projektet enligt ovan, verifiera hela kedjan så här:
    som skulle spränga kapaciteten.
 8. Öppna eventet i `/admin` → biljettlistan ska visa båda som "Incheckad"
    med respektive incheckningstid.
+
+### Stripe-flödet (Test mode, testkort `4242 4242 4242 4242`)
+
+9. Köp → redirect till Stripe Checkout med rätt belopp och eventtitel.
+10. Betala med testkortet → redirect till bekräftelsesidan, som visar "på
+    väg" och växlar till bekräftat inom några sekunder utan omladdning.
+11. Mail med QR kommer fram, precis som i det icke-Stripe-flödet.
+    `orders.status` går `pending` → `paid`, `tickets` skapas först nu.
+12. Avbryt en Checkout-session utan att betala, vänta ut `expires_at` (30
+    min) eller trigga `checkout.session.expired` manuellt i Stripe
+    Dashboard → `sold_count` återgår, ordern blir `expired`.
+13. `stripe trigger checkout.session.completed` två gånger i rad med samma
+    event-id (`stripe events resend <id>`) → andra anropet ska INTE skapa
+    dubbla biljetter (idempotensspärren i `webhook_events`).
+14. Webhook-loggen i Stripe Dashboard visar `200` på samtliga leveranser.
+15. Skapa två event med olika momssats (t.ex. 6 % och 25 %), köp en biljett
+    till vardera → CSV-exporten visar rätt `moms_ore`/`netto_ore` för båda,
+    oberoende av varandra.
+16. Ändra momssatsen på ett event EFTER att en betald order redan finns på
+    det, exportera samma order igen → beloppen är oförändrade (bevisar att
+    ordrens egen snapshot används, inte eventets nuvarande värde).
+17. Kör alla tre exportlägen (dag, period, helt evenemang) mot samma
+    testdata → summan för "helt evenemang" ska vara minst lika stor som
+    summan av de dagliga exporterna för samma event.
+18. SIE-filen öppnas utan fel i ett SIE-läsande verktyg (t.ex. Fortnox
+    testimport eller ett fristående SIE-valideringsverktyg) - även om
+    kontona i den inte är de riktiga än.
 
 ## iOS-appen
 
