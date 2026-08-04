@@ -6,9 +6,10 @@
 #     (order-status tar emot order_id som query-param).
 #   - scan-ticket / list-events: statisk SCANNER_BEARER_TOKEN (iOS-appen).
 #   - admin-auth: publik (tar emot PIN-koden i body, inte headern).
-#   - admin-create-event / admin-events / admin-event-tickets / export-sales:
-#     egen HMAC-signerad admin-sessionstoken (se
-#     supabase/functions/_shared/adminToken.ts), inte en Supabase JWT.
+#   - admin-create-event / admin-update-event / admin-delete-event /
+#     admin-events / admin-event-tickets / export-sales: egen HMAC-signerad
+#     admin-sessionstoken (se supabase/functions/_shared/adminToken.ts),
+#     inte en Supabase JWT.
 #   - stripe-webhook: Stripe skickar en stripe-signature-header, ingen
 #     Supabase-JWT och inget Authorization-Bearer alls (Stripe stöder inte
 #     egna headers på webhook-endpoints).
@@ -40,6 +41,12 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.admin-create-event]
+verify_jwt = false
+
+[functions.admin-update-event]
+verify_jwt = false
+
+[functions.admin-delete-event]
 verify_jwt = false
 
 [functions.admin-events]

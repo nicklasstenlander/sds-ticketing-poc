@@ -1,4 +1,4 @@
-export type EventStatus = 'draft' | 'published'
+export type EventStatus = 'draft' | 'published' | 'cancelled'
 
 export interface EventRow {
   id: string

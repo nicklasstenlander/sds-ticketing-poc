@@ -46,9 +46,14 @@ sådant bara du kan göra - se respektive avsnitt nedan för exakta kommandon.
 - Publika/interna Edge Functions: `create-order`, `order-status`,
   `stripe-webhook`, `release-expired-orders`, `scan-ticket`, `list-events`,
   `admin-auth`.
-- Admin-interna Edge Functions: `admin-create-event`, `admin-events`,
-  `admin-event-tickets`, `export-sales` - se "Arkitekturbeslut" nedan för
-  varför dessa behövdes utöver spec-listan.
+- Admin-interna Edge Functions: `admin-create-event`, `admin-update-event`,
+  `admin-delete-event`, `admin-events`, `admin-event-tickets`,
+  `export-sales` - se "Arkitekturbeslut" nedan för varför dessa behövdes
+  utöver spec-listan.
+- Admin kan redigera (titel, plats, datum, kapacitet, pris, momssats) och
+  radera event. Ett event med sålda biljetter kan inte raderas - det
+  markeras `cancelled` istället (döljs från publik köpsida/scanner-app,
+  syns fortsatt i admin och i exportunderlaget).
 
 ## Vad ingår INTE (medvetet)
 
@@ -210,6 +215,8 @@ supabase functions deploy scan-ticket --no-verify-jwt
 supabase functions deploy list-events --no-verify-jwt
 supabase functions deploy admin-auth --no-verify-jwt
 supabase functions deploy admin-create-event --no-verify-jwt
+supabase functions deploy admin-update-event --no-verify-jwt
+supabase functions deploy admin-delete-event --no-verify-jwt
 supabase functions deploy admin-events --no-verify-jwt
 supabase functions deploy admin-event-tickets --no-verify-jwt
 ```
@@ -448,6 +455,33 @@ supabase secrets set SIE_ACCOUNT_VAT_25=2611        # utgående moms 25 %
 
 Om ingen av dessa sätts används default-värdena ovan automatiskt.
 
+## 10. Redigera och radera event
+
+Ny migration (`supabase/migrations/20260101000400_event_cancelled_status.sql`)
+lägger till statusvärdet `cancelled` på `events` - kör den (samma mönster
+som avsnitt 2/8) innan du deployar `admin-update-event`/`admin-delete-event`.
+
+- **`admin-update-event`** - PATCH-liknande: bara fält som skickas i body
+  uppdateras. Kapaciteten kan aldrig sättas lägre än `sold_count` (kollas
+  både i UI innan submit och i funktionen som den faktiska spärren).
+  Pris/momssats kan redigeras fritt när som helst - påverkar aldrig redan
+  skapade ordrar, eftersom `orders.price_ore`/`vat_rate` är en
+  ögonblicksbild tagen vid köptillfället (avsnitt 8). Ett redan
+  `cancelled`-event kan inte redigeras (409) - att återställa ett inställt
+  event är explicit utanför omfattning i denna PoC.
+- **`admin-delete-event`** - raderar eventet permanent OM det saknar
+  kopplade ordrar (alla statusar räknas, inte bara betalda). Har eventet
+  ordrar sätts `status = 'cancelled'` istället för en rå delete - aldrig
+  tvärtom. `cancelled`-event döljs automatiskt från `list-events` och
+  `/kop/:slug` (båda filtrerar redan på `status = 'published'` via RLS
+  respektive service-role-frågan), men syns fortsatt i admin-listan
+  (gråtonad, märkt "Inställt") och i `export-sales` underlag.
+
+```bash
+supabase functions deploy admin-update-event --no-verify-jwt
+supabase functions deploy admin-delete-event --no-verify-jwt
+```
+
 ---
 
 ## Arkitekturbeslut och medvetna förenklingar
@@ -625,6 +659,25 @@ När ni har satt upp projektet enligt ovan, verifiera hela kedjan så här:
 21. En export som innehåller minst en betald order (>0 kr) och minst en
     gratis testorder (0 kr) genererar INGEN `#VER`-post för gratisordern -
     beloppen i övriga `#VER`-poster är oförändrade.
+
+### Redigera/radera event
+
+22. Redigera ett event utan sålda biljetter → ändra pris, moms, kapacitet
+    → sparas korrekt, verifierat i databasen.
+23. Redigera pris/moms på ett event MED en redan betald order → gamla
+    ordern behåller sin ursprungliga snapshot (samma test som i avsnitt 8,
+    upprepat via UI istället för SQL).
+24. Försök sänka kapaciteten under `sold_count` → blockerat i UI innan
+    submit (rött fält, disabled spara-knapp), och blockerat i backend om
+    UI:t på något sätt kringgås (t.ex. direkt API-anrop).
+25. Radera ett event utan sålda biljetter → försvinner helt ur `events`.
+26. Radera ett event MED sålda biljetter → blir `cancelled`, inte
+    raderat, försvinner från publik `/kop/:slug` och `list-events` men
+    syns fortfarande i admin-listan (gråtonad, "Inställt") och i
+    export-underlaget.
+27. Ett `cancelled` events kapacitet syns inte längre för köp - testa att
+    `/kop/<slug>` för ett cancelled-event visar "eventet hittades inte",
+    inte köpformuläret.
 
 ## iOS-appen
 

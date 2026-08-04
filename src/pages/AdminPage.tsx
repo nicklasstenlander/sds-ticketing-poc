@@ -24,6 +24,23 @@ interface CreateEventResponse {
   event: EventRow
 }
 
+interface DeleteEventResponse {
+  result: 'deleted' | 'cancelled'
+}
+
+// Konverterar en UTC ISO-tidsstämpel (t.ex. "2026-05-10T17:58:03Z") till
+// det format <input type="datetime-local"> förväntar sig i sitt värde
+// ("2026-05-10T17:58") - i webbläsarens LOKALA tidszon, inte UTC. Detta är
+// den omvända operationen av vad handleSubmitForm redan gör vid skapande
+// (new Date(startsAt).toISOString(), som tolkar datetime-local-strängen
+// som lokal tid) - så att redigera och spara ett oförändrat datum inte
+// tyst skiftar det några timmar.
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function AdminPage() {
   const [authed, setAuthed] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -112,6 +129,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
+  // null = "skapa nytt event"-läge. Ett event-id = redigerar det eventet -
+  // samma formulär, förifyllt, se startEdit().
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
+
+  const editingEvent = events?.find((e) => e.id === editingEventId) ?? null
+  const capacityTooLow = editingEvent !== null && capacity < editingEvent.sold_count
+
   async function loadEvents() {
     try {
       const res = await callFunction<AdminEventsResponse>('admin-events', { auth: true })
@@ -126,37 +152,88 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function handleCreate(e: FormEvent) {
+  function resetForm() {
+    setEditingEventId(null)
+    setTitle('')
+    setVenue('')
+    setStartsAt('')
+    setCapacity(50)
+    setPriceKr(0)
+    setVatRate(6)
+    setCreateError(null)
+  }
+
+  function startEdit(event: EventRow) {
+    setEditingEventId(event.id)
+    setTitle(event.title)
+    setVenue(event.venue ?? '')
+    setStartsAt(toDatetimeLocalValue(event.starts_at))
+    setCapacity(event.capacity)
+    setPriceKr(event.price_ore / 100)
+    setVatRate(event.vat_rate)
+    setCreateError(null)
+  }
+
+  async function handleSubmitForm(e: FormEvent) {
     e.preventDefault()
+    if (editingEventId && capacityTooLow) return // extra skydd, knappen är redan disabled
     setCreating(true)
     setCreateError(null)
     try {
-      await callFunction<CreateEventResponse>('admin-create-event', {
-        auth: true,
-        method: 'POST',
-        body: {
-          title,
-          venue,
-          starts_at: startsAt,
-          capacity,
-          status: 'published',
-          // Kronor -> öre. Math.round undviker flyttalsavrundningsfel
-          // (t.ex. 149.99 * 100 kan annars bli 14998.999...).
-          price_ore: Math.round(priceKr * 100),
-          vat_rate: vatRate,
-        },
-      })
-      setTitle('')
-      setVenue('')
-      setStartsAt('')
-      setCapacity(50)
-      setPriceKr(0)
-      setVatRate(6)
+      // Kronor -> öre. Math.round undviker flyttalsavrundningsfel
+      // (t.ex. 149.99 * 100 kan annars bli 14998.999...).
+      const priceOre = Math.round(priceKr * 100)
+      if (editingEventId) {
+        await callFunction('admin-update-event', {
+          auth: true,
+          method: 'POST',
+          body: {
+            event_id: editingEventId,
+            title,
+            venue,
+            starts_at: startsAt,
+            capacity,
+            price_ore: priceOre,
+            vat_rate: vatRate,
+          },
+        })
+      } else {
+        await callFunction<CreateEventResponse>('admin-create-event', {
+          auth: true,
+          method: 'POST',
+          body: { title, venue, starts_at: startsAt, capacity, status: 'published', price_ore: priceOre, vat_rate: vatRate },
+        })
+      }
+      resetForm()
       await loadEvents()
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Kunde inte skapa event.')
+      setCreateError(err instanceof Error ? err.message : 'Kunde inte spara eventet.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleDelete(event: EventRow) {
+    const message =
+      event.sold_count > 0
+        ? `Eventet har ${event.sold_count} sålda biljetter och kan inte raderas — det markeras som inställt istället. Fortsätt?`
+        : 'Radera eventet permanent?'
+    if (!window.confirm(message)) return
+
+    setDeletingId(event.id)
+    setRowError(null)
+    try {
+      await callFunction<DeleteEventResponse>('admin-delete-event', {
+        auth: true,
+        method: 'POST',
+        body: { event_id: event.id },
+      })
+      if (editingEventId === event.id) resetForm()
+      await loadEvents()
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Kunde inte radera eventet.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -175,8 +252,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <section className="border border-slate-200 rounded-lg p-6 bg-white mb-8">
-        <h2 className="font-semibold mb-4">Skapa nytt event</h2>
-        <form onSubmit={handleCreate} className="space-y-3">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold">{editingEventId ? `Redigerar: ${editingEvent?.title ?? ''}` : 'Skapa nytt event'}</h2>
+          {editingEventId && (
+            <button type="button" onClick={resetForm} className="text-sm text-slate-500 hover:text-slate-800">
+              Avbryt
+            </button>
+          )}
+        </div>
+        <form onSubmit={handleSubmitForm} className="space-y-3">
           <div>
             <label className="block text-sm font-medium mb-1">Titel</label>
             <input
@@ -206,15 +290,25 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Platsantal</label>
+              <label className="block text-sm font-medium mb-1">
+                Platsantal
+                {editingEvent && <span className="font-normal text-slate-500"> ({editingEvent.sold_count} sålda)</span>}
+              </label>
               <input
                 type="number"
                 min={1}
                 required
                 value={capacity}
                 onChange={(e) => setCapacity(Number(e.target.value))}
-                className="w-full rounded-md border border-slate-300 px-3 py-2"
+                className={`w-full rounded-md border px-3 py-2 ${
+                  capacityTooLow ? 'border-red-400' : 'border-slate-300'
+                }`}
               />
+              {capacityTooLow && (
+                <p className="text-red-600 text-xs mt-1">
+                  Kan inte vara lägre än antal sålda biljetter ({editingEvent?.sold_count}).
+                </p>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -248,10 +342,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           {createError && <p className="text-red-600 text-sm">{createError}</p>}
           <button
             type="submit"
-            disabled={creating}
+            disabled={creating || capacityTooLow}
             className="bg-slate-900 text-white rounded-md px-4 py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
           >
-            {creating ? 'Skapar…' : 'Skapa event'}
+            {creating ? 'Sparar…' : editingEventId ? 'Spara ändringar' : 'Skapa event'}
           </button>
         </form>
       </section>
@@ -261,19 +355,23 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <section>
         <h2 className="font-semibold mb-4">Befintliga events</h2>
         {error && <p className="text-red-600">{error}</p>}
+        {rowError && <p className="text-red-600 mb-2">{rowError}</p>}
         {events === null && !error && <p className="text-slate-500">Laddar…</p>}
         {events !== null && events.length === 0 && (
           <p className="text-slate-500">Inga events skapade ännu.</p>
         )}
         <ul className="space-y-2">
-          {events?.map((event) => (
-            <li key={event.id}>
-              <Link
-                to={`/admin/event/${event.id}`}
-                className="block border border-slate-200 rounded-lg p-4 bg-white hover:border-slate-400"
+          {events?.map((event) => {
+            const cancelled = event.status === 'cancelled'
+            return (
+              <li
+                key={event.id}
+                className={`border rounded-lg p-4 ${
+                  cancelled ? 'border-slate-200 bg-slate-50 opacity-70' : 'border-slate-200 bg-white'
+                }`}
               >
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center justify-between gap-4">
+                  <Link to={`/admin/event/${event.id}`} className="min-w-0 flex-1 hover:underline">
                     <div className="font-semibold">{event.title}</div>
                     <div className="text-sm text-slate-500">
                       {new Date(event.starts_at).toLocaleString('sv-SE', {
@@ -287,25 +385,47 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       })}{' '}
                       kr ({event.vat_rate}% moms)
                     </div>
-                  </div>
-                  <div className="text-right">
+                  </Link>
+                  <div className="text-right shrink-0">
                     <div className="text-sm">
                       {event.sold_count} / {event.capacity} sålda
                     </div>
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
-                        event.status === 'published'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-amber-100 text-amber-700'
+                        cancelled
+                          ? 'bg-slate-200 text-slate-600'
+                          : event.status === 'published'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-amber-100 text-amber-700'
                       }`}
                     >
-                      {event.status === 'published' ? 'Publicerat' : 'Utkast'}
+                      {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
                     </span>
                   </div>
                 </div>
-              </Link>
-            </li>
-          ))}
+
+                {!cancelled && (
+                  <div className="flex gap-3 mt-3 pt-3 border-t border-slate-100 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(event)}
+                      className="text-slate-600 hover:text-slate-900 underline"
+                    >
+                      Redigera
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(event)}
+                      disabled={deletingId === event.id}
+                      className="text-red-600 hover:text-red-800 underline disabled:opacity-50"
+                    >
+                      {deletingId === event.id ? 'Raderar…' : 'Radera'}
+                    </button>
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       </section>
     </div>
