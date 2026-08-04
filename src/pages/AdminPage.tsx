@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
@@ -138,6 +138,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const editingEvent = events?.find((e) => e.id === editingEventId) ?? null
   const capacityTooLow = editingEvent !== null && capacity < editingEvent.sold_count
 
+  // Formulärkortets referens - används för att scrolla dit på smala
+  // skärmar när "Redigera" klickas i eventlistan (se startEdit). På breda
+  // skärmar (>=1024px) syns formuläret redan i den högra kolumnen utan
+  // att scrolla, så där räcker den visuella markeringen i listan/kortet.
+  const formSectionRef = useRef<HTMLElement>(null)
+
   async function loadEvents() {
     try {
       const res = await callFunction<AdminEventsResponse>('admin-events', { auth: true })
@@ -172,6 +178,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setPriceKr(event.price_ore / 100)
     setVatRate(event.vat_rate)
     setCreateError(null)
+
+    // Bara scrolla på smala skärmar (< 1024px, samma brytpunkt som
+    // grid-layouten nedan använder för att gå från en till två kolumner).
+    // På bred skärm ligger formuläret redan synligt i högerkolumnen -
+    // ett ovälkommet hopp skulle bara vara distraherande där.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
   }
 
   async function handleSubmitForm(e: FormEvent) {
@@ -251,16 +265,113 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      <section className="border border-slate-200 rounded-lg p-6 bg-white mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold">{editingEventId ? `Redigerar: ${editingEvent?.title ?? ''}` : 'Skapa nytt event'}</h2>
-          {editingEventId && (
-            <button type="button" onClick={resetForm} className="text-sm text-slate-500 hover:text-slate-800">
-              Avbryt
-            </button>
+      {/* Två kolumner på bred skärm (>=1024px, Tailwinds "lg"): eventlistan
+          till vänster, formulär + export staplat till höger. Under 1024px
+          kollapsar griden till en enda kolumn - DOM-ordningen nedan
+          (lista, sedan formulär+export) blir då automatiskt den staplade
+          ordningen Eventlista -> Formulär -> Export utan någon extra
+          omordnings-logik. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <section className="order-1">
+          <h2 className="font-semibold mb-4">Befintliga events</h2>
+          {error && <p className="text-red-600">{error}</p>}
+          {rowError && <p className="text-red-600 mb-2">{rowError}</p>}
+          {events === null && !error && <p className="text-slate-500">Laddar…</p>}
+          {events !== null && events.length === 0 && (
+            <p className="text-slate-500">Inga events skapade ännu.</p>
           )}
-        </div>
-        <form onSubmit={handleSubmitForm} className="space-y-3">
+          <ul className="space-y-2">
+            {events?.map((event) => {
+              const cancelled = event.status === 'cancelled'
+              const isEditing = event.id === editingEventId
+              return (
+                <li
+                  key={event.id}
+                  className={`border rounded-lg p-4 transition-colors ${
+                    isEditing
+                      ? 'border-slate-200 border-l-4 border-l-[#dd5c86] bg-rose-50'
+                      : cancelled
+                        ? 'border-slate-200 bg-slate-50 opacity-70'
+                        : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <Link to={`/admin/event/${event.id}`} className="min-w-0 flex-1 hover:underline">
+                      <div className="font-semibold">{event.title}</div>
+                      <div className="text-sm text-slate-500">
+                        {new Date(event.starts_at).toLocaleString('sv-SE', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                        {event.venue ? ` · ${event.venue}` : ''}
+                        {' · '}
+                        {(event.price_ore / 100).toLocaleString('sv-SE', {
+                          minimumFractionDigits: 2,
+                        })}{' '}
+                        kr ({event.vat_rate}% moms)
+                      </div>
+                    </Link>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm">
+                        {event.sold_count} / {event.capacity} sålda
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          cancelled
+                            ? 'bg-slate-200 text-slate-600'
+                            : event.status === 'published'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!cancelled && (
+                    <div className="flex gap-3 mt-3 pt-3 border-t border-slate-100 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(event)}
+                        className="text-slate-600 hover:text-slate-900 underline"
+                      >
+                        Redigera
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(event)}
+                        disabled={deletingId === event.id}
+                        className="text-red-600 hover:text-red-800 underline disabled:opacity-50"
+                      >
+                        {deletingId === event.id ? 'Raderar…' : 'Radera'}
+                      </button>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+
+        <div className="order-2 lg:sticky lg:top-4 space-y-6">
+          <section
+            ref={formSectionRef}
+            className={`border rounded-lg p-6 bg-white ${
+              editingEventId ? 'border-slate-200 border-l-4 border-l-[#dd5c86]' : 'border-slate-200'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold">
+                {editingEventId ? `Redigerar: ${editingEvent?.title ?? ''}` : 'Skapa nytt event'}
+              </h2>
+              {editingEventId && (
+                <button type="button" onClick={resetForm} className="text-sm text-slate-500 hover:text-slate-800">
+                  Avbryt redigering
+                </button>
+              )}
+            </div>
+            <form onSubmit={handleSubmitForm} className="space-y-3">
           <div>
             <label className="block text-sm font-medium mb-1">Titel</label>
             <input
@@ -339,95 +450,20 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
 
-          {createError && <p className="text-red-600 text-sm">{createError}</p>}
-          <button
-            type="submit"
-            disabled={creating || capacityTooLow}
-            className="bg-slate-900 text-white rounded-md px-4 py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
-          >
-            {creating ? 'Sparar…' : editingEventId ? 'Spara ändringar' : 'Skapa event'}
-          </button>
-        </form>
-      </section>
-
-      <ExportSection events={events ?? []} />
-
-      <section>
-        <h2 className="font-semibold mb-4">Befintliga events</h2>
-        {error && <p className="text-red-600">{error}</p>}
-        {rowError && <p className="text-red-600 mb-2">{rowError}</p>}
-        {events === null && !error && <p className="text-slate-500">Laddar…</p>}
-        {events !== null && events.length === 0 && (
-          <p className="text-slate-500">Inga events skapade ännu.</p>
-        )}
-        <ul className="space-y-2">
-          {events?.map((event) => {
-            const cancelled = event.status === 'cancelled'
-            return (
-              <li
-                key={event.id}
-                className={`border rounded-lg p-4 ${
-                  cancelled ? 'border-slate-200 bg-slate-50 opacity-70' : 'border-slate-200 bg-white'
-                }`}
+              {createError && <p className="text-red-600 text-sm">{createError}</p>}
+              <button
+                type="submit"
+                disabled={creating || capacityTooLow}
+                className="bg-slate-900 text-white rounded-md px-4 py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <Link to={`/admin/event/${event.id}`} className="min-w-0 flex-1 hover:underline">
-                    <div className="font-semibold">{event.title}</div>
-                    <div className="text-sm text-slate-500">
-                      {new Date(event.starts_at).toLocaleString('sv-SE', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
-                      {event.venue ? ` · ${event.venue}` : ''}
-                      {' · '}
-                      {(event.price_ore / 100).toLocaleString('sv-SE', {
-                        minimumFractionDigits: 2,
-                      })}{' '}
-                      kr ({event.vat_rate}% moms)
-                    </div>
-                  </Link>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm">
-                      {event.sold_count} / {event.capacity} sålda
-                    </div>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        cancelled
-                          ? 'bg-slate-200 text-slate-600'
-                          : event.status === 'published'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
-                    </span>
-                  </div>
-                </div>
+                {creating ? 'Sparar…' : editingEventId ? 'Spara ändringar' : 'Skapa event'}
+              </button>
+            </form>
+          </section>
 
-                {!cancelled && (
-                  <div className="flex gap-3 mt-3 pt-3 border-t border-slate-100 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => startEdit(event)}
-                      className="text-slate-600 hover:text-slate-900 underline"
-                    >
-                      Redigera
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(event)}
-                      disabled={deletingId === event.id}
-                      className="text-red-600 hover:text-red-800 underline disabled:opacity-50"
-                    >
-                      {deletingId === event.id ? 'Raderar…' : 'Radera'}
-                    </button>
-                  </div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </section>
+          <ExportSection events={events ?? []} />
+        </div>
+      </div>
     </div>
   )
 }
