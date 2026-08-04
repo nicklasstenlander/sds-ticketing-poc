@@ -201,6 +201,14 @@ function buildSie(rows: SaleRow[]): string {
   for (const [key, groupRows] of groups) {
     const [date] = key.split('|')
     const brutto = groupRows.reduce((sum, r) => sum + r.bruttoOre, 0)
+
+    // Nollbeloppsgrupper (t.ex. ett gratis testköp, price_ore = 0) ger en
+    // helt tom verifikation - balanserar tekniskt (0 = 0), men är bara
+    // brus i bokföringen. Hoppa över den gruppen helt i SIE-läget. Gäller
+    // INTE CSV-exporten (se buildCsv) - där är nollbelopps-ordrar en
+    // informativ rad, inte en bokföringspost som måste balansera.
+    if (brutto === 0) continue
+
     const netto = groupRows.reduce((sum, r) => sum + r.nettoOre, 0)
     const moms = groupRows.reduce((sum, r) => sum + r.momsOre, 0)
     const vatRate = groupRows[0].vatRate

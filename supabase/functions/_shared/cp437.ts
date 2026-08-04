@@ -21,8 +21,17 @@ const SWEDISH_TO_CP437: Record<string, number> = {
 
 /** Kodar en sträng till CP437-bytes, för SIE4-filens teckenkodningskrav. */
 export function encodeCp437(input: string): Uint8Array {
+  // NFC-normalisering INNAN vi itererar tecken för tecken. Utan detta steg
+  // mappas bara EN sammansatt karaktär korrekt ("ö" som en enda kodpunkt,
+  // U+00F6) - kommer texten istället in i "uppdelad" (NFD) form, t.ex. "o"
+  // (U+006F) + en separat kombinerande trema (U+0308), matchar den lösa "o"
+  // ASCII-grenen (< 128) och trema-tecknet hamnar som "?" via fallbacken.
+  // Källor till NFD-text är svåra att utesluta helt (klipp-och-klistra från
+  // PDF:er, vissa tangentbords-/OS-kombinationer) så normalisering görs
+  // alltid, inte bara "vid behov".
+  const normalized = input.normalize('NFC')
   const bytes: number[] = []
-  for (const ch of input) {
+  for (const ch of normalized) {
     const code = ch.codePointAt(0) ?? 0x3f
     if (code < 128) {
       bytes.push(code)
