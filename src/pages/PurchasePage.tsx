@@ -96,6 +96,7 @@ export function PurchasePage() {
 
   return (
     <Layout>
+      <div className="eyebrow mb-3">SODSS Biljett</div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
       <p className="text-[var(--text-muted)] mb-1">
         {new Date(event.starts_at).toLocaleString('sv-SE', {
@@ -145,21 +146,35 @@ export function PurchasePage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]" htmlFor="qty">
-              Antal biljetter
-            </label>
-            <select
-              id="qty"
-              value={qty}
-              onChange={(e) => setQty(Number(e.target.value))}
-              className="field"
-            >
-              {Array.from({ length: Math.min(6, remaining) }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Antal biljetter</label>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.max(1, q - 1))}
+                disabled={qty <= 1}
+                className="stepper-btn"
+                aria-label="Färre biljetter"
+              >
+                –
+              </button>
+              <div className="text-lg font-bold min-w-[24px] text-center text-[var(--text)]">{qty}</div>
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.min(6, remaining, q + 1))}
+                disabled={qty >= Math.min(6, remaining)}
+                className="stepper-btn"
+                aria-label="Fler biljetter"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+            <span className="text-sm text-[var(--text-muted)]">Totalt</span>
+            <span className="text-xl font-extrabold text-[var(--text)]">
+              {((event.price_ore * qty) / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+            </span>
           </div>
 
           {formError && <p className="text-red-600 text-sm">{formError}</p>}

@@ -61,7 +61,7 @@ export function AdminPage() {
   }
 
   return (
-    <Layout>
+    <Layout wide>
       <AdminDashboard onLogout={() => setAuthed(false)} />
     </Layout>
   )
@@ -92,6 +92,7 @@ function PinGate({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="card max-w-sm mx-auto">
+      <div className="eyebrow mb-3">SODSS Biljett</div>
       <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Admin - logga in</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
@@ -254,12 +255,42 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-[var(--text)]">Admin</h1>
+      <div className="flex items-center justify-between mb-1">
+        <div className="eyebrow">SODSS Biljett Admin</div>
         <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
           Logga ut
         </button>
       </div>
+      <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Admin</h1>
+
+      {events && events.length > 0 && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="card p-4">
+            <div className="text-xs text-[var(--text-muted)] mb-1">Publicerade events</div>
+            <div className="text-2xl font-extrabold text-[var(--text)]">
+              {events.filter((e) => e.status === 'published').length}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-xs text-[var(--text-muted)] mb-1">Sålda biljetter totalt</div>
+            <div className="text-2xl font-extrabold text-[var(--text)]">
+              {events.reduce((sum, e) => sum + e.sold_count, 0)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-xs text-[var(--text-muted)] mb-1">Snittbeläggning</div>
+            <div className="text-2xl font-extrabold text-[var(--text)]">
+              {(() => {
+                const withCap = events.filter((e) => e.capacity > 0)
+                if (withCap.length === 0) return '–'
+                const avg =
+                  withCap.reduce((sum, e) => sum + e.sold_count / e.capacity, 0) / withCap.length
+                return `${Math.round(avg * 100)}%`
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Två kolumner på bred skärm (>=1024px, Tailwinds "lg"): eventlistan
           till vänster, formulär + export staplat till höger. Under 1024px

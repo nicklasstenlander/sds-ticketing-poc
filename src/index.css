@@ -1,34 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* Ljus, egen visuell känsla för PoC:ens publika yta (köpsida,
  * bekräftelsesida, startsida) - se Tilläggsordern "Visuell design - ljust
- * läge". --accent är den ENDA platsen accentfärgen definieras: att byta
- * till t.ex. midnattsblå (#243B53) är att ändra den enda raden nedan,
- * ingen sök-och-ersätt genom komponenterna.
+ * läge", vidareutvecklad enligt designförslaget "ScenPass". --accent är
+ * den ENDA platsen accentfärgen definieras: att byta tillbaka till t.ex.
+ * djupgrönt (#355C4B) är att ändra den enda raden nedan, ingen
+ * sök-och-ersätt genom komponenterna. Designförslaget landade i
+ * midnattsblått (#243B53) som standard.
  *
  * OBS: detta är INTE samma sak som SODSS-adminens egna rosa/mörkgröna
  * accentfärg (#dd5c86 / #1e4025) som redan används i admin-redigeringsläget
  * (AdminPage.tsx) - den rör vi inte, den är kvar som den semantiska
  * signalen för "du redigerar" oavsett vad --accent råkar vara satt till.
  */
+
 :root {
   --bg: #fafaf8;
   --surface: #ffffff;
   --text: #171717;
   --text-muted: #6b6b6b;
   --border: #e5e5e1;
-  --accent: #355c4b;
+  --accent: #243b53;
   --accent-text: #ffffff;
+  --accent-soft: #eaeef2;
+  --success: #2f8f5b;
+  --success-soft: #e7f3ec;
   --radius: 14px;
   --radius-sm: 12px;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --font-sans: 'Manrope', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 }
 
 body {
   background-color: var(--bg);
   color: var(--text);
+  font-family: var(--font-sans);
 }
 
 @layer components {
@@ -98,5 +109,59 @@ body {
     color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+
+  /* Liten versal-etikett à la ScenPass-designförslaget, t.ex. "SODSS
+   * BILJETT" ovanför sidrubriker. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Tunn beläggningsindikator (sålda/kapacitet) från ScenPass. */
+  .progress-track {
+    height: 6px;
+    border-radius: 999px;
+    background-color: var(--accent-soft);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background-color: var(--accent);
+  }
+
+  /* Rund stegrings-/minskningsknapp för antal-väljare. */
+  .stepper-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background-color: var(--surface);
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .stepper-btn:hover:not(:disabled) {
+    background-color: var(--bg);
+  }
+  .stepper-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Mörk biljett-liknande kortyta för bekräftad biljett. */
+  .ticket-card {
+    background: linear-gradient(155deg, var(--accent) 0%, #16283a 100%);
+    border-radius: 20px;
+    color: #fff;
+    box-shadow: 0 20px 60px -20px rgba(36, 59, 83, 0.5);
   }
 }

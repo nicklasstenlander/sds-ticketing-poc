@@ -106,13 +106,22 @@ export function ConfirmationPage() {
       )}
 
       {status === 'paid' && (
-        <div className="card text-center border-t-4 border-[var(--accent)]">
-          <p className="font-semibold mb-2 text-[var(--text)]">Vi ses på föreställningen.</p>
-          <p className="text-[var(--text-muted)] text-sm">
-            {ticketCount === 1 ? '1 biljett' : `${ticketCount ?? ''} biljetter`} väntar i din
-            inkorg - vi har skickat ett mail med QR-koder till dig. Dyker det inte upp direkt,
-            kolla skräpposten.
-          </p>
+        <div className="text-center">
+          <p className="font-semibold mb-6 text-[var(--text)]">Du är klar.</p>
+          <div className="ticket-card p-7 text-left mx-auto max-w-sm">
+            <div className="eyebrow mb-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
+              SODSS Biljett
+            </div>
+            <div className="font-bold text-lg">
+              {ticketCount === 1 ? '1 biljett' : `${ticketCount ?? ''} biljetter`}
+            </div>
+            <div className="border-t border-dashed mt-5 pt-5" style={{ borderColor: 'rgba(255,255,255,0.25)' }}>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                Vi ses på föreställningen. Biljetterna med QR-koder ligger i mailet vi just
+                skickade dig - dyker det inte upp direkt, kolla skräpposten.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
