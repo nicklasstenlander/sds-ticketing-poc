@@ -28,3 +28,8 @@ dist-ssr
 
 # Supabase CLI lokal länkmetadata - projektspecifikt, inte källkod
 supabase/.temp
+
+# Lokala build-testkörningar i sandboxen, aldrig avsedda för repot
+dist2
+dist3
+dist4
