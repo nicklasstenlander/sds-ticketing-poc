@@ -1,0 +1,38 @@
+# Supabase CLI-konfiguration för sds-ticketing-poc.
+#
+# verify_jwt = false på VARJE funktion nedan, av samma anledning för alla:
+# ingen av dem tar emot en Supabase-utfärdad JWT i Authorization-headern.
+#   - create-order: publik, ingen Authorization-header alls.
+#   - scan-ticket / list-events: statisk SCANNER_BEARER_TOKEN (iOS-appen).
+#   - admin-auth: publik (tar emot PIN-koden i body, inte headern).
+#   - admin-create-event / admin-events / admin-event-tickets: egen
+#     HMAC-signerad admin-sessionstoken (se supabase/functions/_shared/adminToken.ts),
+#     inte en Supabase JWT.
+#
+# Utan detta avvisar Supabase-gatewayen ALLA dessa anrop med 401 INNAN
+# funktionskoden ens körs - då spelar det ingen roll att koden i sig
+# jämför rätt token, den koden nås aldrig. Se README.md, avsnittet
+# "Verifiera verify_jwt med curl" för hur man bekräftar att detta faktiskt
+# är aktivt efter deploy.
+project_id = "sds-ticketing-poc"
+
+[functions.create-order]
+verify_jwt = false
+
+[functions.scan-ticket]
+verify_jwt = false
+
+[functions.list-events]
+verify_jwt = false
+
+[functions.admin-auth]
+verify_jwt = false
+
+[functions.admin-create-event]
+verify_jwt = false
+
+[functions.admin-events]
+verify_jwt = false
+
+[functions.admin-event-tickets]
+verify_jwt = false
