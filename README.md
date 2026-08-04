@@ -420,6 +420,18 @@ period, helt evenemang) och två filformat.
 > innan den importeras skarpt i Fortnox** - ett formatfel upptäcks annars
 > inte förrän det redan ligger i bokföringen.
 
+**Rättad 2026-08-04 (Rättelseorder):** `_shared/cp437.ts` NFC-normaliserar
+nu texten innan CP437-mappning (skyddar mot "uppdelad" Unicode-text, t.ex.
+inklistrad från en PDF, som annars gav `?` istället för å/ä/ö), och
+SIE-verifikationer med totalt bruttobelopp 0 kr (t.ex. ett gratis testköp)
+hoppas nu över helt i SIE-läget - de balanserade tekniskt men var bara
+brus. Om din senast deployade `export-sales`-funktion är äldre än detta:
+**deploya om den** (`supabase functions deploy export-sales
+--no-verify-jwt`) innan du testar igen - koden i repot kan ha rättningar
+som inte finns i en tidigare deployad version. Verifiera enligt punkt 3-4
+i Definition of Done nedan (`file --mime-encoding` ska INTE visa `utf-8`,
+och filen öppnad med CP437 som kodning ska visa å/ä/ö korrekt).
+
 ### Konfigurera kontoplan (valfritt - annars används exempelkonton)
 
 Kontonumren nedan är EXEMPEL från Tilläggsordern, inte bekräftade riktiga
@@ -606,6 +618,13 @@ När ni har satt upp projektet enligt ovan, verifiera hela kedjan så här:
 18. SIE-filen öppnas utan fel i ett SIE-läsande verktyg (t.ex. Fortnox
     testimport eller ett fristående SIE-valideringsverktyg) - även om
     kontona i den inte är de riktiga än.
+19. `file --mime-encoding forsaljning.se` visar INTE `utf-8` (t.ex.
+    `unknown-8bit`) - annars går texten inte via CP437-konverteraren.
+20. Filen öppnad i ett textredigeringsprogram med CP437 manuellt valt som
+    kodning visar å/ä/ö korrekt i kontonamn och verifikationstext.
+21. En export som innehåller minst en betald order (>0 kr) och minst en
+    gratis testorder (0 kr) genererar INGEN `#VER`-post för gratisordern -
+    beloppen i övriga `#VER`-poster är oförändrade.
 
 ## iOS-appen
 
