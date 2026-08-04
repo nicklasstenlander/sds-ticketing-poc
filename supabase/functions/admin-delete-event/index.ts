@@ -1,11 +1,17 @@
 // admin-delete-event
 //
-// Raderar eller ställer in ett event, beroende på om det har kopplade
-// ordrar. ALDRIG en rå SQL delete på en rad med ordrar kopplade till sig -
-// events.id refereras av orders.event_id, och att radera event-raden skulle
-// antingen krascha på en FK-constraint eller (om ingen FK finns) lämna
-// föräldralösa ordrar bakom sig, vilket i sin tur skulle förstöra
-// export-sales bokföringsunderlag för redan betalda ordrar.
+// Raderar eller ställer in ett event, beroende på om det har BETALDA
+// ordrar (status = 'paid'). ALDRIG en rå delete av event-raden när
+// betalda ordrar finns kopplade - events.id refereras av orders.event_id
+// och tickets.event_id (ingen "on delete cascade", se
+// 20260101000000_init.sql), och att radera event-raden skulle antingen
+// krascha på foreign key-constrainten eller lämna föräldralösa rader
+// bakom sig, vilket i sin tur skulle förstöra export-sales
+// bokföringsunderlag för redan betalda ordrar.
+//
+// Overksamma ordrar (pending/expired/cancelled - aldrig levererade
+// biljetter) blockerar DÄREMOT inte radering, och städas bort explicit
+// innan event-raden raderas.
 //
 // Kräver giltig admin-sessionstoken, precis som övriga admin-funktioner.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
@@ -67,20 +73,24 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ result: 'cancelled' })
   }
 
-  // Räknar ALLA ordrar oavsett status (pending/paid/expired/cancelled) -
-  // inte bara betalda. Även en order som aldrig fullföljde betalningen
-  // representerar en faktisk kundinteraktion mot eventet, och exporten kan
-  // i teorin behöva slå upp den historiken senare.
-  const { count: orderCount, error: countError } = await supabase
+  // Räknar ENDAST betalda ordrar. Bara "paid" har biljetter (skapade av
+  // stripe-webhook) och ett bokföringsunderlag i export-sales som måste
+  // bevaras - "pending"/"expired"/"cancelled" representerar ingen
+  // levererad biljett och ska inte i sig blockera radering (rättat efter
+  // en observerad bugg: ett event med bara kvarvarande expired-ordrar
+  // från tidigare tester av expiry-flödet blev felaktigt "cancelled" i
+  // stället för raderat).
+  const { count: paidOrderCount, error: countError } = await supabase
     .from('orders')
     .select('id', { count: 'exact', head: true })
     .eq('event_id', eventId)
+    .eq('status', 'paid')
 
   if (countError) {
     return jsonResponse({ error: `Kunde inte kontrollera ordrar: ${countError.message}` }, 500)
   }
 
-  if (orderCount && orderCount > 0) {
+  if (paidOrderCount && paidOrderCount > 0) {
     const { error: cancelError } = await supabase
       .from('events')
       .update({ status: 'cancelled' })
@@ -91,6 +101,26 @@ Deno.serve(async (req: Request) => {
     }
 
     return jsonResponse({ result: 'cancelled' })
+  }
+
+  // Inga betalda ordrar - men det kan fortfarande finnas overksamma rader
+  // (pending/expired/cancelled) kvar från köpförsök som aldrig fullföljdes.
+  // orders.event_id och tickets.event_id refererar events(id) utan "on
+  // delete cascade" (se 20260101000000_init.sql), så dessa måste städas
+  // bort explicit innan event-raden raderas - annars stoppar databasens
+  // egen foreign key-constraint hela raderingen. Ingen "paid"-order kan
+  // finnas kvar här (vi har redan bekräftat paidOrderCount === 0), så
+  // tickets-tabellen borde redan vara tom för detta event (tickets skapas
+  // bara av stripe-webhook för betalda ordrar) - raden nedan är ändå med
+  // som ett billigt skyddsnät mot att anta det utan att kolla.
+  const { error: deleteTicketsError } = await supabase.from('tickets').delete().eq('event_id', eventId)
+  if (deleteTicketsError) {
+    return jsonResponse({ error: `Kunde inte städa biljetter: ${deleteTicketsError.message}` }, 500)
+  }
+
+  const { error: deleteOrdersError } = await supabase.from('orders').delete().eq('event_id', eventId)
+  if (deleteOrdersError) {
+    return jsonResponse({ error: `Kunde inte städa ordrar: ${deleteOrdersError.message}` }, 500)
   }
 
   const { error: deleteError } = await supabase.from('events').delete().eq('id', eventId)
