@@ -3,8 +3,12 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import type { EventRow } from '../lib/types'
 import { Layout } from '../components/Layout'
+import { APP_NAME } from '../lib/constants'
 
-export function HomePage() {
+// /evenemang - listar alla publicerade event. RLS begränsar redan anon-
+// SELECT på events till status='published' (se migrationen från
+// 2026-01-01), så ingen extra statusfiltrering behövs i frågan här.
+export function EventsPage() {
   const [events, setEvents] = useState<EventRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -27,11 +31,10 @@ export function HomePage() {
 
   return (
     <Layout>
-      <div className="eyebrow mb-3">SODSS Biljett</div>
-      <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Kommande evenemang</h1>
+      <div className="eyebrow mb-3">{APP_NAME}</div>
+      <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Kommande föreställningar</h1>
       <p className="text-[var(--text-muted)] mb-8">
-        Proof of concept för biljettflödet: skapa event i admin, köp biljett här, scanna i
-        appen.
+        Välj en föreställning och köp biljett på under en minut.
       </p>
 
       {error && <p className="text-red-600">Kunde inte hämta events: {error}</p>}
@@ -46,7 +49,18 @@ export function HomePage() {
           const pct = event.capacity > 0 ? Math.min(100, Math.round((event.sold_count / event.capacity) * 100)) : 0
           return (
             <li key={event.id} className="card">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-5">
+                {/* Bild-placeholder - mockupen använder en diagonalrandig
+                    yta istället för en riktig bild, eftersom event inte
+                    har någon bilduppladdning i denna version. */}
+                <div
+                  className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)]"
+                  style={{
+                    background:
+                      'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
+                  }}
+                  aria-hidden="true"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-[var(--text)]">{event.title}</div>
                   <div className="text-sm text-[var(--text-muted)] mb-3">
@@ -63,13 +77,18 @@ export function HomePage() {
                     {event.sold_count} / {event.capacity} sålda
                   </div>
                 </div>
-                {soldOut ? (
-                  <span className="text-sm text-[var(--text-muted)] shrink-0">Slutsålt</span>
-                ) : (
-                  <Link to={`/kop/${event.slug}`} className="btn-primary text-sm shrink-0">
-                    Köp biljett
-                  </Link>
-                )}
+                <div className="text-right shrink-0">
+                  <div className="font-semibold text-[var(--text)] mb-2">
+                    {(event.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+                  </div>
+                  {soldOut ? (
+                    <span className="text-sm text-[var(--text-muted)]">Slutsålt</span>
+                  ) : (
+                    <Link to={`/kop/${event.slug}`} className="btn-primary text-sm">
+                      Köp biljett
+                    </Link>
+                  )}
+                </div>
               </div>
             </li>
           )

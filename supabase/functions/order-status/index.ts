@@ -15,7 +15,17 @@
 // begränsa vad anon kan se).
 //
 // GET order-status?order_id=<uuid>
-// -> { status: "pending" | "paid" | "expired" | "cancelled", ticket_count: number | null }
+// -> { status: "pending" | "paid" | "expired" | "cancelled", ticket_count: number | null,
+//      tickets: { ticket_code: string, qr_url: string }[] | null }
+//
+// `tickets` exponeras bara när status === 'paid', och innehåller ENDAST
+// biljettkod + QR-bild-URL - inget annat från tickets-raden (t.ex.
+// holder_name). Se Tilläggsordern "ScenPass-designmockupen" avsnitt 3.2:
+// bekräftelsesidan ska visa den RIKTIGA QR-bilden (samma som redan
+// skickas i mailet), inte ett fejkmönster. Bilderna ligger redan publikt
+// i Storage-bucketen "qr" (laddas upp av stripe-webhook som
+// <order_id>/<ticket.id>.png) - ingen ny lagring behövs, bara att bygga
+// den publika URL:en här.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
@@ -48,8 +58,29 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Ordern hittades inte.' }, 404)
   }
 
+  let tickets: { ticket_code: string; qr_url: string }[] | null = null
+
+  if (order.status === 'paid') {
+    const { data: ticketRows, error: ticketsError } = await supabase
+      .from('tickets')
+      .select('id, ticket_code')
+      .eq('order_id', order.id)
+      .order('ticket_code', { ascending: true })
+
+    if (ticketsError) {
+      return jsonResponse({ error: `Kunde inte hämta biljetter: ${ticketsError.message}` }, 500)
+    }
+
+    tickets = (ticketRows ?? []).map((t) => {
+      const path = `${order.id}/${t.id}.png`
+      const { data: publicUrlData } = supabase.storage.from('qr').getPublicUrl(path)
+      return { ticket_code: t.ticket_code, qr_url: publicUrlData.publicUrl }
+    })
+  }
+
   return jsonResponse({
     status: order.status,
     ticket_count: order.status === 'paid' ? order.qty : null,
+    tickets,
   })
 })

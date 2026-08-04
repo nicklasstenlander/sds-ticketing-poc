@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient'
 import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventRow } from '../lib/types'
 import { Layout } from '../components/Layout'
+import { APP_NAME } from '../lib/constants'
 
 interface CreateOrderResponse {
   checkout_url: string
@@ -96,7 +97,7 @@ export function PurchasePage() {
 
   return (
     <Layout>
-      <div className="eyebrow mb-3">SODSS Biljett</div>
+      <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
       <p className="text-[var(--text-muted)] mb-1">
         {new Date(event.starts_at).toLocaleString('sv-SE', {
@@ -180,7 +181,7 @@ export function PurchasePage() {
           {formError && <p className="text-red-600 text-sm">{formError}</p>}
 
           <button type="submit" disabled={submitting} className="btn-primary w-full py-2">
-            {submitting ? 'Skickar dig till Stripe…' : 'Gå till betalning'}
+            {submitting ? 'Skickar dig till Stripe…' : 'Fortsätt till betalning'}
           </button>
         </form>
       )}

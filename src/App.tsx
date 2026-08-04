@@ -1,9 +1,11 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { HomePage } from './pages/HomePage'
+import { LandingPage } from './pages/LandingPage'
+import { EventsPage } from './pages/EventsPage'
 import { PurchasePage } from './pages/PurchasePage'
 import { ConfirmationPage } from './pages/ConfirmationPage'
 import { AdminPage } from './pages/AdminPage'
 import { AdminEventPage } from './pages/AdminEventPage'
+import { AdminDashboardPage } from './pages/AdminDashboardPage'
 
 // HashRouter (URL:er som /#/admin), inte BrowserRouter: GitHub Pages har
 // ingen serverkonfiguration som kan skicka godtyckliga sökvägar till
@@ -15,11 +17,13 @@ export function App() {
   return (
     <HashRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/evenemang" element={<EventsPage />} />
         <Route path="/kop/:slug" element={<PurchasePage />} />
         <Route path="/kop/:slug/klar" element={<ConfirmationPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/admin/event/:id" element={<AdminEventPage />} />
+        <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

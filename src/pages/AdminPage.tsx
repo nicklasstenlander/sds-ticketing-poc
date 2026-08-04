@@ -10,6 +10,8 @@ import {
   setAdminToken,
 } from '../lib/functionsApi'
 import type { EventRow } from '../lib/types'
+import { APP_NAME } from '../lib/constants'
+import { CreateEventWizard } from './admin/CreateEventWizard'
 
 interface AdminAuthResponse {
   token: string
@@ -18,10 +20,6 @@ interface AdminAuthResponse {
 
 interface AdminEventsResponse {
   events: EventRow[]
-}
-
-interface CreateEventResponse {
-  event: EventRow
 }
 
 interface DeleteEventResponse {
@@ -92,7 +90,7 @@ function PinGate({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="card max-w-sm mx-auto">
-      <div className="eyebrow mb-3">SODSS Biljett</div>
+      <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Admin - logga in</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
@@ -126,9 +124,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
-  // null = "skapa nytt event"-läge. Ett event-id = redigerar det eventet -
-  // samma formulär, förifyllt, se startEdit().
+  // Ett event-id = redigerar det eventet - det direkta enstegsformuläret,
+  // förifyllt, se startEdit(). Skiljs nu från "skapa nytt", som istället
+  // öppnar 3-stegswizarden (creatingNew) - se CreateEventWizard.tsx.
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [creatingNew, setCreatingNew] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
@@ -139,7 +139,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   // skärmar när "Redigera" klickas i eventlistan (se startEdit). På breda
   // skärmar (>=1024px) syns formuläret redan i den högra kolumnen utan
   // att scrolla, så där räcker den visuella markeringen i listan/kortet.
-  const formSectionRef = useRef<HTMLElement>(null)
+  const formSectionRef = useRef<HTMLDivElement>(null)
 
   async function loadEvents() {
     try {
@@ -167,6 +167,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   function startEdit(event: EventRow) {
+    setCreatingNew(false)
     setEditingEventId(event.id)
     setTitle(event.title)
     setVenue(event.venue ?? '')
@@ -175,46 +176,49 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setPriceKr(event.price_ore / 100)
     setVatRate(event.vat_rate)
     setCreateError(null)
+    scrollToFormOnNarrowScreen()
+  }
 
-    // Bara scrolla på smala skärmar (< 1024px, samma brytpunkt som
-    // grid-layouten nedan använder för att gå från en till två kolumner).
-    // På bred skärm ligger formuläret redan synligt i högerkolumnen -
-    // ett ovälkommet hopp skulle bara vara distraherande där.
+  function startCreate() {
+    setEditingEventId(null)
+    setCreatingNew(true)
+    scrollToFormOnNarrowScreen()
+  }
+
+  // Bara scrolla på smala skärmar (< 1024px, samma brytpunkt som
+  // grid-layouten nedan använder för att gå från en till två kolumner).
+  // På bred skärm ligger formuläret/wizarden redan synligt i högerkolumnen
+  // - ett ovälkommet hopp skulle bara vara distraherande där.
+  function scrollToFormOnNarrowScreen() {
     if (window.matchMedia('(max-width: 1023px)').matches) {
       formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
+  // Bara redigering av ett BEFINTLIGT event längre - att skapa nya event
+  // sker via CreateEventWizard.tsx (se startCreate/creatingNew ovan).
   async function handleSubmitForm(e: FormEvent) {
     e.preventDefault()
-    if (editingEventId && capacityTooLow) return // extra skydd, knappen är redan disabled
+    if (!editingEventId || capacityTooLow) return // extra skydd, knappen är redan disabled
     setCreating(true)
     setCreateError(null)
     try {
       // Kronor -> öre. Math.round undviker flyttalsavrundningsfel
       // (t.ex. 149.99 * 100 kan annars bli 14998.999...).
       const priceOre = Math.round(priceKr * 100)
-      if (editingEventId) {
-        await callFunction('admin-update-event', {
-          auth: true,
-          method: 'POST',
-          body: {
-            event_id: editingEventId,
-            title,
-            venue,
-            starts_at: startsAt,
-            capacity,
-            price_ore: priceOre,
-            vat_rate: vatRate,
-          },
-        })
-      } else {
-        await callFunction<CreateEventResponse>('admin-create-event', {
-          auth: true,
-          method: 'POST',
-          body: { title, venue, starts_at: startsAt, capacity, status: 'published', price_ore: priceOre, vat_rate: vatRate },
-        })
-      }
+      await callFunction('admin-update-event', {
+        auth: true,
+        method: 'POST',
+        body: {
+          event_id: editingEventId,
+          title,
+          venue,
+          starts_at: startsAt,
+          capacity,
+          price_ore: priceOre,
+          vat_rate: vatRate,
+        },
+      })
       resetForm()
       await loadEvents()
     } catch (err) {
@@ -256,10 +260,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <div className="eyebrow">SODSS Biljett Admin</div>
-        <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
-          Logga ut
-        </button>
+        <div className="eyebrow">{APP_NAME} Admin</div>
+        <div className="flex items-center gap-4">
+          <Link to="/admin/dashboard" className="text-sm link-accent">
+            Dashboard
+          </Link>
+          <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
+            Logga ut
+          </button>
+        </div>
       </div>
       <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Admin</h1>
 
@@ -381,104 +390,99 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </ul>
         </section>
 
-        <div className="order-2 lg:sticky lg:top-4 space-y-6">
-          <section
-            ref={formSectionRef}
-            className={`card ${editingEventId ? 'border-l-4 border-l-[#dd5c86]' : ''}`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-[var(--text)]">
-                {editingEventId ? `Redigerar: ${editingEvent?.title ?? ''}` : 'Skapa nytt event'}
-              </h2>
-              {editingEventId && (
+        <div className="order-2 lg:sticky lg:top-4 space-y-6" ref={formSectionRef}>
+          {editingEventId ? (
+            <section className="card border-l-4 border-l-[#dd5c86]">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-[var(--text)]">
+                  Redigerar: {editingEvent?.title ?? ''}
+                </h2>
                 <button type="button" onClick={resetForm} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
                   Avbryt redigering
                 </button>
-              )}
-            </div>
-            <form onSubmit={handleSubmitForm} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</label>
-            <input
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="field"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
-            <input
-              value={venue}
-              onChange={(e) => setVenue(e.target.value)}
-              className="field"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
-              <input
-                type="datetime-local"
-                required
-                value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
-                className="field"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">
-                Platsantal
-                {editingEvent && <span className="font-normal text-[var(--text-muted)]"> ({editingEvent.sold_count} sålda)</span>}
-              </label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={capacity}
-                onChange={(e) => setCapacity(Number(e.target.value))}
-                className={`field ${capacityTooLow ? 'border-red-400' : ''}`}
-              />
-              {capacityTooLow && (
-                <p className="text-red-600 text-xs mt-1">
-                  Kan inte vara lägre än antal sålda biljetter ({editingEvent?.sold_count}).
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                required
-                value={priceKr}
-                onChange={(e) => setPriceKr(Number(e.target.value))}
-                className="field"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
-              <select
-                value={vatRate}
-                onChange={(e) => setVatRate(Number(e.target.value))}
-                className="field"
-              >
-                <option value={6}>6 % (standard, scenframträdande)</option>
-                <option value={12}>12 %</option>
-                <option value={25}>25 %</option>
-                <option value={0}>0 %</option>
-              </select>
-            </div>
-          </div>
+              </div>
+              <form onSubmit={handleSubmitForm} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</label>
+                  <input required value={title} onChange={(e) => setTitle(e.target.value)} className="field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
+                  <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={startsAt}
+                      onChange={(e) => setStartsAt(e.target.value)}
+                      className="field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">
+                      Platsantal
+                      {editingEvent && (
+                        <span className="font-normal text-[var(--text-muted)]"> ({editingEvent.sold_count} sålda)</span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={capacity}
+                      onChange={(e) => setCapacity(Number(e.target.value))}
+                      className={`field ${capacityTooLow ? 'border-red-400' : ''}`}
+                    />
+                    {capacityTooLow && (
+                      <p className="text-red-600 text-xs mt-1">
+                        Kan inte vara lägre än antal sålda biljetter ({editingEvent?.sold_count}).
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      required
+                      value={priceKr}
+                      onChange={(e) => setPriceKr(Number(e.target.value))}
+                      className="field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
+                    <select value={vatRate} onChange={(e) => setVatRate(Number(e.target.value))} className="field">
+                      <option value={6}>6 % (standard, scenframträdande)</option>
+                      <option value={12}>12 %</option>
+                      <option value={25}>25 %</option>
+                      <option value={0}>0 %</option>
+                    </select>
+                  </div>
+                </div>
 
-              {createError && <p className="text-red-600 text-sm">{createError}</p>}
-              <button type="submit" disabled={creating || capacityTooLow} className="btn-primary">
-                {creating ? 'Sparar…' : editingEventId ? 'Spara ändringar' : 'Skapa event'}
+                {createError && <p className="text-red-600 text-sm">{createError}</p>}
+                <button type="submit" disabled={creating || capacityTooLow} className="btn-primary">
+                  {creating ? 'Sparar…' : 'Spara ändringar'}
+                </button>
+              </form>
+            </section>
+          ) : creatingNew ? (
+            <CreateEventWizard onCreated={loadEvents} onClose={() => setCreatingNew(false)} />
+          ) : (
+            <section className="card text-center py-10">
+              <p className="text-[var(--text-muted)] text-sm mb-4">Redo att lägga till en ny föreställning?</p>
+              <button type="button" onClick={startCreate} className="btn-primary">
+                Skapa nytt event →
               </button>
-            </form>
-          </section>
+            </section>
+          )}
 
           <ExportSection events={events ?? []} />
         </div>
