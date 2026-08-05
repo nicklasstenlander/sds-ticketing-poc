@@ -625,6 +625,49 @@ policyer (se migrationen nedan).
      arrangörs event (`organizers(name)` - publikt läsbar via en egen
      RLS-policy, se migrationen).
 
+## 13. Uppföljning: platform-admin (åtkomst till alla workspaces)
+
+Uppföljning 2026-08-05 till avsnitt 12, efter en fråga om hur
+plattformsägaren (Nicklas) kan få åtkomst till ALLA arrangörers
+workspaces - inte bara en, som en vanlig `organizer_members`-rad ger.
+Löst med en separat `platform_admins`-tabell (`user_id` → `auth.users`),
+inte fler `organizer_members`-rader: en platform-admin väljer AKTIVT
+vilket workspace hen agerar i just nu, istället för att implicit "se
+allt" - samma "ett tydligt organizer_id per åtgärd"-princip som resten av
+dataisoleringen bygger på, se `_shared/organizerAuth.ts`.
+
+1. **Kör migrationen**
+   `supabase/migrations/20260805000000_platform_admins.sql` (samma
+   mönster som ovan).
+
+2. **Gör en användare till platform-admin:**
+   ```sql
+   insert into platform_admins (user_id)
+   values ((select id from auth.users where email = 'namn@exempel.se'));
+   ```
+   Användaren behöver INTE finnas i `organizer_members` - platform-admin-
+   status ger tillgång oavsett.
+
+3. **Deploya om** samtliga `admin-*`-funktioner + `export-sales` (nya
+   `_shared/organizerAuth.ts`), samt den nya funktionen
+   `admin-list-organizers` (platform-admin-only, listar alla arrangörer
+   för workspace-växlaren).
+
+4. **Logga in som vanligt** (samma e-post/lösenord-formulär som avsnitt
+   12) - admin-sidan känner själv av platform-admin-status
+   (`admin-list-organizers` svarar 200 istället för 403) och visar då en
+   arrangörsväljare i headern. Vanliga arrangörsanvändare ser ingen
+   skillnad alls.
+
+**Säkerhetsdetalj:** `X-Organizer-Id`-headern som skickas när en
+platform-admin bytt workspace (se `organizerContext.ts`/`functionsApi.ts`
+på frontend) litas ALDRIG på blint - `resolveOrganizer()` kontrollerar
+`platform_admins`-medlemskap FÖRST, och bara därefter, om det stämmer,
+att det angivna `organizer_id`:t faktiskt existerar. En vanlig
+arrangörsanvändare som skickar en egen `X-Organizer-Id` får ingen effekt
+alls - den grenen nås aldrig för dem, de får sitt `organizer_id` uteslutande
+via `organizer_members` precis som innan.
+
 ---
 
 ## Arkitekturbeslut och medvetna förenklingar

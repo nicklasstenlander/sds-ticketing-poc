@@ -72,6 +72,9 @@ verify_jwt = true
 [functions.admin-upload-poster]
 verify_jwt = true
 
+[functions.admin-list-organizers]
+verify_jwt = true
+
 [functions.stripe-webhook]
 verify_jwt = false
 

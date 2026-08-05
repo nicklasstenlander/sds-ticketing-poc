@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { callFunction, downloadAdminFile } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
+import { getActiveOrganizerId, setActiveOrganizerId } from '../lib/organizerContext'
 import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
@@ -15,6 +16,16 @@ interface AdminEventsResponse {
 
 interface DeleteEventResponse {
   result: 'deleted' | 'cancelled'
+}
+
+interface OrganizerSummary {
+  id: string
+  name: string
+  slug: string
+}
+
+interface ListOrganizersResponse {
+  organizers: OrganizerSummary[]
 }
 
 // Konverterar en UTC ISO-tidsstämpel (t.ex. "2026-05-10T17:58:03Z") till
@@ -130,6 +141,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [events, setEvents] = useState<AdminEventRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Uppföljning 2026-08-05 ("platform-admin"): admin-list-organizers
+  // svarar 200 bara för en platform-admin (se organizerAuth.ts) - 403 för
+  // vanliga arrangörsanvändare tolkas som "ingen växlare, fortsätt som
+  // vanligt", inte som ett fel att visa. orgCheckReady styr att
+  // loadEvents() (och därmed alla andra admin-anrop nedan, via den delade
+  // X-Organizer-Id-headern i functionsApi.ts) väntar tills rätt workspace
+  // är valt.
+  const [organizers, setOrganizers] = useState<OrganizerSummary[] | null>(null)
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
+  const [orgCheckReady, setOrgCheckReady] = useState(false)
+
   const [title, setTitle] = useState('')
   const [venue, setVenue] = useState('')
   const [startsAt, setStartsAt] = useState('')
@@ -161,10 +184,46 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  // Körs en gång vid mount: avgör om den inloggade användaren är en
+  // platform-admin, och om så, vilket workspace hen senast valde (eller
+  // det första i listan om inget tidigare val finns kvar). loadEvents()
+  // (nästa effekt) väntar på orgCheckReady så att X-Organizer-Id-headern
+  // hunnit sättas innan några admin-anrop görs.
   useEffect(() => {
+    callFunction<ListOrganizersResponse>('admin-list-organizers', { auth: true })
+      .then((res) => {
+        setIsPlatformAdmin(true)
+        setOrganizers(res.organizers)
+        const stored = getActiveOrganizerId()
+        const valid = stored && res.organizers.some((o) => o.id === stored) ? stored : (res.organizers[0]?.id ?? null)
+        setActiveOrganizerId(valid)
+        setActiveOrgId(valid)
+      })
+      .catch(() => {
+        // 403 (vanlig arrangörsanvändare) eller 401 - inte en
+        // platform-admin. Nollställ ev. kvarglömt workspace-val från en
+        // tidigare platform-admin-session på samma webbläsare.
+        setIsPlatformAdmin(false)
+        setActiveOrganizerId(null)
+      })
+      .finally(() => setOrgCheckReady(true))
+  }, [])
+
+  useEffect(() => {
+    if (!orgCheckReady) return
     loadEvents()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [orgCheckReady])
+
+  function handleSwitchOrganizer(id: string) {
+    setActiveOrganizerId(id)
+    setActiveOrgId(id)
+    // Enklast robusta sätt att få ALLA underkomponenter (rabattkoder,
+    // export, m.fl. - som var och en gör sina egna callFunction-anrop) att
+    // hämta om data för det nya workspacet, utan att behöva route:a
+    // organizer_id genom varenda komponents props.
+    window.location.reload()
+  }
 
   function resetForm() {
     setEditingEventId(null)
@@ -265,6 +324,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   function handleLogout() {
+    setActiveOrganizerId(null)
     supabase.auth.signOut().then(onLogout)
   }
 
@@ -273,6 +333,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div className="flex items-center justify-between mb-1">
         <div className="eyebrow">{APP_NAME} Admin</div>
         <div className="flex items-center gap-4">
+          {isPlatformAdmin && organizers && organizers.length > 0 && (
+            <select
+              value={activeOrgId ?? ''}
+              onChange={(e) => handleSwitchOrganizer(e.target.value)}
+              className="field text-sm"
+              style={{ width: 'auto', padding: '6px 10px' }}
+              aria-label="Välj workspace"
+            >
+              {organizers.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          )}
           <Link to="/admin/dashboard" className="text-sm link-accent">
             Dashboard
           </Link>

@@ -1,4 +1,5 @@
 import { functionsBaseUrl, supabase } from './supabaseClient'
+import { getActiveOrganizerId } from './organizerContext'
 
 export class ApiError extends Error {
   status: number
@@ -38,6 +39,11 @@ export async function callFunction<T>(name: string, opts: CallOptions = {}): Pro
   if (opts.auth) {
     const token = await getAccessToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
+    // Bara satt för en inloggad platform-admin som valt ett workspace
+    // (se organizerContext.ts) - ignoreras helt av resolveOrganizer() på
+    // backend för alla andra användare, se _shared/organizerAuth.ts.
+    const activeOrganizerId = getActiveOrganizerId()
+    if (activeOrganizerId) headers['X-Organizer-Id'] = activeOrganizerId
   }
 
   const res = await fetch(url, {
@@ -75,6 +81,8 @@ export async function downloadAdminFile(nameAndQuery: string, fallbackFilename: 
     apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
+  const activeOrganizerId = getActiveOrganizerId()
+  if (activeOrganizerId) headers['X-Organizer-Id'] = activeOrganizerId
 
   const res = await fetch(url, { method: 'GET', headers })
 
