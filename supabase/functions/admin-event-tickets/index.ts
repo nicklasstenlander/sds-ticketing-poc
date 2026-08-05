@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, created_at')
+    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: ticketTypes, error: ticketTypesError } = await supabase
     .from('ticket_types')
-    .select('id, event_id, name, price_ore, vat_rate, capacity, sold_count, sort_order, created_at')
+    .select('id, event_id, name, price_ore, vat_rate, sold_count, sort_order, created_at')
     .eq('event_id', eventId)
     .order('sort_order', { ascending: true })
 

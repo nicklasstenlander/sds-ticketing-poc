@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, status, qty')
+    .select('id, status')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -78,9 +78,14 @@ Deno.serve(async (req: Request) => {
     })
   }
 
+  // ticket_count räknas från de faktiska skapade tickets-raderna, inte
+  // orders.qty (som lämnas null för nya kundvagns-ordrar - se
+  // Tilläggsordern 2026-08-05, flera biljettyper i samma köp). Det är
+  // dessutom mer robust än att summera order_items.qty, eftersom det
+  // speglar vad som FAKTISKT skapades av stripe-webhook.
   return jsonResponse({
     status: order.status,
-    ticket_count: order.status === 'paid' ? order.qty : null,
+    ticket_count: order.status === 'paid' ? (tickets?.length ?? 0) : null,
     tickets,
   })
 })

@@ -4,9 +4,11 @@
 // faktiskt skickas i body uppdateras, resten lämnas orörda. Kräver giltig
 // admin-sessionstoken, precis som admin-create-event.
 //
-// Pris/moms/kapacitet hanteras INTE längre här - se admin-ticket-types.
-// Kapacitetskontroll mot sold_count sker numera per biljettyp, inte per
-// event.
+// Pris/moms hanteras INTE längre här - se admin-ticket-types. capacity
+// hanteras dock HÄR (rättelseordern 2026-08-05, delad kapacitetspool) -
+// eventet har en delad pott platser som alla biljettyper tar från, ingen
+// egen kapacitet per typ längre. Kapacitetskontroll mot sold_count sker
+// alltså här, precis som innan biljettyper fanns.
 //
 // Publiceringsspärr (Tilläggsordern avsnitt 5): ett event kan bara sättas
 // till status "published" om det har minst en biljettyp. Detta kontrolleras
@@ -22,6 +24,7 @@ interface UpdateEventBody {
   title?: string
   venue?: string
   starts_at?: string
+  capacity?: number
   status?: 'draft' | 'published'
 }
 
@@ -59,7 +62,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: current, error: currentError } = await supabase
     .from('events')
-    .select('id, status')
+    .select('id, status, sold_count')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -93,6 +96,20 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Ogiltigt datum/tid.' }, 400)
     }
     update.starts_at = new Date(body.starts_at).toISOString()
+  }
+
+  if (body.capacity !== undefined) {
+    const capacity = Number(body.capacity)
+    if (!Number.isInteger(capacity) || capacity < 0) {
+      return jsonResponse({ error: 'Platsantal måste vara ett heltal >= 0.' }, 400)
+    }
+    if (capacity < current.sold_count) {
+      return jsonResponse(
+        { error: `Kapaciteten kan inte sättas lägre än antal sålda biljetter (${current.sold_count}).` },
+        400,
+      )
+    }
+    update.capacity = capacity
   }
 
   if (body.status !== undefined) {

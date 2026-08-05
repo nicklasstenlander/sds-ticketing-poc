@@ -19,23 +19,23 @@ interface DraftTicketType {
   name: string
   priceKr: number
   vatRate: number
-  capacity: number
 }
 
 let nextKey = 1
 function newTicketType(overrides: Partial<DraftTicketType> = {}): DraftTicketType {
-  return { key: nextKey++, name: '', priceKr: 295, vatRate: 6, capacity: 150, ...overrides }
+  return { key: nextKey++, name: '', priceKr: 295, vatRate: 6, ...overrides }
 }
 
 // 3-stegs skapandeflöde för nya event, enligt ScenPass-designmockupen
-// (avsnitt 4), uppdaterat för biljettyper (Tilläggsordern avsnitt 5).
-// Steg 2 "Lägg till biljetter" bygger nu upp EN ELLER FLERA biljettyper
-// (namn, pris, moms, kapacitet var för sig) istället för ett enda
-// pris/kapacitetspar på eventet självt. Publicera-steget skapar eventet
-// som draft, skapar varje biljettyp, och publicerar sist - misslyckas
-// något steg efter att eventet redan skapats stannar det kvar som draft
-// (syns i admin-listan, kan färdigställas/publiceras manuellt därifrån)
-// istället för att tyst försvinna.
+// (avsnitt 4), uppdaterat för biljettyper (Tilläggsordern avsnitt 5) och
+// den delade kapacitetspoolen (rättelseordern 2026-08-05). Platsantalet
+// är EN gemensam pott för hela eventet (steg 1, tillsammans med
+// datum/plats) - biljettyperna i steg 2 "Lägg till biljetter" har bara
+// namn/pris/moms, ingen egen kapacitet. Publicera-steget skapar eventet
+// som draft (med capacity), skapar varje biljettyp, och publicerar sist -
+// misslyckas något steg efter att eventet redan skapats stannar det kvar
+// som draft (syns i admin-listan, kan färdigställas/publiceras manuellt
+// därifrån) istället för att tyst försvinna.
 export function CreateEventWizard({
   onCreated,
   onClose,
@@ -52,6 +52,7 @@ export function CreateEventWizard({
   const [venue, setVenue] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
+  const [capacity, setCapacity] = useState(150)
   const [ticketTypes, setTicketTypes] = useState<DraftTicketType[]>([newTicketType({ name: 'Ordinarie' })])
 
   const steps = [
@@ -65,6 +66,7 @@ export function CreateEventWizard({
     setVenue('')
     setDate('')
     setTime('')
+    setCapacity(150)
     setTicketTypes([newTicketType({ name: 'Ordinarie' })])
     setError(null)
   }
@@ -75,10 +77,9 @@ export function CreateEventWizard({
     setPublished(false)
   }
 
-  const step1Valid = title.trim().length > 0 && date.length > 0 && time.length > 0
+  const step1Valid = title.trim().length > 0 && date.length > 0 && time.length > 0 && capacity >= 1
   const step2Valid =
-    ticketTypes.length > 0 &&
-    ticketTypes.every((t) => t.name.trim().length > 0 && t.capacity >= 1 && t.priceKr >= 0)
+    ticketTypes.length > 0 && ticketTypes.every((t) => t.name.trim().length > 0 && t.priceKr >= 0)
 
   function goNext(e?: FormEvent) {
     e?.preventDefault()
@@ -106,7 +107,7 @@ export function CreateEventWizard({
       const { event } = await callFunction<CreateEventResponse>('admin-create-event', {
         auth: true,
         method: 'POST',
-        body: { title, venue, starts_at: startsAt },
+        body: { title, venue, starts_at: startsAt, capacity },
       })
 
       for (const t of ticketTypes) {
@@ -119,7 +120,6 @@ export function CreateEventWizard({
             name: t.name,
             price_ore: Math.round(t.priceKr * 100),
             vat_rate: t.vatRate,
-            capacity: t.capacity,
           },
         })
       }
@@ -207,6 +207,20 @@ export function CreateEventWizard({
               <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="field" />
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Platsantal</label>
+            <input
+              type="number"
+              min={1}
+              required
+              value={capacity}
+              onChange={(e) => setCapacity(Number(e.target.value))}
+              className="field"
+            />
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Lokalens totala platser - en delad pott som alla biljettyper i steg 2 tar från.
+            </p>
+          </div>
           <button type="submit" disabled={!step1Valid} className="btn-primary w-full">
             Fortsätt
           </button>
@@ -239,28 +253,16 @@ export function CreateEventWizard({
                   className="field"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Platsantal</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={t.capacity}
-                    onChange={(e) => updateTicketType(t.key, { capacity: Number(e.target.value) })}
-                    className="field"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={t.priceKr}
-                    onChange={(e) => updateTicketType(t.key, { priceKr: Number(e.target.value) })}
-                    className="field"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={t.priceKr}
+                  onChange={(e) => updateTicketType(t.key, { priceKr: Number(e.target.value) })}
+                  className="field"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
@@ -301,6 +303,7 @@ export function CreateEventWizard({
               ['Titel', title],
               ['Plats', venue || '–'],
               ['Datum', `${date} ${time}`],
+              ['Platsantal', String(capacity)],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -315,9 +318,7 @@ export function CreateEventWizard({
             <div className="text-sm text-[var(--text-muted)] mb-1">Biljettyper</div>
             {ticketTypes.map((t) => (
               <div key={t.key} className="flex justify-between py-1.5 text-sm">
-                <span className="text-[var(--text)]">
-                  {t.name} ({t.capacity} platser)
-                </span>
+                <span className="text-[var(--text)]">{t.name}</span>
                 <span className="font-semibold text-[var(--text)]">
                   {t.priceKr.toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr (moms {t.vatRate}%)
                 </span>

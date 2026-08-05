@@ -7,13 +7,14 @@
 //
 // Hanterar:
 //   checkout.session.completed - betalning bekräftad: markera ordern paid,
-//     skapa biljetter + QR-koder, skicka bekräftelsemail (i bakgrunden via
-//     EdgeRuntime.waitUntil så att vi kan svara Stripe snabbt).
+//     skapa biljetter (per order_items-rad, en kundvagn kan ha flera
+//     biljettyper - se Tilläggsordern 2026-08-05) + QR-koder, skicka
+//     bekräftelsemail (i bakgrunden via EdgeRuntime.waitUntil så att vi
+//     kan svara Stripe snabbt).
 //   checkout.session.expired - sessionen gick ut utan betalning: markera
-//     ordern expired och återför den reserverade kapaciteten. (Detta är
-//     komplementet till release-expired-orders-säkerhetsnätet - normalt
-//     hinner denna webhook köra långt innan säkerhetsnätet ens tittar på
-//     ordern.)
+//     ordern expired och återför HELA kundvagnens reserverade kapacitet i
+//     en enda kontroll mot eventets delade pool (se rättelseordern,
+//     2026-08-05).
 //
 // Idempotens: Stripe kan leverera samma event flera gånger (retries). Vi
 // försöker INSERT:a (provider, provider_event_id) i webhook_events INNAN vi
@@ -35,6 +36,34 @@ import type Stripe from 'npm:stripe@17'
 
 function textResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: corsHeaders })
+}
+
+interface OrderItemRow {
+  ticket_type_id: string
+  qty: number
+}
+
+/** Läser order_items för en order och bygger både p_items-jsonb och
+ * totalQty som reserve/release_shared_capacity_multi förväntar sig. */
+async function loadCartItems(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string,
+): Promise<{ items: { ticket_type_id: string; qty: number }[]; totalQty: number }> {
+  const { data, error } = await supabase
+    .from('order_items')
+    .select('ticket_type_id, qty')
+    .eq('order_id', orderId)
+
+  if (error) {
+    console.error('Kunde inte hämta order_items', orderId, error.message)
+    return { items: [], totalQty: 0 }
+  }
+
+  const rows = (data ?? []) as OrderItemRow[]
+  return {
+    items: rows.map((r) => ({ ticket_type_id: r.ticket_type_id, qty: r.qty })),
+    totalQty: rows.reduce((sum, r) => sum + r.qty, 0),
+  }
 }
 
 async function sendConfirmationEmail(params: {
@@ -115,7 +144,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, event_id, ticket_type_id, buyer_name, buyer_email, qty, status, discount_code_id')
+    .select('id, event_id, buyer_name, buyer_email, status, discount_code_id')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -139,6 +168,16 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return
   }
 
+  const { data: orderItems, error: orderItemsError } = await supabase
+    .from('order_items')
+    .select('id, ticket_type_id, qty')
+    .eq('order_id', order.id)
+
+  if (orderItemsError || !orderItems || orderItems.length === 0) {
+    console.error('Hittade inga order_items för betald order', order.id, orderItemsError?.message)
+    return
+  }
+
   const paidAt = new Date().toISOString()
   const { error: updateOrderError } = await supabase
     .from('orders')
@@ -151,18 +190,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return
   }
 
-  // Skapa biljetter med slumpmässiga koder - samma logik som tidigare fanns
-  // synkront i create-order, flyttad hit eftersom biljetter nu bara ska
-  // finnas efter bekräftad betalning.
-  const ticketCodes = Array.from({ length: order.qty }, () => generateTicketCode())
-  const ticketRows = ticketCodes.map((code) => ({
-    order_id: order.id,
-    event_id: event.id,
-    ticket_type_id: order.ticket_type_id,
-    ticket_code: code,
-    holder_name: order.buyer_name,
-    status: 'valid' as const,
-  }))
+  // Skapa biljetter med slumpmässiga koder - en rad per order_items-rad
+  // (kundvagnen kan blanda flera biljettyper i samma order), qty biljetter
+  // per rad, alla med rätt ticket_type_id.
+  const ticketRows = orderItems.flatMap((item) =>
+    Array.from({ length: item.qty }, () => ({
+      order_id: order.id,
+      event_id: event.id,
+      ticket_type_id: item.ticket_type_id,
+      ticket_code: generateTicketCode(),
+      holder_name: order.buyer_name,
+      status: 'valid' as const,
+    })),
+  )
 
   const { data: tickets, error: ticketsError } = await supabase
     .from('tickets')
@@ -174,13 +214,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return
   }
 
-  // Rabattkodens used_count ökas bara vid bekräftad betalning (här), aldrig
-  // i create-order - annars förbrukas koden av övergivna checkouts. Ingen
-  // atomisk RPC krävs (till skillnad från kapacitetsreservationen): en
-  // dubbelräkning här skulle bara göra en kods max_uses marginellt för
-  // sträng, aldrig släppa igenom fler användningar än tillåtet, och
-  // idempotensspärren (webhook_events) gör att detta normalt bara körs en
-  // gång per order ändå.
+  // Rabattkodens used_count ökas bara vid bekräftad betalning (här),
+  // aldrig i create-order - annars förbrukas koden av övergivna
+  // checkouts. Sker en gång per order oavsett hur många rader den har.
   if (order.discount_code_id) {
     const { error: discountUpdateError } = await supabase.rpc('increment_discount_code_used_count', {
       p_discount_code_id: order.discount_code_id,
@@ -245,7 +281,7 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, ticket_type_id, qty, status')
+    .select('id, event_id, status')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -263,8 +299,13 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
     return
   }
 
-  if (order.ticket_type_id) {
-    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: order.ticket_type_id, p_qty: order.qty })
+  const { items, totalQty } = await loadCartItems(supabase, order.id)
+  if (totalQty > 0) {
+    await supabase.rpc('release_shared_capacity_multi', {
+      p_event_id: order.event_id,
+      p_items: items,
+      p_total_qty: totalQty,
+    })
   }
 }
 
@@ -332,10 +373,7 @@ Deno.serve(async (req: Request) => {
     // Vi har redan skrivit webhook_events-raden, så en Stripe-retry skulle
     // annars bara träffa idempotensspärren och aldrig få en ny chans att
     // lyckas. Logga men svara ändå 200 - manuell felsökning via loggarna
-    // + release-expired-orders/export-sales fångar upp resten. (En
-    // alternativ design vore att ta bort webhook_events-raden här och
-    // svara 500 för att trigga Stripes automatiska retry, men det riskerar
-    // dubbla mail om felet inträffade efter att mailet redan skickats.)
+    // + release-expired-orders/export-sales fångar upp resten.
     const message = err instanceof Error ? err.message : 'Okänt fel.'
     console.error('Fel vid hantering av Stripe-webhook:', message)
   }

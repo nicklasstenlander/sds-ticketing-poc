@@ -70,12 +70,18 @@ export function AdminEventPage() {
       {data && (
         <div className="mt-4">
           <h1 className="text-2xl font-bold">{data.event.title}</h1>
-          <p className="text-slate-500 mb-8">
+          <p className="text-slate-500 mb-1">
             {new Date(data.event.starts_at).toLocaleString('sv-SE', {
               dateStyle: 'long',
               timeStyle: 'short',
             })}
             {data.event.venue ? ` · ${data.event.venue}` : ''}
+          </p>
+          {/* Kapaciteten är en delad pott för HELA eventet (rättelseordern
+              2026-08-05) - visas här en gång, inte upprepad per
+              biljettyp. Redigeras från admin-huvudsidan (AdminPage.tsx). */}
+          <p className="text-slate-500 mb-8">
+            {data.event.sold_count} / {data.event.capacity} sålda totalt
           </p>
 
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
@@ -131,11 +137,14 @@ export function AdminEventPage() {
   )
 }
 
-// Biljettyper (Tilläggsordern avsnitt 5): lista, lägg till, redigera,
-// radera. Kapacitetsspärren (kan inte sättas lägre än sold_count) och
-// raderingsspärren (kan inte radera en typ med sålda biljetter) gäller
-// egentligen server-side (admin-ticket-types) - felmeddelandet därifrån
-// visas rakt av här, ingen dubblerad logik i frontend.
+// Biljettyper (Tilläggsordern avsnitt 5, uppdaterad av rättelseordern
+// 2026-08-05): lista, lägg till, redigera, radera. Ingen egen kapacitet
+// på biljettypen längre - kapaciteten är en delad pott på eventet (se
+// AdminEventPage-huvudkomponenten ovan och AdminPage.tsx). sold_count
+// visas bara som rapportering ("35 sålda"), ingen spärr kopplad till den
+// här. Raderingsspärren (kan inte radera en typ med sålda biljetter)
+// gäller server-side (admin-ticket-types) - felmeddelandet därifrån visas
+// rakt av här, ingen dubblerad logik i frontend.
 function TicketTypesSection({
   eventId,
   ticketTypes,
@@ -149,7 +158,6 @@ function TicketTypesSection({
   const [name, setName] = useState('')
   const [priceKr, setPriceKr] = useState(295)
   const [vatRate, setVatRate] = useState(6)
-  const [capacity, setCapacity] = useState(50)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -157,7 +165,6 @@ function TicketTypesSection({
   const [editName, setEditName] = useState('')
   const [editPriceKr, setEditPriceKr] = useState(0)
   const [editVatRate, setEditVatRate] = useState(6)
-  const [editCapacity, setEditCapacity] = useState(0)
   const [editError, setEditError] = useState<string | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
 
@@ -168,7 +175,6 @@ function TicketTypesSection({
     setName('')
     setPriceKr(295)
     setVatRate(6)
-    setCapacity(50)
     setFormError(null)
   }
 
@@ -186,7 +192,6 @@ function TicketTypesSection({
           name,
           price_ore: Math.round(priceKr * 100),
           vat_rate: vatRate,
-          capacity,
         },
       })
       resetAddForm()
@@ -204,7 +209,6 @@ function TicketTypesSection({
     setEditName(t.name)
     setEditPriceKr(t.price_ore / 100)
     setEditVatRate(t.vat_rate)
-    setEditCapacity(t.capacity)
     setEditError(null)
   }
 
@@ -223,7 +227,6 @@ function TicketTypesSection({
           name: editName,
           price_ore: Math.round(editPriceKr * 100),
           vat_rate: editVatRate,
-          capacity: editCapacity,
         },
       })
       setEditingId(null)
@@ -274,7 +277,7 @@ function TicketTypesSection({
             <label className="block text-sm font-medium mb-2">Namn</label>
             <input required value={name} onChange={(e) => setName(e.target.value)} className="field" />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">Pris (kr)</label>
               <input
@@ -296,16 +299,6 @@ function TicketTypesSection({
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Platser</label>
-              <input
-                type="number"
-                min={1}
-                value={capacity}
-                onChange={(e) => setCapacity(Number(e.target.value))}
-                className="field"
-              />
-            </div>
           </div>
           {formError && <p className="text-red-600 text-sm">{formError}</p>}
           <button type="submit" disabled={submitting} className="btn-primary">
@@ -326,7 +319,7 @@ function TicketTypesSection({
                 <th className="px-4 py-2">Namn</th>
                 <th className="px-4 py-2">Pris</th>
                 <th className="px-4 py-2">Moms</th>
-                <th className="px-4 py-2">Sålt / kapacitet</th>
+                <th className="px-4 py-2">Sålt</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
@@ -335,7 +328,7 @@ function TicketTypesSection({
                 editingId === t.id ? (
                   <tr key={t.id} className="border-b border-slate-100 last:border-0 bg-rose-50">
                     <td colSpan={5} className="px-4 py-3">
-                      <form onSubmit={handleSaveEdit} className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                      <form onSubmit={handleSaveEdit} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                         <div>
                           <label className="block text-xs font-medium mb-1">Namn</label>
                           <input required value={editName} onChange={(e) => setEditName(e.target.value)} className="field" />
@@ -361,18 +354,6 @@ function TicketTypesSection({
                             ))}
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium mb-1">
-                            Platser {t.sold_count > 0 && <span className="font-normal text-slate-500">({t.sold_count} sålda)</span>}
-                          </label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={editCapacity}
-                            onChange={(e) => setEditCapacity(Number(e.target.value))}
-                            className={`field ${editCapacity < t.sold_count ? 'border-red-400' : ''}`}
-                          />
-                        </div>
                         <div className="flex gap-2">
                           <button type="submit" disabled={savingEdit} className="btn-primary text-sm px-3 py-1.5">
                             Spara
@@ -396,9 +377,7 @@ function TicketTypesSection({
                       {(t.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
                     </td>
                     <td className="px-4 py-2">{t.vat_rate}%</td>
-                    <td className="px-4 py-2">
-                      {t.sold_count} / {t.capacity}
-                    </td>
+                    <td className="px-4 py-2">{t.sold_count}</td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
                       <button
                         type="button"

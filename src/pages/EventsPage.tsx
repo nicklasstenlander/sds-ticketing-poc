@@ -14,6 +14,9 @@ interface EventWithTicketTypes extends EventRow {
 // 2026-01-01), så ingen extra statusfiltrering behövs i frågan här.
 // ticket_types hämtas i samma anrop via PostgREST-embedding (samma RLS-
 // mönster: anon ser bara typer kopplade till ett publicerat event).
+// capacity/sold_count ligger direkt på eventet (delad kapacitetspool,
+// se rättelseordern 2026-08-05) - ingen summering över ticket_types
+// behövs för det, bara för prisspannet.
 export function EventsPage() {
   const [events, setEvents] = useState<EventWithTicketTypes[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -52,10 +55,8 @@ export function EventsPage() {
       <ul className="space-y-4">
         {events?.map((event) => {
           const types = event.ticket_types ?? []
-          const totalCapacity = types.reduce((sum, t) => sum + t.capacity, 0)
-          const totalSold = types.reduce((sum, t) => sum + t.sold_count, 0)
-          const soldOut = types.length > 0 && totalSold >= totalCapacity
-          const pct = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : 0
+          const soldOut = event.capacity > 0 && event.sold_count >= event.capacity
+          const pct = event.capacity > 0 ? Math.min(100, Math.round((event.sold_count / event.capacity) * 100)) : 0
           const prices = types.map((t) => t.price_ore)
           const minPrice = prices.length > 0 ? Math.min(...prices) : null
           const hasMultiplePrices = new Set(prices).size > 1
@@ -83,13 +84,13 @@ export function EventsPage() {
                     })}
                     {event.venue ? ` · ${event.venue}` : ''}
                   </div>
-                  {totalCapacity > 0 && (
+                  {event.capacity > 0 && (
                     <>
                       <div className="progress-track max-w-[220px] mb-2">
                         <div className="progress-fill" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="text-sm text-[var(--text-muted)]">
-                        {totalSold} / {totalCapacity} sålda
+                        {event.sold_count} / {event.capacity} sålda
                       </div>
                     </>
                   )}

@@ -115,19 +115,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [title, setTitle] = useState('')
   const [venue, setVenue] = useState('')
   const [startsAt, setStartsAt] = useState('')
+  const [capacity, setCapacity] = useState(150)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
   // Ett event-id = redigerar det eventet - det direkta enstegsformuläret
-  // för titel/plats/datum, förifyllt, se startEdit(). Pris/kapacitet/moms
-  // hanteras inte här längre - det görs per biljettyp på eventets egen
-  // sida (/admin/event/:id, se AdminEventPage.tsx).
+  // för titel/plats/datum/kapacitet, förifyllt, se startEdit(). Kapacitet
+  // är en delad pott som alla biljettyper tar från (rättelseordern
+  // 2026-08-05) - pris/moms hanteras däremot per biljettyp på eventets
+  // egen sida (/admin/event/:id, se AdminEventPage.tsx).
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [creatingNew, setCreatingNew] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
   const editingEvent = events?.find((e) => e.id === editingEventId) ?? null
+  const capacityTooLow = editingEvent !== null && capacity < editingEvent.sold_count
 
   const formSectionRef = useRef<HTMLDivElement>(null)
 
@@ -150,6 +153,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setTitle('')
     setVenue('')
     setStartsAt('')
+    setCapacity(150)
     setCreateError(null)
   }
 
@@ -159,6 +163,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setTitle(event.title)
     setVenue(event.venue ?? '')
     setStartsAt(toDatetimeLocalValue(event.starts_at))
+    setCapacity(event.capacity)
     setCreateError(null)
     scrollToFormOnNarrowScreen()
   }
@@ -177,7 +182,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   async function handleSubmitForm(e: FormEvent) {
     e.preventDefault()
-    if (!editingEventId) return
+    if (!editingEventId || capacityTooLow) return
     setCreating(true)
     setCreateError(null)
     try {
@@ -189,6 +194,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           title,
           venue,
           starts_at: startsAt,
+          capacity,
         },
       })
       resetForm()
@@ -216,7 +222,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function handleDelete(event: AdminEventRow) {
-    const soldCount = event.ticket_types_summary.total_sold
+    const soldCount = event.sold_count
     const message =
       soldCount > 0
         ? `Eventet har ${soldCount} sålda biljetter och kan inte raderas — det markeras som inställt istället. Fortsätt?`
@@ -271,20 +277,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <div className="card p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">Sålda biljetter totalt</div>
             <div className="text-2xl font-extrabold text-[var(--text)]">
-              {events.reduce((sum, e) => sum + e.ticket_types_summary.total_sold, 0)}
+              {events.reduce((sum, e) => sum + e.sold_count, 0)}
             </div>
           </div>
           <div className="card p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">Snittbeläggning</div>
             <div className="text-2xl font-extrabold text-[var(--text)]">
               {(() => {
-                const withCap = events.filter((e) => e.ticket_types_summary.total_capacity > 0)
+                const withCap = events.filter((e) => e.capacity > 0)
                 if (withCap.length === 0) return '–'
-                const avg =
-                  withCap.reduce(
-                    (sum, e) => sum + e.ticket_types_summary.total_sold / e.ticket_types_summary.total_capacity,
-                    0,
-                  ) / withCap.length
+                const avg = withCap.reduce((sum, e) => sum + e.sold_count / e.capacity, 0) / withCap.length
                 return `${Math.round(avg * 100)}%`
               })()}
             </div>
@@ -334,7 +336,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     </Link>
                     <div className="text-right shrink-0">
                       <div className="text-sm text-[var(--text)]">
-                        {summary.total_sold} / {summary.total_capacity} sålda
+                        {event.sold_count} / {event.capacity} sålda
                       </div>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
@@ -405,15 +407,38 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
                   <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={startsAt}
-                    onChange={(e) => setStartsAt(e.target.value)}
-                    className="field"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={startsAt}
+                      onChange={(e) => setStartsAt(e.target.value)}
+                      className="field"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">
+                      Platsantal
+                      {editingEvent && (
+                        <span className="font-normal text-[var(--text-muted)]"> ({editingEvent.sold_count} sålda)</span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      required
+                      value={capacity}
+                      onChange={(e) => setCapacity(Number(e.target.value))}
+                      className={`field ${capacityTooLow ? 'border-red-400' : ''}`}
+                    />
+                    {capacityTooLow && (
+                      <p className="text-red-600 text-xs mt-1">
+                        Kan inte vara lägre än antal sålda biljetter ({editingEvent?.sold_count}).
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm text-[var(--text-muted)]">
                   Pris, moms och platsantal hanteras per biljettyp på eventets egen sida.{' '}
@@ -423,7 +448,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 </p>
 
                 {createError && <p className="text-red-600 text-sm">{createError}</p>}
-                <button type="submit" disabled={creating} className="btn-primary">
+                <button type="submit" disabled={creating || capacityTooLow} className="btn-primary">
                   {creating ? 'Sparar…' : 'Spara ändringar'}
                 </button>
               </form>

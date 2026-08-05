@@ -1,38 +1,42 @@
 // create-order
 //
-// Publik funktion (anropas från /kop/:slug). Tar emot en biljettyp
-// (ticket_type_id), ett antal av den typen (aldrig flera typer i samma
-// köp - se Tilläggsordern avsnitt 0, antagande 1) och en valfri
-// rabattkod. Reserverar kapacitet atomiskt PÅ BILJETTYPEN, skapar en
-// order i status "pending" med en frusen pris/moms-ögonblicksbild
-// (rabatterat pris om en giltig kod angavs), och skapar en Stripe
-// Checkout Session i Test mode.
+// Publik funktion (anropas från /kop/:slug). Tar emot en KUNDVAGN - en
+// eller flera rader, var och en en biljettyp + ett antal (t.ex. 2
+// Ordinarie + 1 Barn i samma köp, se Tilläggsordern 2026-08-05 "Flera
+// biljettyper i samma köp"). En valfri rabattkod tillämpas på hela
+// kundvagnen. Reserverar kapacitet atomiskt för HELA kundvagnen i EN
+// kontroll mot eventets delade pool (se rättelseordern 2026-08-05, delad
+// kapacitetspool), skapar en order-header i status "pending" plus en
+// order_items-rad per kundvagnsrad, och skapar en Stripe Checkout Session
+// med flera line_items.
 //
 // Biljetter skapas INTE här längre - det görs först av stripe-webhook när
-// betalningen faktiskt bekräftats (checkout.session.completed). Detta
-// förhindrar att någon får biljetter utan att betala: fram tills webhooken
-// kör finns bara en "pending"-order och en reserverad plats, inga biljetter.
+// betalningen faktiskt bekräftats (checkout.session.completed).
 //
 // Rabattkodens used_count ökas INTE här - bara vid bekräftad betalning (i
 // stripe-webhook), annars skulle koden förbrukas av övergivna checkouts.
 //
 // Returnerar { checkout_url } - frontenden gör en fullständig
-// sidomdirigering (window.location.href) dit, inte en fetch/XHR, eftersom
-// Stripe Checkout är en hostad sida som kräver en riktig navigering.
+// sidomdirigering (window.location.href) dit.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.ts'
 
-interface CreateOrderBody {
-  slug?: string
+interface CartItemInput {
   ticket_type_id?: string
   qty?: number
+}
+
+interface CreateOrderBody {
+  slug?: string
+  items?: CartItemInput[]
   name?: string
   email?: string
   discount_code?: string
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const MAX_TOTAL_QTY = 6
 
 interface DiscountCodeRow {
   id: string
@@ -47,9 +51,17 @@ interface DiscountCodeRow {
   active: boolean
 }
 
-/** Validerar en rabattkod mot ett event. Kastar ett fel med ett
- * köparvänligt meddelande om koden inte gäller - koden ska ALDRIG bara
- * tyst ignoreras (se Tilläggsordern avsnitt 3). */
+interface CartLine {
+  ticketTypeId: string
+  name: string
+  qty: number
+  unitPriceOre: number
+  vatRate: number
+  unitPriceAfterOre: number
+}
+
+/** Validerar en rabattkod mot ett event. Returnerar ett köparvänligt
+ * felmeddelande om koden inte gäller - ALDRIG tyst ignorerad. */
 function validateDiscountCode(code: DiscountCodeRow, eventId: string): string | null {
   if (!code.active) return 'Rabattkoden är inte längre giltig.'
   const now = Date.now()
@@ -68,11 +80,55 @@ function validateDiscountCode(code: DiscountCodeRow, eventId: string): string | 
   return null
 }
 
-function applyDiscount(priceOre: number, code: DiscountCodeRow): number {
+/**
+ * Applicerar en rabattkod på kundvagnens rader, i-place (sätter
+ * unitPriceAfterOre på varje rad). Se Tilläggsordern avsnitt 3:
+ *   - percent: samma procentsats på varje rads unit_price_ore direkt -
+ *     exakt och radvis oberoende, ingen tvärradsreconciliation behövs.
+ *   - amount: fördelas proportionellt mot varje rads andel av
+ *     totalsumman. Radernas MÅL-rabatt (line-nivå, innan konvertering
+ *     till ett enhetspris) avrundas med "störst rest"-metoden så att
+ *     summan alltid exakt matchar discount_codes.value (fyllnadsöre
+ *     läggs på den dyraste raden). Det målet konverteras sedan till ett
+ *     enhetspris (radens rabatt / antal, avrundat) - i vanliga fall
+ *     (jämna belopp, antal som går jämnt upp) blir resultatet identiskt;
+ *     i extremfall med udda kombinationer kan enhetspriset avrunda bort
+ *     enstaka ören jämfört med det exakta radmålet. Den faktiskt
+ *     REALISERADE rabatten (vad kunden faktiskt debiteras mindre) räknas
+ *     alltid ärligt ut i efterhand från de färdiga enhetspriserna, se
+ *     discountAmountOre i anropande kod - ingen risk för att
+ *     bokföringen och det som faktiskt debiterats går isär.
+ */
+function applyDiscountToLines(lines: CartLine[], code: DiscountCodeRow): void {
   if (code.discount_type === 'percent') {
-    return Math.round((priceOre * (100 - code.value)) / 100)
+    for (const line of lines) {
+      line.unitPriceAfterOre = Math.round((line.unitPriceOre * (100 - code.value)) / 100)
+    }
+    return
   }
-  return Math.max(0, priceOre - code.value)
+
+  // amount
+  const totalSubtotal = lines.reduce((sum, l) => sum + l.unitPriceOre * l.qty, 0)
+  if (totalSubtotal <= 0) {
+    for (const line of lines) line.unitPriceAfterOre = line.unitPriceOre
+    return
+  }
+
+  const lineTargets = lines.map((l) => Math.floor((code.value * (l.unitPriceOre * l.qty)) / totalSubtotal))
+  const distributed = lineTargets.reduce((sum, v) => sum + v, 0)
+  const remainder = code.value - distributed
+  if (remainder > 0) {
+    let priciestIdx = 0
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].unitPriceOre > lines[priciestIdx].unitPriceOre) priciestIdx = i
+    }
+    lineTargets[priciestIdx] += remainder
+  }
+
+  lines.forEach((line, i) => {
+    const perUnitDiscount = Math.round(lineTargets[i] / line.qty)
+    line.unitPriceAfterOre = Math.max(0, line.unitPriceOre - perUnitDiscount)
+  })
 }
 
 Deno.serve(async (req: Request) => {
@@ -91,20 +147,39 @@ Deno.serve(async (req: Request) => {
   }
 
   const slug = (body.slug ?? '').trim()
-  const ticketTypeId = (body.ticket_type_id ?? '').trim()
   const buyerName = (body.name ?? '').trim()
   const buyerEmail = (body.email ?? '').trim().toLowerCase()
-  const qty = Number(body.qty)
   const discountCodeInput = (body.discount_code ?? '').trim()
+  const rawItems = Array.isArray(body.items) ? body.items : []
 
   if (!slug) return jsonResponse({ error: 'Event saknas.' }, 400)
-  if (!ticketTypeId) return jsonResponse({ error: 'Biljettyp saknas.' }, 400)
   if (!buyerName) return jsonResponse({ error: 'Namn krävs.' }, 400)
   if (!EMAIL_REGEX.test(buyerEmail)) {
     return jsonResponse({ error: 'Ogiltig e-postadress.' }, 400)
   }
-  if (!Number.isInteger(qty) || qty < 1 || qty > 6) {
-    return jsonResponse({ error: 'Antal biljetter måste vara mellan 1 och 6.' }, 400)
+  if (rawItems.length === 0) {
+    return jsonResponse({ error: 'Kundvagnen är tom - välj minst en biljett.' }, 400)
+  }
+
+  const parsedItems: { ticketTypeId: string; qty: number }[] = []
+  const seenTicketTypeIds = new Set<string>()
+  for (const item of rawItems) {
+    const ticketTypeId = (item.ticket_type_id ?? '').trim()
+    const qty = Number(item.qty)
+    if (!ticketTypeId) return jsonResponse({ error: 'ticket_type_id saknas på en rad.' }, 400)
+    if (!Number.isInteger(qty) || qty < 1) {
+      return jsonResponse({ error: 'Antal måste vara ett heltal >= 1 på varje rad.' }, 400)
+    }
+    if (seenTicketTypeIds.has(ticketTypeId)) {
+      return jsonResponse({ error: 'En biljettyp kan bara förekomma en gång i kundvagnen.' }, 400)
+    }
+    seenTicketTypeIds.add(ticketTypeId)
+    parsedItems.push({ ticketTypeId, qty })
+  }
+
+  const totalQty = parsedItems.reduce((sum, i) => sum + i.qty, 0)
+  if (totalQty > MAX_TOTAL_QTY) {
+    return jsonResponse({ error: `Max ${MAX_TOTAL_QTY} biljetter per köp.` }, 400)
   }
 
   const frontendBaseUrl = (Deno.env.get('FRONTEND_BASE_URL') ?? '').replace(/\/+$/, '')
@@ -127,23 +202,38 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
-  const { data: ticketType, error: ticketTypeError } = await supabase
+  const { data: ticketTypeRows, error: ticketTypesError } = await supabase
     .from('ticket_types')
-    .select('id, event_id, name, price_ore, vat_rate, capacity, sold_count')
-    .eq('id', ticketTypeId)
-    .maybeSingle()
+    .select('id, event_id, name, price_ore, vat_rate')
+    .in(
+      'id',
+      parsedItems.map((i) => i.ticketTypeId),
+    )
 
-  if (ticketTypeError) {
-    return jsonResponse({ error: `Databasfel: ${ticketTypeError.message}` }, 500)
-  }
-  if (!ticketType || ticketType.event_id !== event.id) {
-    return jsonResponse({ error: 'Biljettypen hittades inte för det här eventet.' }, 404)
+  if (ticketTypesError) {
+    return jsonResponse({ error: `Databasfel: ${ticketTypesError.message}` }, 500)
   }
 
-  // Rabattkod - valfri. Ogiltig/utgången/slut kod ger 400 med ett tydligt
-  // felmeddelande, aldrig tyst ignorerad.
+  const ticketTypeById = new Map((ticketTypeRows ?? []).map((t) => [t.id, t]))
+  const lines: CartLine[] = []
+  for (const item of parsedItems) {
+    const tt = ticketTypeById.get(item.ticketTypeId)
+    if (!tt || tt.event_id !== event.id) {
+      return jsonResponse({ error: 'En eller flera biljettyper hittades inte för det här eventet.' }, 404)
+    }
+    lines.push({
+      ticketTypeId: tt.id,
+      name: tt.name,
+      qty: item.qty,
+      unitPriceOre: tt.price_ore,
+      vatRate: tt.vat_rate,
+      unitPriceAfterOre: tt.price_ore,
+    })
+  }
+
+  // Rabattkod - valfri, tillämpas på hela kundvagnen. Ogiltig/utgången/
+  // slut kod ger 400 med ett tydligt felmeddelande, aldrig tyst ignorerad.
   let discountCode: DiscountCodeRow | null = null
-  let priceOre = ticketType.price_ore
   if (discountCodeInput) {
     const { data: codeRow, error: codeError } = await supabase
       .from('discount_codes')
@@ -164,17 +254,24 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: validationError }, 400)
     }
     discountCode = codeRow as DiscountCodeRow
-    priceOre = applyDiscount(ticketType.price_ore, discountCode)
+    applyDiscountToLines(lines, discountCode)
   }
-  const discountAmountOre = ticketType.price_ore - priceOre
 
-  // Atomisk kapacitetsreservation - detta enda UPDATE-anrop är det som
-  // avgör om det finns plats, atomiskt via WHERE-villkoret i samma sats.
-  // Reserveras nu på biljettypen, inte på eventet.
-  const { data: reserved, error: reserveError } = await supabase.rpc(
-    'reserve_ticket_type_capacity',
-    { p_ticket_type_id: ticketType.id, p_qty: qty },
+  const totalOre = lines.reduce((sum, l) => sum + l.unitPriceAfterOre * l.qty, 0)
+  const discountAmountOre = lines.reduce(
+    (sum, l) => sum + (l.unitPriceOre - l.unitPriceAfterOre) * l.qty,
+    0,
   )
+
+  // Atomisk kapacitetsreservation för HELA kundvagnen i en enda kontroll
+  // mot eventets delade pool - nekas hela ordern om totalen inte får
+  // plats, även om en enskild rad för sig hade fått plats.
+  const itemsJson = parsedItems.map((i) => ({ ticket_type_id: i.ticketTypeId, qty: i.qty }))
+  const { data: reserved, error: reserveError } = await supabase.rpc('reserve_shared_capacity_multi', {
+    p_event_id: event.id,
+    p_items: itemsJson,
+    p_total_qty: totalQty,
+  })
 
   if (reserveError) {
     return jsonResponse({ error: `Kunde inte reservera platser: ${reserveError.message}` }, 500)
@@ -185,21 +282,18 @@ Deno.serve(async (req: Request) => {
 
   const expiresAt = new Date(Date.now() + CHECKOUT_EXPIRY_MINUTES * 60 * 1000)
 
-  // Skapa order i status "pending" - pris/moms fryses här (redan
-  // rabatterat om en kod tillämpades). discount_amount_ore är enbart för
-  // spårbarhet/visning, inte en andra beräkningskälla - price_ore är den
-  // bindande sanningen.
+  // orders är numera en header - ticket_type_id/price_ore/vat_rate/qty
+  // lämnas null (de finns kvar i schemat bara för historiska,
+  // förkundvagns-ordrar). total_ore + order_items är sanningen för nya
+  // köp.
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
       event_id: event.id,
-      ticket_type_id: ticketType.id,
       buyer_name: buyerName,
       buyer_email: buyerEmail,
-      qty,
       status: 'pending',
-      price_ore: priceOre,
-      vat_rate: ticketType.vat_rate,
+      total_ore: totalOre,
       expires_at: expiresAt.toISOString(),
       discount_code_id: discountCode?.id ?? null,
       discount_amount_ore: discountAmountOre,
@@ -207,13 +301,37 @@ Deno.serve(async (req: Request) => {
     .select()
     .single()
 
+  async function rollbackCapacity() {
+    await supabase.rpc('release_shared_capacity_multi', {
+      p_event_id: event.id,
+      p_items: itemsJson,
+      p_total_qty: totalQty,
+    })
+  }
+
   if (orderError || !order) {
-    // Rulla tillbaka kapacitetsreservationen om ordern inte kunde skapas.
-    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: ticketType.id, p_qty: qty })
+    await rollbackCapacity()
     return jsonResponse({ error: `Kunde inte skapa order: ${orderError?.message}` }, 500)
   }
 
-  // Skapa Stripe Checkout Session (Test mode - se _shared/stripe.ts).
+  const { error: itemsError } = await supabase.from('order_items').insert(
+    lines.map((l) => ({
+      order_id: order.id,
+      ticket_type_id: l.ticketTypeId,
+      qty: l.qty,
+      unit_price_ore: l.unitPriceAfterOre,
+      vat_rate: l.vatRate,
+    })),
+  )
+
+  if (itemsError) {
+    await supabase.from('orders').delete().eq('id', order.id)
+    await rollbackCapacity()
+    return jsonResponse({ error: `Kunde inte skapa orderrader: ${itemsError.message}` }, 500)
+  }
+
+  // Skapa Stripe Checkout Session (Test mode - se _shared/stripe.ts) - ett
+  // line_item per kundvagnsrad, med biljettypens namn i product_data.name.
   let session
   try {
     const stripe = createStripeClient()
@@ -221,46 +339,37 @@ Deno.serve(async (req: Request) => {
       mode: 'payment',
       customer_email: buyerEmail,
       client_reference_id: order.id,
-      line_items: [
-        {
-          quantity: qty,
-          price_data: {
-            currency: 'sek',
-            unit_amount: priceOre,
-            product_data: {
-              name: `${event.title} — ${ticketType.name}`,
-              description: event.venue ? `${event.venue}` : undefined,
-            },
+      line_items: lines.map((l) => ({
+        quantity: l.qty,
+        price_data: {
+          currency: 'sek',
+          unit_amount: l.unitPriceAfterOre,
+          product_data: {
+            name: `${event.title} — ${l.name}`,
+            description: event.venue ? `${event.venue}` : undefined,
           },
         },
-      ],
+      })),
       expires_at: Math.floor(expiresAt.getTime() / 1000),
       success_url: `${frontendBaseUrl}/#/kop/${event.slug}/klar?order=${order.id}`,
-      // Går tillbaka till köpsidan (inte bekräftelsesidan) om kunden avbryter
-      // i Stripe Checkout utan att betala - ordern förblir "pending" (den
-      // sätts inte "cancelled" av detta) och städas bort av
-      // checkout.session.expired-webhooken eller release-expired-orders när
-      // expires_at passeras, så kunden kan bara försöka igen direkt.
       cancel_url: `${frontendBaseUrl}/#/kop/${event.slug}`,
       metadata: {
         order_id: order.id,
         event_id: event.id,
-        ticket_type_id: ticketType.id,
       },
     })
   } catch (err) {
-    // Rulla tillbaka både kapacitetsreservationen och ordern om Stripe-
-    // anropet misslyckas, så att köparen inte lämnas med en pending-order
-    // som aldrig kommer kunna betalas.
+    await supabase.from('order_items').delete().eq('order_id', order.id)
     await supabase.from('orders').delete().eq('id', order.id)
-    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: ticketType.id, p_qty: qty })
+    await rollbackCapacity()
     const message = err instanceof Error ? err.message : 'Okänt Stripe-fel.'
     return jsonResponse({ error: `Kunde inte skapa Stripe Checkout-session: ${message}` }, 502)
   }
 
   if (!session.url) {
+    await supabase.from('order_items').delete().eq('order_id', order.id)
     await supabase.from('orders').delete().eq('id', order.id)
-    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: ticketType.id, p_qty: qty })
+    await rollbackCapacity()
     return jsonResponse({ error: 'Stripe returnerade ingen checkout-URL.' }, 502)
   }
 

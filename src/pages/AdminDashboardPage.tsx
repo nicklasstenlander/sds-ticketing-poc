@@ -38,7 +38,7 @@ export function AdminDashboardPage() {
   if (!authed) return <Navigate to="/admin" replace />
 
   const publishedEvents = (events ?? []).filter((e) => e.status !== 'cancelled')
-  const totalSold = publishedEvents.reduce((sum, e) => sum + e.ticket_types_summary.total_sold, 0)
+  const totalSold = publishedEvents.reduce((sum, e) => sum + e.sold_count, 0)
 
   return (
     <Layout wide>
@@ -65,8 +65,7 @@ export function AdminDashboardPage() {
 
       <div className="flex flex-col gap-4">
         {publishedEvents.map((event) => {
-          const summary = event.ticket_types_summary
-          const pct = summary.total_capacity > 0 ? Math.round((summary.total_sold / summary.total_capacity) * 100) : 0
+          const pct = event.capacity > 0 ? Math.round((event.sold_count / event.capacity) * 100) : 0
           return (
             <div key={event.id} className="card">
               <div className="flex justify-between items-baseline mb-4">
@@ -79,7 +78,7 @@ export function AdminDashboardPage() {
                 <div className="progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
               </div>
               <div className="text-[var(--text-muted)] text-sm">
-                {summary.total_sold} / {summary.total_capacity} sålda ·{' '}
+                {event.sold_count} / {event.capacity} sålda ·{' '}
                 {new Date(event.starts_at).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' })}
               </div>
             </div>

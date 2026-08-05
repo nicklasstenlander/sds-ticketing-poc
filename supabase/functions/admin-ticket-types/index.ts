@@ -6,9 +6,10 @@
 // separata funktioner - samma yta som resten av admin-API:et men slipper
 // tre nästan identiska edge functions för en så pass liten resurs.
 //
-// Kapacitetsspärr vid redigering: precis som events.capacity tidigare
-// (se admin-update-event, bevarat mönster) kan en biljettyps capacity
-// aldrig sättas lägre än dess sold_count.
+// Ingen capacity på biljettypen (rättelseordern 2026-08-05, delad
+// kapacitetspool) - kapacitet hanteras uteslutande på eventet
+// (admin-update-event), biljettyper har bara namn/pris/moms och ett
+// sold_count som enbart är rapportering.
 //
 // Radering: samma villkorade logik som event-radering (Tilläggsordern
 // avsnitt 5) - en biljettyp utan PAID-ordrar raderas, en med paid-ordrar
@@ -26,7 +27,6 @@ interface Body {
   name?: string
   price_ore?: number
   vat_rate?: number
-  capacity?: number
   sort_order?: number
 }
 
@@ -62,7 +62,6 @@ Deno.serve(async (req: Request) => {
     const name = (body.name ?? '').trim()
     const priceOre = Number(body.price_ore)
     const vatRate = body.vat_rate === undefined ? 6 : Number(body.vat_rate)
-    const capacity = Number(body.capacity)
 
     if (!eventId) return jsonResponse({ error: 'event_id krävs.' }, 400)
     if (!name) return jsonResponse({ error: 'Namn krävs.' }, 400)
@@ -71,9 +70,6 @@ Deno.serve(async (req: Request) => {
     }
     if (!VALID_VAT_RATES.includes(vatRate)) {
       return jsonResponse({ error: 'Momssats måste vara 0, 6, 12 eller 25 procent.' }, 400)
-    }
-    if (!Number.isInteger(capacity) || capacity < 1) {
-      return jsonResponse({ error: 'Platsantal måste vara ett heltal >= 1.' }, 400)
     }
 
     const { data: event, error: eventError } = await supabase
@@ -94,7 +90,6 @@ Deno.serve(async (req: Request) => {
         name,
         price_ore: priceOre,
         vat_rate: vatRate,
-        capacity,
         sort_order: Number.isInteger(body.sort_order) ? body.sort_order : 0,
       })
       .select()
@@ -136,19 +131,6 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: 'Momssats måste vara 0, 6, 12 eller 25 procent.' }, 400)
       }
       update.vat_rate = vatRate
-    }
-    if (body.capacity !== undefined) {
-      const capacity = Number(body.capacity)
-      if (!Number.isInteger(capacity) || capacity < 1) {
-        return jsonResponse({ error: 'Platsantal måste vara ett heltal >= 1.' }, 400)
-      }
-      if (capacity < current.sold_count) {
-        return jsonResponse(
-          { error: `Kapaciteten kan inte sättas lägre än antal sålda biljetter (${current.sold_count}).` },
-          400,
-        )
-      }
-      update.capacity = capacity
     }
     if (body.sort_order !== undefined && Number.isInteger(body.sort_order)) {
       update.sort_order = body.sort_order

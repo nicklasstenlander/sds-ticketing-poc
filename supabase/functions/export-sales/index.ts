@@ -1,13 +1,23 @@
 // export-sales
 //
 // Admin-skyddad exportfunktion (CSV och SIE4) för bokföring. Läser ENDAST
-// betalda ordrar (status = 'paid') och använder alltid ordrens egen
-// pris/moms-ögonblicksbild (orders.price_ore / orders.vat_rate) - ALDRIG
-// eventets nuvarande värden. Detta är avgörande: ändras ett events
-// momssats i efterhand ska redan exporterade/bokförda ordrar förbli
-// oförändrade vid en ny export (se migrationskommentaren i
-// 20260101000300_stripe_vat_export.sql och Definition of Done punkt 10 i
-// Tilläggsordern).
+// betalda ordrar (status = 'paid'), EN RAD PER ORDER_ITEM (Tilläggsordern
+// 2026-08-05, "Flera biljettyper i samma köp") - en order med två rader
+// (t.ex. 2 Ordinarie + 1 Barn) blir alltså två CSV-rader/momsposter, inte
+// en. Använder alltid radens egen pris/moms-ögonblicksbild
+// (order_items.unit_price_ore / vat_rate) - ALDRIG ticket_types nuvarande
+// värden. Detta är avgörande: ändras en biljettyps pris i efterhand ska
+// redan exporterade/bokförda ordrar förbli oförändrade vid en ny export.
+//
+// Gamla, förkundvagns-ordrar (innan denna ändring) har en backfillad
+// order_items-rad (se migrationen 20260106000100_order_items_cart.sql)
+// och dyker alltså upp här precis som nya kundvagnsordrar - ingen
+// specialhantering behövs.
+//
+// rabatt_ore visar ORDERNS totala rabatt (orders.discount_amount_ore) på
+// varje rad som hör till den ordern - det finns ingen radvis rabattsplit
+// i schemat (rabattkoder gäller alltid hela ordern, se Tilläggsordern
+// avsnitt 3/7), så samma totalbelopp upprepas om ordern har flera rader.
 //
 // GET export-sales?format=csv&scope=day&date=2026-01-12
 // GET export-sales?format=csv&scope=range&from=2026-01-01&to=2026-01-31
@@ -28,18 +38,33 @@ import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { encodeCp437 } from '../_shared/cp437.ts'
 
-interface PaidOrderRow {
+interface OrderItemRow {
   id: string
-  event_id: string
+  order_id: string
   qty: number
-  price_ore: number
+  unit_price_ore: number
   vat_rate: number
-  paid_at: string
-  stripe_session_id: string | null
-  discount_amount_ore: number
-  events: { title: string } | { title: string }[] | null
   ticket_types: { name: string } | { name: string }[] | null
-  discount_codes: { code: string } | { code: string }[] | null
+  orders:
+    | {
+        id: string
+        event_id: string
+        paid_at: string
+        stripe_session_id: string | null
+        discount_amount_ore: number
+        events: { title: string } | { title: string }[] | null
+        discount_codes: { code: string } | { code: string }[] | null
+      }
+    | {
+        id: string
+        event_id: string
+        paid_at: string
+        stripe_session_id: string | null
+        discount_amount_ore: number
+        events: { title: string } | { title: string }[] | null
+        discount_codes: { code: string } | { code: string }[] | null
+      }[]
+    | null
 }
 
 interface SaleRow {
@@ -75,22 +100,9 @@ function accountConfig() {
   }
 }
 
-function eventTitleOf(row: PaidOrderRow): string {
-  const rel = row.events
-  if (Array.isArray(rel)) return rel[0]?.title ?? 'Okänt event'
-  return rel?.title ?? 'Okänt event'
-}
-
-function ticketTypeNameOf(row: PaidOrderRow): string {
-  const rel = row.ticket_types
-  if (Array.isArray(rel)) return rel[0]?.name ?? '-'
-  return rel?.name ?? '-'
-}
-
-function discountCodeOf(row: PaidOrderRow): string {
-  const rel = row.discount_codes
-  if (Array.isArray(rel)) return rel[0]?.code ?? ''
-  return rel?.code ?? ''
+function single<T>(rel: T | T[] | null): T | null {
+  if (Array.isArray(rel)) return rel[0] ?? null
+  return rel
 }
 
 // Moms beräknas ur bruttobeloppet (priset kunden faktiskt betalade
@@ -103,26 +115,38 @@ function calcAmounts(bruttoOre: number, vatRate: number) {
   return { momsOre, nettoOre }
 }
 
-function toSaleRows(orders: PaidOrderRow[]): SaleRow[] {
-  return orders.map((o) => {
-    const bruttoOre = o.price_ore * o.qty
-    const { momsOre, nettoOre } = calcAmounts(bruttoOre, o.vat_rate)
-    return {
-      orderId: o.id,
-      eventTitle: eventTitleOf(o),
-      ticketTypeName: ticketTypeNameOf(o),
-      discountCode: discountCodeOf(o),
-      discountAmountOre: o.discount_amount_ore,
-      qty: o.qty,
-      priceOre: o.price_ore,
-      vatRate: o.vat_rate,
-      paidAt: o.paid_at,
-      stripeSessionId: o.stripe_session_id,
-      bruttoOre,
-      momsOre,
-      nettoOre,
-    }
-  })
+function toSaleRows(items: OrderItemRow[]): SaleRow[] {
+  const rows = items
+    .map((item) => {
+      const order = single(item.orders)
+      if (!order) return null
+      const ticketType = single(item.ticket_types)
+      const eventTitle = single(order.events)?.title ?? 'Okänt event'
+      const discountCode = single(order.discount_codes)?.code ?? ''
+
+      const bruttoOre = item.unit_price_ore * item.qty
+      const { momsOre, nettoOre } = calcAmounts(bruttoOre, item.vat_rate)
+
+      return {
+        orderId: order.id,
+        eventTitle,
+        ticketTypeName: ticketType?.name ?? '-',
+        discountCode,
+        discountAmountOre: order.discount_amount_ore,
+        qty: item.qty,
+        priceOre: item.unit_price_ore,
+        vatRate: item.vat_rate,
+        paidAt: order.paid_at,
+        stripeSessionId: order.stripe_session_id,
+        bruttoOre,
+        momsOre,
+        nettoOre,
+      } satisfies SaleRow
+    })
+    .filter((r): r is SaleRow => r !== null)
+
+  rows.sort((a, b) => a.paidAt.localeCompare(b.paidAt))
+  return rows
 }
 
 function csvEscape(value: string): string {
@@ -182,10 +206,10 @@ function sieDate(iso: string): string {
 function buildSie(rows: SaleRow[]): string {
   const cfg = accountConfig()
 
-  // En verifikation per (dag, betalsätt, momssats) - betalsätt är alltid
-  // "Kort (Stripe)" i denna PoC (ingen annan betalmetod stöds ännu, se
-  // Tilläggsordern avsnitt 9), men grupperingen är förberedd för fler
-  // betalsätt senare utan att verifikationslogiken behöver ändras.
+  // En verifikation per (dag, betalsätt, momssats), nu på order_items-
+  // nivå istället för orders-nivå - en order med blandade momssatser
+  // (olika biljettyper med olika moms) fördelas redan korrekt tack vare
+  // grupperingen, samma logik som innan bara med fler, mindre rader.
   const groups = new Map<string, SaleRow[]>()
   for (const row of rows) {
     const key = `${sieDate(row.paidAt)}|Stripe|${row.vatRate}`
@@ -232,7 +256,7 @@ function buildSie(rows: SaleRow[]): string {
     // Nollbeloppsgrupper (t.ex. ett gratis testköp, price_ore = 0) ger en
     // helt tom verifikation - balanserar tekniskt (0 = 0), men är bara
     // brus i bokföringen. Hoppa över den gruppen helt i SIE-läget. Gäller
-    // INTE CSV-exporten (se buildCsv) - där är nollbelopps-ordrar en
+    // INTE CSV-exporten (se buildCsv) - där är nollbelopps-rader en
     // informativ rad, inte en bokföringspost som måste balansera.
     if (brutto === 0) continue
 
@@ -296,13 +320,16 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createAdminClient()
 
+  // order_items är grunden nu (en rad per biljettyp i en order), joinad
+  // med orders (!inner så att filtren på status/paid_at/event_id nedan
+  // faktiskt begränsar träffmängden, inte bara en efterföljande null-
+  // relation) och ticket_types för namnet.
   let query = supabase
-    .from('orders')
+    .from('order_items')
     .select(
-      'id, event_id, qty, price_ore, vat_rate, paid_at, stripe_session_id, discount_amount_ore, events(title), ticket_types(name), discount_codes(code)',
+      'id, order_id, qty, unit_price_ore, vat_rate, ticket_types(name), orders!inner(id, event_id, paid_at, stripe_session_id, status, discount_amount_ore, events(title), discount_codes(code))',
     )
-    .eq('status', 'paid')
-    .order('paid_at', { ascending: true })
+    .eq('orders.status', 'paid')
 
   if (scope === 'day') {
     const date = url.searchParams.get('date')
@@ -311,7 +338,7 @@ Deno.serve(async (req: Request) => {
     }
     const start = `${date}T00:00:00.000Z`
     const end = new Date(new Date(start).getTime() + 24 * 60 * 60 * 1000).toISOString()
-    query = query.gte('paid_at', start).lt('paid_at', end)
+    query = query.gte('orders.paid_at', start).lt('orders.paid_at', end)
   } else if (scope === 'range') {
     const from = url.searchParams.get('from')
     const to = url.searchParams.get('to')
@@ -320,13 +347,13 @@ Deno.serve(async (req: Request) => {
     }
     const start = `${from}T00:00:00.000Z`
     const end = new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000).toISOString()
-    query = query.gte('paid_at', start).lt('paid_at', end)
+    query = query.gte('orders.paid_at', start).lt('orders.paid_at', end)
   } else {
     const eventId = url.searchParams.get('event_id')
     if (!eventId) {
       return jsonResponse({ error: 'event_id krävs för scope=event.' }, 400)
     }
-    query = query.eq('event_id', eventId)
+    query = query.eq('orders.event_id', eventId)
   }
 
   const { data, error } = await query
@@ -334,7 +361,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Databasfel: ${error.message}` }, 500)
   }
 
-  const rows = toSaleRows((data ?? []) as PaidOrderRow[])
+  const rows = toSaleRows((data ?? []) as unknown as OrderItemRow[])
 
   if (format === 'csv') {
     const csv = buildCsv(rows)
