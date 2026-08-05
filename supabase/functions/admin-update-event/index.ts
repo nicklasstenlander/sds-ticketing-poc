@@ -61,7 +61,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: current, error: currentError } = await supabase
     .from('events')
-    .select('id, status, sold_count, organizer_id')
+    .select('id, status, sold_count, organizer_id, starts_at')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -121,6 +121,23 @@ Deno.serve(async (req: Request) => {
       )
     }
     if (body.status === 'published') {
+      // Effektivt datum efter DENNA request: antingen ett nytt starts_at
+      // som skickas i samma anrop, eller det som redan ligger lagrat.
+      // Ett dublicerat event (Tilläggsordern "Duplicera event"
+      // 2026-08-05) skapas medvetet utan datum - samma spärr som redan
+      // fanns för biljettyper gäller nu datumet också, annars skulle en
+      // kopia kunna publiceras (och synas publikt) utan att någon
+      // uttryckligen satt en tid för den. DB-constrainten
+      // events_published_requires_starts_at fångar detta även om denna
+      // kodväg missas, men felmeddelandet här är mycket tydligare för
+      // adminanvändaren än ett rått databasfel.
+      const effectiveStartsAt = body.starts_at !== undefined ? update.starts_at : current.starts_at
+      if (!effectiveStartsAt) {
+        return jsonResponse(
+          { error: 'Eventet måste ha ett datum satt innan det kan publiceras.' },
+          400,
+        )
+      }
       const { count: ticketTypeCount, error: ticketTypeCountError } = await supabase
         .from('ticket_types')
         .select('id', { count: 'exact', head: true })

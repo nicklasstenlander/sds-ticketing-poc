@@ -75,6 +75,9 @@ verify_jwt = true
 [functions.admin-list-organizers]
 verify_jwt = true
 
+[functions.admin-duplicate-event]
+verify_jwt = true
+
 [functions.stripe-webhook]
 verify_jwt = false
 

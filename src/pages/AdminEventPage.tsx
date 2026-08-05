@@ -74,10 +74,12 @@ export function AdminEventPage() {
         <div className="mt-4">
           <h1 className="text-2xl font-bold">{data.event.title}</h1>
           <p className="text-slate-500 mb-1">
-            {new Date(data.event.starts_at).toLocaleString('sv-SE', {
-              dateStyle: 'long',
-              timeStyle: 'short',
-            })}
+            {data.event.starts_at
+              ? new Date(data.event.starts_at).toLocaleString('sv-SE', {
+                  dateStyle: 'long',
+                  timeStyle: 'short',
+                })
+              : 'Inget datum satt ännu — sätt det på admin-huvudsidan innan publicering'}
             {data.event.venue ? ` · ${data.event.venue}` : ''}
           </p>
           {/* Kapaciteten är en delad pott för HELA eventet (rättelseordern

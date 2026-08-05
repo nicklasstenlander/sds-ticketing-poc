@@ -18,6 +18,11 @@ interface DeleteEventResponse {
   result: 'deleted' | 'cancelled'
 }
 
+interface DuplicateEventResponse {
+  event_id: string
+  slug: string
+}
+
 interface OrganizerSummary {
   id: string
   name: string
@@ -168,6 +173,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [creatingNew, setCreatingNew] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
   const editingEvent = events?.find((e) => e.id === editingEventId) ?? null
@@ -175,12 +181,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const formSectionRef = useRef<HTMLDivElement>(null)
 
-  async function loadEvents() {
+  // Returnerar den hämtade listan (inte bara void) sa att anropare som
+  // behover hitta en specifik rad direkt efter en omladdning (t.ex.
+  // handleDuplicate nedan) slipper racea mot Reacts asynkrona setState -
+  // events-variabeln i komponentens closure speglar INTE nödvändigtvis
+  // det nya state:et forran nasta rendering.
+  async function loadEvents(): Promise<AdminEventRow[]> {
     try {
       const res = await callFunction<AdminEventsResponse>('admin-events', { auth: true })
       setEvents(res.events)
+      return res.events
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kunde inte hämta events.')
+      return []
     }
   }
 
@@ -239,7 +252,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setEditingEventId(event.id)
     setTitle(event.title)
     setVenue(event.venue ?? '')
-    setStartsAt(toDatetimeLocalValue(event.starts_at))
+    // Ett dublicerat event har medvetet inget datum satt än - lämna
+    // fältet tomt istället för att krascha eller gissa (new Date(null)
+    // skulle tyst tolkas som 1970-01-01, ett förvirrande fel-värde).
+    setStartsAt(event.starts_at ? toDatetimeLocalValue(event.starts_at) : '')
     setCapacity(event.capacity)
     setCreateError(null)
     scrollToFormOnNarrowScreen()
@@ -320,6 +336,33 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setRowError(err instanceof Error ? err.message : 'Kunde inte radera eventet.')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  // Duplicerar ett event (Tilläggsordern "Duplicera event" 2026-08-05).
+  // Ingen bekräftelsedialog - till skillnad från radering är en
+  // duplicering ofarlig att ångra, ta bara bort kopian igen om den inte
+  // behövs. Efter lyckad duplicering laddas listan om och redigerings-
+  // formuläret öppnas direkt för den nya kopian (samma formulär som
+  // "Redigera" använder), så att datumet - obligatoriskt i det fältet,
+  // se kravet nedan - kan sättas i samma svep. Länken "Hantera
+  // biljettyper →" i formuläret leder vidare till affischuppladdning.
+  async function handleDuplicate(event: AdminEventRow) {
+    setDuplicatingId(event.id)
+    setRowError(null)
+    try {
+      const res = await callFunction<DuplicateEventResponse>('admin-duplicate-event', {
+        auth: true,
+        method: 'POST',
+        body: { event_id: event.id },
+      })
+      const refreshed = await loadEvents()
+      const newEvent = refreshed.find((e) => e.id === res.event_id)
+      if (newEvent) startEdit(newEvent)
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Kunde inte duplicera eventet.')
+    } finally {
+      setDuplicatingId(null)
     }
   }
 
@@ -415,10 +458,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <Link to={`/admin/event/${event.id}`} className="min-w-0 flex-1 hover:underline">
                       <div className="font-semibold text-[var(--text)]">{event.title}</div>
                       <div className="text-sm text-[var(--text-muted)]">
-                        {new Date(event.starts_at).toLocaleString('sv-SE', {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        })}
+                        {event.starts_at
+                          ? new Date(event.starts_at).toLocaleString('sv-SE', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : 'Inget datum satt'}
                         {event.venue ? ` · ${event.venue}` : ''}
                         {' · '}
                         {summary.ticket_type_count === 0
@@ -462,6 +507,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         className="text-slate-600 hover:text-slate-900 underline"
                       >
                         {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicate(event)}
+                        disabled={duplicatingId === event.id}
+                        className="text-slate-600 hover:text-slate-900 underline disabled:opacity-50"
+                      >
+                        {duplicatingId === event.id ? 'Duplicerar…' : 'Duplicera'}
                       </button>
                       <button
                         type="button"

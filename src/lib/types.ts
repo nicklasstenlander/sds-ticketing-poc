@@ -5,7 +5,13 @@ export interface EventRow {
   slug: string
   title: string
   venue: string | null
-  starts_at: string
+  // Nullable: ett dublicerat event (Tilläggsordern "Duplicera event"
+  // 2026-08-05) skapas MEDVETET utan datum - status='draft' garanterar
+  // (både i kod och som DB-constraint, se migrationen) att ett event
+  // utan datum aldrig kan publiceras eller visas i den publika listan,
+  // så publika sidor (EventsPage/PurchasePage) ser i praktiken aldrig
+  // null här - bara admin-vyerna behöver hantera det.
+  starts_at: string | null
   status: EventStatus
   created_at: string
   // Delad kapacitetspool (rättelseordern 2026-08-05) - eventet har ETT

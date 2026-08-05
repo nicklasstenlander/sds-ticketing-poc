@@ -170,10 +170,16 @@ export function PurchasePage() {
       <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
       <p className="text-[var(--text-muted)] mb-1">
-        {new Date(event.starts_at).toLocaleString('sv-SE', {
-          dateStyle: 'long',
-          timeStyle: 'short',
-        })}
+        {/* starts_at är null bara för ett ännu opublicerat dublicerat
+            event (Tilläggsordern 2026-08-05) - RLS gör att den här sidan
+            i praktiken aldrig når hit för ett sådant event, men typen
+            tillåter null så vi faller tillbaka defensivt. */}
+        {event.starts_at
+          ? new Date(event.starts_at).toLocaleString('sv-SE', {
+              dateStyle: 'long',
+              timeStyle: 'short',
+            })
+          : ''}
         {event.venue ? ` · ${event.venue}` : ''}
         {(() => {
           const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers

@@ -81,8 +81,10 @@ export function AdminDashboardPage() {
                 <div className="progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
               </div>
               <div className="text-[var(--text-muted)] text-sm">
-                {event.sold_count} / {event.capacity} sålda ·{' '}
-                {new Date(event.starts_at).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' })}
+                {event.sold_count} / {event.capacity} sålda
+                {event.starts_at
+                  ? ` · ${new Date(event.starts_at).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  : ''}
               </div>
             </div>
           )

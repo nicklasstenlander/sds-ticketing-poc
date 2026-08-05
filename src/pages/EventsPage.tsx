@@ -89,10 +89,17 @@ export function EventsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-[var(--text)]">{event.title}</div>
                   <div className="text-sm text-[var(--text-muted)] mb-3">
-                    {new Date(event.starts_at).toLocaleString('sv-SE', {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
+                    {/* starts_at är null bara för ett ännu opublicerat
+                        dublicerat event (Tilläggsordern 2026-08-05) - RLS
+                        (status = 'published') gör att den här listan i
+                        praktiken aldrig innehåller ett sådant event, men
+                        typen tillåter null så vi faller tillbaka defensivt. */}
+                    {event.starts_at
+                      ? new Date(event.starts_at).toLocaleString('sv-SE', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })
+                      : ''}
                     {event.venue ? ` · ${event.venue}` : ''}
                     {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
                   </div>
