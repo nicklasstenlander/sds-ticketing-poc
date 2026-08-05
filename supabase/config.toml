@@ -2,8 +2,11 @@
 #
 # verify_jwt = false på VARJE funktion nedan, av samma anledning för alla:
 # ingen av dem tar emot en Supabase-utfärdad JWT i Authorization-headern.
-#   - create-order / order-status: publika, ingen Authorization-header alls
-#     (order-status tar emot order_id som query-param).
+#   - create-order / order-status / public-events: publika, ingen
+#     Authorization-header alls (order-status tar emot order_id som
+#     query-param; public-events är avsiktligt tokenfri - se dess egen
+#     filkommentar för motivering, den är tänkt att anropas direkt från en
+#     Squarespace Code Block där en hemlig token inte kan gömmas).
 #   - scan-ticket / list-events: statisk SCANNER_BEARER_TOKEN (iOS-appen).
 #   - admin-auth: publik (tar emot PIN-koden i body, inte headern).
 #   - admin-create-event / admin-update-event / admin-delete-event /
@@ -37,6 +40,9 @@ verify_jwt = false
 [functions.list-events]
 verify_jwt = false
 
+[functions.public-events]
+verify_jwt = false
+
 [functions.admin-auth]
 verify_jwt = false
 
@@ -53,6 +59,12 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.admin-event-tickets]
+verify_jwt = false
+
+[functions.admin-ticket-types]
+verify_jwt = false
+
+[functions.admin-discount-codes]
 verify_jwt = false
 
 [functions.stripe-webhook]
