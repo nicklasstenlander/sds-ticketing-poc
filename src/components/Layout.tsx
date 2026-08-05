@@ -17,7 +17,7 @@ export function Layout({ children, wide = false }: LayoutProps) {
       <header className="bg-[var(--surface)] shadow-[var(--shadow-card)]">
         <div className={`mx-auto ${widthClass} px-4 py-4 flex items-center justify-between`}>
           <Link to="/" className="font-bold text-[var(--text)]">
-            SODSS Biljett (PoC)
+            ScenPass
           </Link>
           <Link to="/admin" className="text-sm link-accent">
             Admin
