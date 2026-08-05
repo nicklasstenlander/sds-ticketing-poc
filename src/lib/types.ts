@@ -13,6 +13,10 @@ export interface EventRow {
   // per typ.
   capacity: number
   sold_count: number
+  // Affischer (Tilläggsordern 2026-08-05) - nullable, ett event kan
+  // publiceras utan affisch.
+  poster_landscape_url: string | null
+  poster_portrait_url: string | null
 }
 
 export interface TicketTypeSummary {

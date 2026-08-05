@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { callFunction, getAdminToken } from '../lib/functionsApi'
@@ -84,6 +84,13 @@ export function AdminEventPage() {
             {data.event.sold_count} / {data.event.capacity} sålda totalt
           </p>
 
+          <PostersSection
+            eventId={data.event.id}
+            posterLandscapeUrl={data.event.poster_landscape_url}
+            posterPortraitUrl={data.event.poster_portrait_url}
+            onChange={load}
+          />
+
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
 
           <h2 className="font-semibold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
@@ -134,6 +141,174 @@ export function AdminEventPage() {
         </div>
       )}
     </Layout>
+  )
+}
+
+// Affischer (Tilläggsordern 2026-08-05): en liggande (1920x1080) och en
+// stående (1080x1920) affisch per event. Måtten valideras HÄR, klientsidigt,
+// innan filen ens skickas iväg - servern (admin-upload-poster) gör
+// medvetet ingen dimensionskontroll (kostsamt att avkoda en bild bara för
+// att mäta den i en Edge Function), se Tilläggsordern avsnitt 3/4.
+const POSTER_SPECS: Record<'landscape' | 'portrait', { w: number; h: number; label: string }> = {
+  landscape: { w: 1920, h: 1080, label: 'liggande, 1920×1080' },
+  portrait: { w: 1080, h: 1920, label: 'stående, 1080×1920' },
+}
+
+const ALLOWED_POSTER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+function checkImageDimensions(file: File, expected: { w: number; h: number }): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const tolerance = 0.05
+      const okW = Math.abs(img.naturalWidth - expected.w) / expected.w <= tolerance
+      const okH = Math.abs(img.naturalHeight - expected.h) / expected.h <= tolerance
+      resolve(okW && okH)
+      URL.revokeObjectURL(img.src)
+    }
+    img.onerror = () => resolve(false)
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('Kunde inte läsa filen.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function PostersSection({
+  eventId,
+  posterLandscapeUrl,
+  posterPortraitUrl,
+  onChange,
+}: {
+  eventId: string
+  posterLandscapeUrl: string | null
+  posterPortraitUrl: string | null
+  onChange: () => Promise<void>
+}) {
+  return (
+    <section className="mb-8">
+      <h2 className="font-semibold mb-3">Affischer</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <PosterUploadField
+          eventId={eventId}
+          orientation="landscape"
+          currentUrl={posterLandscapeUrl}
+          onChange={onChange}
+        />
+        <PosterUploadField
+          eventId={eventId}
+          orientation="portrait"
+          currentUrl={posterPortraitUrl}
+          onChange={onChange}
+        />
+      </div>
+    </section>
+  )
+}
+
+function PosterUploadField({
+  eventId,
+  orientation,
+  currentUrl,
+  onChange,
+}: {
+  eventId: string
+  orientation: 'landscape' | 'portrait'
+  currentUrl: string | null
+  onChange: () => Promise<void>
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const spec = POSTER_SPECS[orientation]
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // så samma fil kan väljas igen om uppladdningen misslyckas
+    if (!file) return
+
+    setError(null)
+
+    if (!ALLOWED_POSTER_TYPES.has(file.type)) {
+      setError('Bilden måste vara JPEG, PNG eller WebP.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Bilden är för stor (max 5 MB).')
+      return
+    }
+
+    const dimensionsOk = await checkImageDimensions(file, spec)
+    if (!dimensionsOk) {
+      const dims = await new Promise<{ w: number; h: number } | null>((resolve) => {
+        const img = new Image()
+        img.onload = () => {
+          resolve({ w: img.naturalWidth, h: img.naturalHeight })
+          URL.revokeObjectURL(img.src)
+        }
+        img.onerror = () => resolve(null)
+        img.src = URL.createObjectURL(file)
+      })
+      setError(
+        dims
+          ? `Bilden är ${dims.w}×${dims.h} — ladda upp en ${spec.label}-bild.`
+          : `Kunde inte läsa bildens mått — ladda upp en ${spec.label}-bild.`,
+      )
+      return
+    }
+
+    setUploading(true)
+    try {
+      const fileBase64 = await fileToBase64(file)
+      await callFunction('admin-upload-poster', {
+        auth: true,
+        method: 'POST',
+        body: {
+          event_id: eventId,
+          orientation,
+          file_base64: fileBase64,
+          content_type: file.type,
+        },
+      })
+      await onChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kunde inte ladda upp affischen.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="border border-slate-200 rounded-lg p-4 bg-white">
+      <label className="block text-sm font-medium mb-2">
+        Affisch ({spec.label})
+      </label>
+      {currentUrl && (
+        <img
+          src={currentUrl}
+          alt={`${spec.label}-affisch`}
+          className={
+            orientation === 'landscape'
+              ? 'w-full aspect-video object-cover rounded mb-3 border border-slate-200'
+              : 'w-32 aspect-[9/16] object-cover rounded mb-3 border border-slate-200'
+          }
+        />
+      )}
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={handleFileChange}
+        disabled={uploading}
+        className="text-sm"
+      />
+      {uploading && <p className="text-slate-500 text-xs mt-2">Laddar upp…</p>}
+      {error && <p className="text-red-600 text-xs mt-2">{error}</p>}
+    </div>
   )
 }
 

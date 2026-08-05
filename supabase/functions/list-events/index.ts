@@ -33,7 +33,7 @@ Deno.serve(async (req: Request) => {
   // behövs längre här.
   const { data, error } = await supabase
     .from('events')
-    .select('id, title, venue, starts_at, capacity, sold_count')
+    .select('id, title, venue, starts_at, capacity, sold_count, poster_landscape_url, poster_portrait_url')
     .eq('status', 'published')
     .order('starts_at', { ascending: true })
 
@@ -78,6 +78,8 @@ Deno.serve(async (req: Request) => {
     capacity: e.capacity,
     sold_count: e.sold_count,
     checked_in_count: checkedInCounts.get(e.id) ?? 0,
+    poster_landscape_url: e.poster_landscape_url,
+    poster_portrait_url: e.poster_portrait_url,
   }))
 
   return jsonResponse({ events })

@@ -154,6 +154,15 @@ export function PurchasePage() {
 
   return (
     <Layout>
+      {/* Hero-affisch (liggande) om en är uppladdad (Tilläggsordern
+          2026-08-05) - annars samma utseende som innan, utan bild. */}
+      {event.poster_landscape_url && (
+        <img
+          src={event.poster_landscape_url}
+          alt=""
+          className="w-full aspect-video object-cover rounded-[var(--radius-sm)] mb-6 border border-[var(--border)]"
+        />
+      )}
       <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
       <p className="text-[var(--text-muted)] mb-1">

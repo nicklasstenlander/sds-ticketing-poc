@@ -15,7 +15,7 @@
 // slug (som redan är tänkt att vara publik, den utgör själva köp-URL:en).
 //
 // GET public-events (inga query-params, inga headers)
-// -> { events: { slug, title, venue, date, from_price_ore }[] }
+// -> { events: { slug, title, venue, date, from_price_ore, poster_landscape_url, poster_portrait_url }[] }
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
@@ -26,6 +26,8 @@ interface PublicEvent {
   venue: string | null
   date: string | null
   from_price_ore: number | null
+  poster_landscape_url: string | null
+  poster_portrait_url: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -40,7 +42,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: events, error: eventsError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status')
+    .select('id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url')
     .eq('status', 'published')
     .order('starts_at', { ascending: true })
 
@@ -78,6 +80,8 @@ Deno.serve(async (req: Request) => {
     venue: ev.venue,
     date: toIso8601Seconds(ev.starts_at),
     from_price_ore: minPriceByEventId.get(ev.id) ?? null,
+    poster_landscape_url: ev.poster_landscape_url,
+    poster_portrait_url: ev.poster_portrait_url,
   }))
 
   return jsonResponse({ events: result }, 200)

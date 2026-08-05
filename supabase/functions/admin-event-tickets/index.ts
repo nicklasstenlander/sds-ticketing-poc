@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count')
+    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url')
     .eq('id', eventId)
     .maybeSingle()
 

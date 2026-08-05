@@ -64,17 +64,26 @@ export function EventsPage() {
           return (
             <li key={event.id} className="card">
               <div className="flex items-center gap-5">
-                {/* Bild-placeholder - mockupen använder en diagonalrandig
-                    yta istället för en riktig bild, eftersom event inte
-                    har någon bilduppladdning i denna version. */}
-                <div
-                  className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)]"
-                  style={{
-                    background:
-                      'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
-                  }}
-                  aria-hidden="true"
-                />
+                {/* Affisch (liggande) som kortbild om en är uppladdad
+                    (Tilläggsordern 2026-08-05) - annars samma
+                    diagonalrandiga platshållare som innan, så kort utan
+                    affisch inte ser trasiga/ofärdiga ut. */}
+                {event.poster_landscape_url ? (
+                  <img
+                    src={event.poster_landscape_url}
+                    alt=""
+                    className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)] object-cover"
+                  />
+                ) : (
+                  <div
+                    className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)]"
+                    style={{
+                      background:
+                        'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-[var(--text)]">{event.title}</div>
                   <div className="text-sm text-[var(--text-muted)] mb-3">

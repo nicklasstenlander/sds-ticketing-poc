@@ -67,6 +67,9 @@ verify_jwt = false
 [functions.admin-discount-codes]
 verify_jwt = false
 
+[functions.admin-upload-poster]
+verify_jwt = false
+
 [functions.stripe-webhook]
 verify_jwt = false
 

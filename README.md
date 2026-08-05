@@ -222,6 +222,7 @@ supabase functions deploy admin-event-tickets --no-verify-jwt
 supabase functions deploy admin-ticket-types --no-verify-jwt
 supabase functions deploy admin-discount-codes --no-verify-jwt
 supabase functions deploy public-events --no-verify-jwt
+supabase functions deploy admin-upload-poster --no-verify-jwt
 ```
 
 (Eller `supabase functions deploy --no-verify-jwt` utan namn för att
