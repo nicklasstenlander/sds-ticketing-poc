@@ -115,7 +115,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, event_id, buyer_name, buyer_email, qty, status')
+    .select('id, event_id, ticket_type_id, buyer_name, buyer_email, qty, status, discount_code_id')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -158,6 +158,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const ticketRows = ticketCodes.map((code) => ({
     order_id: order.id,
     event_id: event.id,
+    ticket_type_id: order.ticket_type_id,
     ticket_code: code,
     holder_name: order.buyer_name,
     status: 'valid' as const,
@@ -171,6 +172,22 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   if (ticketsError || !tickets) {
     console.error('Kunde inte skapa biljetter för betald order', order.id, ticketsError?.message)
     return
+  }
+
+  // Rabattkodens used_count ökas bara vid bekräftad betalning (här), aldrig
+  // i create-order - annars förbrukas koden av övergivna checkouts. Ingen
+  // atomisk RPC krävs (till skillnad från kapacitetsreservationen): en
+  // dubbelräkning här skulle bara göra en kods max_uses marginellt för
+  // sträng, aldrig släppa igenom fler användningar än tillåtet, och
+  // idempotensspärren (webhook_events) gör att detta normalt bara körs en
+  // gång per order ändå.
+  if (order.discount_code_id) {
+    const { error: discountUpdateError } = await supabase.rpc('increment_discount_code_used_count', {
+      p_discount_code_id: order.discount_code_id,
+    })
+    if (discountUpdateError) {
+      console.error('Kunde inte öka used_count för rabattkod', order.discount_code_id, discountUpdateError.message)
+    }
   }
 
   const ticketsWithQr: { ticket_code: string; qrUrl: string }[] = []
@@ -228,7 +245,7 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, event_id, qty, status')
+    .select('id, ticket_type_id, qty, status')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -246,7 +263,9 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
     return
   }
 
-  await supabase.rpc('release_event_capacity', { p_event_id: order.event_id, p_qty: order.qty })
+  if (order.ticket_type_id) {
+    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: order.ticket_type_id, p_qty: order.qty })
+  }
 }
 
 Deno.serve(async (req: Request) => {

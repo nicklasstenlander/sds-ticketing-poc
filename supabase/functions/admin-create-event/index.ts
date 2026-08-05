@@ -3,6 +3,13 @@
 // Skapar ett nytt event. Kräver en giltig admin-sessionstoken (utfärdad av
 // admin-auth) i Authorization-headern. Skriver med service role-nyckeln,
 // eftersom anon-nyckeln inte har någon INSERT-policy på events.
+//
+// Pris/moms/kapacitet skapas INTE här längre - de hör till biljettyper
+// (ticket_types), inte eventet, se admin-ticket-types. Ett nytt event
+// skapas alltid som "draft" oavsett vad som skickas i status, tills minst
+// en biljettyp finns (se admin-update-event, publiceringsspärren i
+// avsnitt 5 av Tilläggsordern) - ett event utan biljettyper går inte att
+// publicera.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -12,14 +19,8 @@ interface CreateEventBody {
   title?: string
   venue?: string
   starts_at?: string
-  capacity?: number
   slug?: string
-  status?: 'draft' | 'published'
-  price_ore?: number
-  vat_rate?: number
 }
-
-const VALID_VAT_RATES = [0, 6, 12, 25]
 
 function slugify(input: string): string {
   return input
@@ -60,28 +61,10 @@ Deno.serve(async (req: Request) => {
   const title = (body.title ?? '').trim()
   const venue = (body.venue ?? '').trim()
   const startsAt = (body.starts_at ?? '').trim()
-  const capacity = Number(body.capacity)
-  const status = body.status === 'draft' ? 'draft' : 'published'
 
   if (!title) return jsonResponse({ error: 'Titel krävs.' }, 400)
   if (!startsAt || Number.isNaN(Date.parse(startsAt))) {
     return jsonResponse({ error: 'Ogiltigt datum/tid.' }, 400)
-  }
-  if (!Number.isInteger(capacity) || capacity < 1) {
-    return jsonResponse({ error: 'Platsantal måste vara ett heltal >= 1.' }, 400)
-  }
-
-  // price_ore/vat_rate: pris i öre (kronor * 100, konverterat i frontend
-  // innan anropet) och momssats i procent. Momssats defaultar till 6 %
-  // (standard för scenframträdande/kulturevenemang) om inget skickas.
-  const priceOre = body.price_ore === undefined ? 0 : Number(body.price_ore)
-  const vatRate = body.vat_rate === undefined ? 6 : Number(body.vat_rate)
-
-  if (!Number.isInteger(priceOre) || priceOre < 0) {
-    return jsonResponse({ error: 'Pris måste vara ett heltal (öre) >= 0.' }, 400)
-  }
-  if (!VALID_VAT_RATES.includes(vatRate)) {
-    return jsonResponse({ error: 'Momssats måste vara 0, 6, 12 eller 25 procent.' }, 400)
   }
 
   const baseSlug = body.slug?.trim() ? slugify(body.slug) : slugify(title)
@@ -101,6 +84,8 @@ Deno.serve(async (req: Request) => {
     slug = `${baseSlug}-${attempt}`
   }
 
+  // Skapas alltid som "draft" - publicering sker via admin-update-event,
+  // som spärrar publicering tills minst en biljettyp finns.
   const { data, error } = await supabase
     .from('events')
     .insert({
@@ -108,10 +93,7 @@ Deno.serve(async (req: Request) => {
       title,
       venue: venue || null,
       starts_at: new Date(startsAt).toISOString(),
-      capacity,
-      status,
-      price_ore: priceOre,
-      vat_rate: vatRate,
+      status: 'draft',
     })
     .select()
     .single()
@@ -120,8 +102,6 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte skapa event: ${error.message}` }, 500)
   }
 
-  // Samma ISO 8601-format (UTC, inga fraktionella sekunder) som resten av
-  // API:et - se _shared/time.ts.
   const formattedEvent = {
     ...data,
     starts_at: toIso8601Seconds(data.starts_at),

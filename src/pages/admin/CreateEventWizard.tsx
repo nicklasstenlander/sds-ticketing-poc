@@ -14,11 +14,28 @@ const VAT_OPTIONS = [
   { value: 0, label: '0 %' },
 ]
 
+interface DraftTicketType {
+  key: number
+  name: string
+  priceKr: number
+  vatRate: number
+  capacity: number
+}
+
+let nextKey = 1
+function newTicketType(overrides: Partial<DraftTicketType> = {}): DraftTicketType {
+  return { key: nextKey++, name: '', priceKr: 295, vatRate: 6, capacity: 150, ...overrides }
+}
+
 // 3-stegs skapandeflöde för nya event, enligt ScenPass-designmockupen
-// (avsnitt 4). Redigering av BEFINTLIGA event använder fortfarande det
-// direkta enstegsformuläret i AdminPage.tsx - en wizard är onödig friktion
-// för att ändra ett fält. Publicerar mot riktig admin-create-event, ingen
-// lokal fejk-state.
+// (avsnitt 4), uppdaterat för biljettyper (Tilläggsordern avsnitt 5).
+// Steg 2 "Lägg till biljetter" bygger nu upp EN ELLER FLERA biljettyper
+// (namn, pris, moms, kapacitet var för sig) istället för ett enda
+// pris/kapacitetspar på eventet självt. Publicera-steget skapar eventet
+// som draft, skapar varje biljettyp, och publicerar sist - misslyckas
+// något steg efter att eventet redan skapats stannar det kvar som draft
+// (syns i admin-listan, kan färdigställas/publiceras manuellt därifrån)
+// istället för att tyst försvinna.
 export function CreateEventWizard({
   onCreated,
   onClose,
@@ -35,9 +52,7 @@ export function CreateEventWizard({
   const [venue, setVenue] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
-  const [capacity, setCapacity] = useState(150)
-  const [priceKr, setPriceKr] = useState(295)
-  const [vatRate, setVatRate] = useState(6)
+  const [ticketTypes, setTicketTypes] = useState<DraftTicketType[]>([newTicketType({ name: 'Ordinarie' })])
 
   const steps = [
     { num: 1, label: 'Skapa föreställning' },
@@ -50,9 +65,7 @@ export function CreateEventWizard({
     setVenue('')
     setDate('')
     setTime('')
-    setCapacity(150)
-    setPriceKr(295)
-    setVatRate(6)
+    setTicketTypes([newTicketType({ name: 'Ordinarie' })])
     setError(null)
   }
 
@@ -63,6 +76,9 @@ export function CreateEventWizard({
   }
 
   const step1Valid = title.trim().length > 0 && date.length > 0 && time.length > 0
+  const step2Valid =
+    ticketTypes.length > 0 &&
+    ticketTypes.every((t) => t.name.trim().length > 0 && t.capacity >= 1 && t.priceKr >= 0)
 
   function goNext(e?: FormEvent) {
     e?.preventDefault()
@@ -72,26 +88,48 @@ export function CreateEventWizard({
     setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s))
   }
 
+  function updateTicketType(key: number, patch: Partial<DraftTicketType>) {
+    setTicketTypes((types) => types.map((t) => (t.key === key ? { ...t, ...patch } : t)))
+  }
+  function addTicketType() {
+    setTicketTypes((types) => [...types, newTicketType({ name: '' })])
+  }
+  function removeTicketType(key: number) {
+    setTicketTypes((types) => (types.length > 1 ? types.filter((t) => t.key !== key) : types))
+  }
+
   async function handlePublish() {
     setSubmitting(true)
     setError(null)
     try {
       const startsAt = new Date(`${date}T${time}`).toISOString()
-      await callFunction<CreateEventResponse>('admin-create-event', {
+      const { event } = await callFunction<CreateEventResponse>('admin-create-event', {
         auth: true,
         method: 'POST',
-        body: {
-          title,
-          venue,
-          starts_at: startsAt,
-          capacity,
-          price_ore: Math.round(priceKr * 100),
-          vat_rate: vatRate,
-          // status utelämnas medvetet - admin-create-event publicerar
-          // eventet direkt om inget "draft" skickas, vilket är exakt
-          // vad "Publicera"-steget här ska göra.
-        },
+        body: { title, venue, starts_at: startsAt },
       })
+
+      for (const t of ticketTypes) {
+        await callFunction('admin-ticket-types', {
+          auth: true,
+          method: 'POST',
+          body: {
+            action: 'create',
+            event_id: event.id,
+            name: t.name,
+            price_ore: Math.round(t.priceKr * 100),
+            vat_rate: t.vatRate,
+            capacity: t.capacity,
+          },
+        })
+      }
+
+      await callFunction('admin-update-event', {
+        auth: true,
+        method: 'POST',
+        body: { event_id: event.id, status: 'published' },
+      })
+
       setPublished(true)
       onCreated()
     } catch (err) {
@@ -176,45 +214,80 @@ export function CreateEventWizard({
       )}
 
       {step === 2 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Platsantal</label>
-              <input
-                type="number"
-                min={1}
-                value={capacity}
-                onChange={(e) => setCapacity(Number(e.target.value))}
-                className="field"
-              />
+        <div className="space-y-6">
+          {ticketTypes.map((t, i) => (
+            <div key={t.key} className="border border-[var(--border)] rounded-[var(--radius-sm)] p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-[var(--text)]">Biljettyp {i + 1}</span>
+                {ticketTypes.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeTicketType(t.key)}
+                    className="text-xs text-red-600 hover:text-red-800 underline"
+                  >
+                    Ta bort
+                  </button>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</label>
+                <input
+                  required
+                  value={t.name}
+                  onChange={(e) => updateTicketType(t.key, { name: e.target.value })}
+                  placeholder="t.ex. Ordinarie, Barn, Student"
+                  className="field"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Platsantal</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={t.capacity}
+                    onChange={(e) => updateTicketType(t.key, { capacity: Number(e.target.value) })}
+                    className="field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={t.priceKr}
+                    onChange={(e) => updateTicketType(t.key, { priceKr: Number(e.target.value) })}
+                    className="field"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
+                <select
+                  value={t.vatRate}
+                  onChange={(e) => updateTicketType(t.key, { vatRate: Number(e.target.value) })}
+                  className="field"
+                >
+                  {VAT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={priceKr}
-                onChange={(e) => setPriceKr(Number(e.target.value))}
-                className="field"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
-            <select value={vatRate} onChange={(e) => setVatRate(Number(e.target.value))} className="field">
-              {VAT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          ))}
+
+          <button type="button" onClick={addTicketType} className="text-sm link-accent">
+            + Lägg till en biljettyp till
+          </button>
+
           <div className="flex gap-3">
             <button type="button" onClick={goBack} className="btn-secondary flex-1">
               Tillbaka
             </button>
-            <button type="button" onClick={() => goNext()} disabled={capacity < 1} className="btn-primary flex-[2]">
+            <button type="button" onClick={() => goNext()} disabled={!step2Valid} className="btn-primary flex-[2]">
               Fortsätt
             </button>
           </div>
@@ -228,8 +301,6 @@ export function CreateEventWizard({
               ['Titel', title],
               ['Plats', venue || '–'],
               ['Datum', `${date} ${time}`],
-              ['Platser', String(capacity)],
-              ['Pris', `${priceKr.toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr (moms ${vatRate}%)`],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -237,6 +308,19 @@ export function CreateEventWizard({
               >
                 <span className="text-[var(--text-muted)]">{label}</span>
                 <span className="font-semibold text-[var(--text)]">{value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1">
+            <div className="text-sm text-[var(--text-muted)] mb-1">Biljettyper</div>
+            {ticketTypes.map((t) => (
+              <div key={t.key} className="flex justify-between py-1.5 text-sm">
+                <span className="text-[var(--text)]">
+                  {t.name} ({t.capacity} platser)
+                </span>
+                <span className="font-semibold text-[var(--text)]">
+                  {t.priceKr.toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr (moms {t.vatRate}%)
+                </span>
               </div>
             ))}
           </div>

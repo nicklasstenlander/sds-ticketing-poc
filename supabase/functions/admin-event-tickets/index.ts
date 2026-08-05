@@ -1,8 +1,9 @@
 // admin-event-tickets
 //
-// Returnerar ett event samt dess biljetter (status, incheckningstid m.m.)
-// för admin-detaljvyn. Kräver giltig admin-sessionstoken. event_id skickas
-// som query-param: /admin-event-tickets?event_id=<uuid>
+// Returnerar ett event, dess biljettyper och dess biljetter (status,
+// incheckningstid m.m.) för admin-detaljvyn. Kräver giltig
+// admin-sessionstoken. event_id skickas som query-param:
+// /admin-event-tickets?event_id=<uuid>
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -36,7 +37,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, capacity, sold_count, status, created_at, price_ore, vat_rate')
+    .select('id, slug, title, venue, starts_at, status, created_at')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -47,9 +48,19 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
+  const { data: ticketTypes, error: ticketTypesError } = await supabase
+    .from('ticket_types')
+    .select('id, event_id, name, price_ore, vat_rate, capacity, sold_count, sort_order, created_at')
+    .eq('event_id', eventId)
+    .order('sort_order', { ascending: true })
+
+  if (ticketTypesError) {
+    return jsonResponse({ error: `Kunde inte hämta biljettyper: ${ticketTypesError.message}` }, 500)
+  }
+
   const { data: tickets, error: ticketsError } = await supabase
     .from('tickets')
-    .select('id, order_id, ticket_code, holder_name, status, checked_in_at, checked_in_by')
+    .select('id, order_id, ticket_type_id, ticket_code, holder_name, status, checked_in_at, checked_in_by')
     .eq('event_id', eventId)
     .order('checked_in_at', { ascending: true, nullsFirst: false })
 
@@ -57,17 +68,19 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte hämta biljetter: ${ticketsError.message}` }, 500)
   }
 
-  // Samma ISO 8601-format (UTC, inga fraktionella sekunder) som resten av
-  // API:et - se _shared/time.ts.
   const formattedEvent = {
     ...event,
     starts_at: toIso8601Seconds(event.starts_at),
     created_at: toIso8601Seconds(event.created_at),
   }
+  const formattedTicketTypes = (ticketTypes ?? []).map((t) => ({
+    ...t,
+    created_at: toIso8601Seconds(t.created_at),
+  }))
   const formattedTickets = (tickets ?? []).map((t) => ({
     ...t,
     checked_in_at: toIso8601Seconds(t.checked_in_at),
   }))
 
-  return jsonResponse({ event: formattedEvent, tickets: formattedTickets })
+  return jsonResponse({ event: formattedEvent, ticket_types: formattedTicketTypes, tickets: formattedTickets })
 })

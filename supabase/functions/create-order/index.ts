@@ -1,13 +1,20 @@
 // create-order
 //
-// Publik funktion (anropas från /kop/:slug). Reserverar kapacitet atomiskt,
-// skapar en order i status "pending" med en frusen pris/moms-ögonblicksbild
-// från eventet, och skapar en Stripe Checkout Session i Test mode.
+// Publik funktion (anropas från /kop/:slug). Tar emot en biljettyp
+// (ticket_type_id), ett antal av den typen (aldrig flera typer i samma
+// köp - se Tilläggsordern avsnitt 0, antagande 1) och en valfri
+// rabattkod. Reserverar kapacitet atomiskt PÅ BILJETTYPEN, skapar en
+// order i status "pending" med en frusen pris/moms-ögonblicksbild
+// (rabatterat pris om en giltig kod angavs), och skapar en Stripe
+// Checkout Session i Test mode.
 //
 // Biljetter skapas INTE här längre - det görs först av stripe-webhook när
 // betalningen faktiskt bekräftats (checkout.session.completed). Detta
 // förhindrar att någon får biljetter utan att betala: fram tills webhooken
 // kör finns bara en "pending"-order och en reserverad plats, inga biljetter.
+//
+// Rabattkodens used_count ökas INTE här - bara vid bekräftad betalning (i
+// stripe-webhook), annars skulle koden förbrukas av övergivna checkouts.
 //
 // Returnerar { checkout_url } - frontenden gör en fullständig
 // sidomdirigering (window.location.href) dit, inte en fetch/XHR, eftersom
@@ -18,12 +25,55 @@ import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.t
 
 interface CreateOrderBody {
   slug?: string
+  ticket_type_id?: string
+  qty?: number
   name?: string
   email?: string
-  qty?: number
+  discount_code?: string
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+interface DiscountCodeRow {
+  id: string
+  code: string
+  discount_type: 'percent' | 'amount'
+  value: number
+  event_id: string | null
+  max_uses: number | null
+  used_count: number
+  valid_from: string | null
+  valid_until: string | null
+  active: boolean
+}
+
+/** Validerar en rabattkod mot ett event. Kastar ett fel med ett
+ * köparvänligt meddelande om koden inte gäller - koden ska ALDRIG bara
+ * tyst ignoreras (se Tilläggsordern avsnitt 3). */
+function validateDiscountCode(code: DiscountCodeRow, eventId: string): string | null {
+  if (!code.active) return 'Rabattkoden är inte längre giltig.'
+  const now = Date.now()
+  if (code.valid_from && now < Date.parse(code.valid_from)) {
+    return 'Rabattkoden gäller inte ännu.'
+  }
+  if (code.valid_until && now > Date.parse(code.valid_until)) {
+    return 'Rabattkoden har gått ut.'
+  }
+  if (code.max_uses !== null && code.used_count >= code.max_uses) {
+    return 'Rabattkoden är slut (max antal användningar nått).'
+  }
+  if (code.event_id !== null && code.event_id !== eventId) {
+    return 'Rabattkoden gäller inte för det här eventet.'
+  }
+  return null
+}
+
+function applyDiscount(priceOre: number, code: DiscountCodeRow): number {
+  if (code.discount_type === 'percent') {
+    return Math.round((priceOre * (100 - code.value)) / 100)
+  }
+  return Math.max(0, priceOre - code.value)
+}
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -41,11 +91,14 @@ Deno.serve(async (req: Request) => {
   }
 
   const slug = (body.slug ?? '').trim()
+  const ticketTypeId = (body.ticket_type_id ?? '').trim()
   const buyerName = (body.name ?? '').trim()
   const buyerEmail = (body.email ?? '').trim().toLowerCase()
   const qty = Number(body.qty)
+  const discountCodeInput = (body.discount_code ?? '').trim()
 
   if (!slug) return jsonResponse({ error: 'Event saknas.' }, 400)
+  if (!ticketTypeId) return jsonResponse({ error: 'Biljettyp saknas.' }, 400)
   if (!buyerName) return jsonResponse({ error: 'Namn krävs.' }, 400)
   if (!EMAIL_REGEX.test(buyerEmail)) {
     return jsonResponse({ error: 'Ogiltig e-postadress.' }, 400)
@@ -63,7 +116,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, capacity, sold_count, status, price_ore, vat_rate')
+    .select('id, slug, title, venue, starts_at, status')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -74,12 +127,53 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
-  // Atomisk kapacitetsreservation - se motivering i den ursprungliga
-  // kommentaren (bevarad): detta enda UPDATE-anrop är det som avgör om det
-  // finns plats, atomiskt via WHERE-villkoret i samma sats.
+  const { data: ticketType, error: ticketTypeError } = await supabase
+    .from('ticket_types')
+    .select('id, event_id, name, price_ore, vat_rate, capacity, sold_count')
+    .eq('id', ticketTypeId)
+    .maybeSingle()
+
+  if (ticketTypeError) {
+    return jsonResponse({ error: `Databasfel: ${ticketTypeError.message}` }, 500)
+  }
+  if (!ticketType || ticketType.event_id !== event.id) {
+    return jsonResponse({ error: 'Biljettypen hittades inte för det här eventet.' }, 404)
+  }
+
+  // Rabattkod - valfri. Ogiltig/utgången/slut kod ger 400 med ett tydligt
+  // felmeddelande, aldrig tyst ignorerad.
+  let discountCode: DiscountCodeRow | null = null
+  let priceOre = ticketType.price_ore
+  if (discountCodeInput) {
+    const { data: codeRow, error: codeError } = await supabase
+      .from('discount_codes')
+      .select(
+        'id, code, discount_type, value, event_id, max_uses, used_count, valid_from, valid_until, active',
+      )
+      .ilike('code', discountCodeInput)
+      .maybeSingle()
+
+    if (codeError) {
+      return jsonResponse({ error: `Databasfel: ${codeError.message}` }, 500)
+    }
+    if (!codeRow) {
+      return jsonResponse({ error: 'Rabattkoden finns inte.' }, 400)
+    }
+    const validationError = validateDiscountCode(codeRow as DiscountCodeRow, event.id)
+    if (validationError) {
+      return jsonResponse({ error: validationError }, 400)
+    }
+    discountCode = codeRow as DiscountCodeRow
+    priceOre = applyDiscount(ticketType.price_ore, discountCode)
+  }
+  const discountAmountOre = ticketType.price_ore - priceOre
+
+  // Atomisk kapacitetsreservation - detta enda UPDATE-anrop är det som
+  // avgör om det finns plats, atomiskt via WHERE-villkoret i samma sats.
+  // Reserveras nu på biljettypen, inte på eventet.
   const { data: reserved, error: reserveError } = await supabase.rpc(
-    'reserve_event_capacity',
-    { p_event_id: event.id, p_qty: qty },
+    'reserve_ticket_type_capacity',
+    { p_ticket_type_id: ticketType.id, p_qty: qty },
   )
 
   if (reserveError) {
@@ -91,29 +185,31 @@ Deno.serve(async (req: Request) => {
 
   const expiresAt = new Date(Date.now() + CHECKOUT_EXPIRY_MINUTES * 60 * 1000)
 
-  // Skapa order i status "pending" - pris/moms fryses här (ögonblicksbild
-  // från eventet vid köptillfället, se migrationskommentaren i
-  // 20260101000300_stripe_vat_export.sql) så att en senare ändring av
-  // eventets pris/momssats aldrig kan ändra bokföringen för denna order i
-  // efterhand.
+  // Skapa order i status "pending" - pris/moms fryses här (redan
+  // rabatterat om en kod tillämpades). discount_amount_ore är enbart för
+  // spårbarhet/visning, inte en andra beräkningskälla - price_ore är den
+  // bindande sanningen.
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
       event_id: event.id,
+      ticket_type_id: ticketType.id,
       buyer_name: buyerName,
       buyer_email: buyerEmail,
       qty,
       status: 'pending',
-      price_ore: event.price_ore,
-      vat_rate: event.vat_rate,
+      price_ore: priceOre,
+      vat_rate: ticketType.vat_rate,
       expires_at: expiresAt.toISOString(),
+      discount_code_id: discountCode?.id ?? null,
+      discount_amount_ore: discountAmountOre,
     })
     .select()
     .single()
 
   if (orderError || !order) {
     // Rulla tillbaka kapacitetsreservationen om ordern inte kunde skapas.
-    await supabase.rpc('release_event_capacity', { p_event_id: event.id, p_qty: qty })
+    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: ticketType.id, p_qty: qty })
     return jsonResponse({ error: `Kunde inte skapa order: ${orderError?.message}` }, 500)
   }
 
@@ -130,9 +226,9 @@ Deno.serve(async (req: Request) => {
           quantity: qty,
           price_data: {
             currency: 'sek',
-            unit_amount: event.price_ore,
+            unit_amount: priceOre,
             product_data: {
-              name: event.title,
+              name: `${event.title} — ${ticketType.name}`,
               description: event.venue ? `${event.venue}` : undefined,
             },
           },
@@ -149,6 +245,7 @@ Deno.serve(async (req: Request) => {
       metadata: {
         order_id: order.id,
         event_id: event.id,
+        ticket_type_id: ticketType.id,
       },
     })
   } catch (err) {
@@ -156,14 +253,14 @@ Deno.serve(async (req: Request) => {
     // anropet misslyckas, så att köparen inte lämnas med en pending-order
     // som aldrig kommer kunna betalas.
     await supabase.from('orders').delete().eq('id', order.id)
-    await supabase.rpc('release_event_capacity', { p_event_id: event.id, p_qty: qty })
+    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: ticketType.id, p_qty: qty })
     const message = err instanceof Error ? err.message : 'Okänt Stripe-fel.'
     return jsonResponse({ error: `Kunde inte skapa Stripe Checkout-session: ${message}` }, 502)
   }
 
   if (!session.url) {
     await supabase.from('orders').delete().eq('id', order.id)
-    await supabase.rpc('release_event_capacity', { p_event_id: event.id, p_qty: qty })
+    await supabase.rpc('release_ticket_type_capacity', { p_ticket_type_id: ticketType.id, p_qty: qty })
     return jsonResponse({ error: 'Stripe returnerade ingen checkout-URL.' }, 502)
   }
 

@@ -9,9 +9,10 @@ import {
   getAdminToken,
   setAdminToken,
 } from '../lib/functionsApi'
-import type { EventRow } from '../lib/types'
+import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
+import { DiscountCodesSection } from './admin/DiscountCodesSection'
 
 interface AdminAuthResponse {
   token: string
@@ -19,7 +20,7 @@ interface AdminAuthResponse {
 }
 
 interface AdminEventsResponse {
-  events: EventRow[]
+  events: AdminEventRow[]
 }
 
 interface DeleteEventResponse {
@@ -28,11 +29,7 @@ interface DeleteEventResponse {
 
 // Konverterar en UTC ISO-tidsstämpel (t.ex. "2026-05-10T17:58:03Z") till
 // det format <input type="datetime-local"> förväntar sig i sitt värde
-// ("2026-05-10T17:58") - i webbläsarens LOKALA tidszon, inte UTC. Detta är
-// den omvända operationen av vad handleSubmitForm redan gör vid skapande
-// (new Date(startsAt).toISOString(), som tolkar datetime-local-strängen
-// som lokal tid) - så att redigera och spara ett oförändrat datum inte
-// tyst skiftar det några timmar.
+// ("2026-05-10T17:58") - i webbläsarens LOKALA tidszon, inte UTC.
 function toDatetimeLocalValue(iso: string): string {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -112,33 +109,26 @@ function PinGate({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const [events, setEvents] = useState<EventRow[] | null>(null)
+  const [events, setEvents] = useState<AdminEventRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [title, setTitle] = useState('')
   const [venue, setVenue] = useState('')
   const [startsAt, setStartsAt] = useState('')
-  const [capacity, setCapacity] = useState(50)
-  const [priceKr, setPriceKr] = useState(0)
-  const [vatRate, setVatRate] = useState(6)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
-  // Ett event-id = redigerar det eventet - det direkta enstegsformuläret,
-  // förifyllt, se startEdit(). Skiljs nu från "skapa nytt", som istället
-  // öppnar 3-stegswizarden (creatingNew) - se CreateEventWizard.tsx.
+  // Ett event-id = redigerar det eventet - det direkta enstegsformuläret
+  // för titel/plats/datum, förifyllt, se startEdit(). Pris/kapacitet/moms
+  // hanteras inte här längre - det görs per biljettyp på eventets egen
+  // sida (/admin/event/:id, se AdminEventPage.tsx).
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [creatingNew, setCreatingNew] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
   const editingEvent = events?.find((e) => e.id === editingEventId) ?? null
-  const capacityTooLow = editingEvent !== null && capacity < editingEvent.sold_count
 
-  // Formulärkortets referens - används för att scrolla dit på smala
-  // skärmar när "Redigera" klickas i eventlistan (se startEdit). På breda
-  // skärmar (>=1024px) syns formuläret redan i den högra kolumnen utan
-  // att scrolla, så där räcker den visuella markeringen i listan/kortet.
   const formSectionRef = useRef<HTMLDivElement>(null)
 
   async function loadEvents() {
@@ -160,21 +150,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setTitle('')
     setVenue('')
     setStartsAt('')
-    setCapacity(50)
-    setPriceKr(0)
-    setVatRate(6)
     setCreateError(null)
   }
 
-  function startEdit(event: EventRow) {
+  function startEdit(event: AdminEventRow) {
     setCreatingNew(false)
     setEditingEventId(event.id)
     setTitle(event.title)
     setVenue(event.venue ?? '')
     setStartsAt(toDatetimeLocalValue(event.starts_at))
-    setCapacity(event.capacity)
-    setPriceKr(event.price_ore / 100)
-    setVatRate(event.vat_rate)
     setCreateError(null)
     scrollToFormOnNarrowScreen()
   }
@@ -185,27 +169,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     scrollToFormOnNarrowScreen()
   }
 
-  // Bara scrolla på smala skärmar (< 1024px, samma brytpunkt som
-  // grid-layouten nedan använder för att gå från en till två kolumner).
-  // På bred skärm ligger formuläret/wizarden redan synligt i högerkolumnen
-  // - ett ovälkommet hopp skulle bara vara distraherande där.
   function scrollToFormOnNarrowScreen() {
     if (window.matchMedia('(max-width: 1023px)').matches) {
       formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
-  // Bara redigering av ett BEFINTLIGT event längre - att skapa nya event
-  // sker via CreateEventWizard.tsx (se startCreate/creatingNew ovan).
   async function handleSubmitForm(e: FormEvent) {
     e.preventDefault()
-    if (!editingEventId || capacityTooLow) return // extra skydd, knappen är redan disabled
+    if (!editingEventId) return
     setCreating(true)
     setCreateError(null)
     try {
-      // Kronor -> öre. Math.round undviker flyttalsavrundningsfel
-      // (t.ex. 149.99 * 100 kan annars bli 14998.999...).
-      const priceOre = Math.round(priceKr * 100)
       await callFunction('admin-update-event', {
         auth: true,
         method: 'POST',
@@ -214,9 +189,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           title,
           venue,
           starts_at: startsAt,
-          capacity,
-          price_ore: priceOre,
-          vat_rate: vatRate,
         },
       })
       resetForm()
@@ -228,10 +200,26 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  async function handleDelete(event: EventRow) {
+  async function handleTogglePublish(event: AdminEventRow) {
+    setRowError(null)
+    const nextStatus = event.status === 'published' ? 'draft' : 'published'
+    try {
+      await callFunction('admin-update-event', {
+        auth: true,
+        method: 'POST',
+        body: { event_id: event.id, status: nextStatus },
+      })
+      await loadEvents()
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Kunde inte ändra publiceringsstatus.')
+    }
+  }
+
+  async function handleDelete(event: AdminEventRow) {
+    const soldCount = event.ticket_types_summary.total_sold
     const message =
-      event.sold_count > 0
-        ? `Eventet har ${event.sold_count} sålda biljetter och kan inte raderas — det markeras som inställt istället. Fortsätt?`
+      soldCount > 0
+        ? `Eventet har ${soldCount} sålda biljetter och kan inte raderas — det markeras som inställt istället. Fortsätt?`
         : 'Radera eventet permanent?'
     if (!window.confirm(message)) return
 
@@ -283,17 +271,20 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <div className="card p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">Sålda biljetter totalt</div>
             <div className="text-2xl font-extrabold text-[var(--text)]">
-              {events.reduce((sum, e) => sum + e.sold_count, 0)}
+              {events.reduce((sum, e) => sum + e.ticket_types_summary.total_sold, 0)}
             </div>
           </div>
           <div className="card p-4">
             <div className="text-xs text-[var(--text-muted)] mb-1">Snittbeläggning</div>
             <div className="text-2xl font-extrabold text-[var(--text)]">
               {(() => {
-                const withCap = events.filter((e) => e.capacity > 0)
+                const withCap = events.filter((e) => e.ticket_types_summary.total_capacity > 0)
                 if (withCap.length === 0) return '–'
                 const avg =
-                  withCap.reduce((sum, e) => sum + e.sold_count / e.capacity, 0) / withCap.length
+                  withCap.reduce(
+                    (sum, e) => sum + e.ticket_types_summary.total_sold / e.ticket_types_summary.total_capacity,
+                    0,
+                  ) / withCap.length
                 return `${Math.round(avg * 100)}%`
               })()}
             </div>
@@ -301,12 +292,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {/* Två kolumner på bred skärm (>=1024px, Tailwinds "lg"): eventlistan
-          till vänster, formulär + export staplat till höger. Under 1024px
-          kollapsar griden till en enda kolumn - DOM-ordningen nedan
-          (lista, sedan formulär+export) blir då automatiskt den staplade
-          ordningen Eventlista -> Formulär -> Export utan någon extra
-          omordnings-logik. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <section className="order-1">
           <h2 className="font-semibold mb-4 text-[var(--text)]">Befintliga events</h2>
@@ -320,6 +305,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             {events?.map((event) => {
               const cancelled = event.status === 'cancelled'
               const isEditing = event.id === editingEventId
+              const summary = event.ticket_types_summary
               return (
                 <li
                   key={event.id}
@@ -341,15 +327,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         })}
                         {event.venue ? ` · ${event.venue}` : ''}
                         {' · '}
-                        {(event.price_ore / 100).toLocaleString('sv-SE', {
-                          minimumFractionDigits: 2,
-                        })}{' '}
-                        kr ({event.vat_rate}% moms)
+                        {summary.ticket_type_count === 0
+                          ? 'inga biljettyper'
+                          : `${summary.ticket_type_count} biljettyp${summary.ticket_type_count > 1 ? 'er' : ''}`}
                       </div>
                     </Link>
                     <div className="text-right shrink-0">
                       <div className="text-sm text-[var(--text)]">
-                        {event.sold_count} / {event.capacity} sålda
+                        {summary.total_sold} / {summary.total_capacity} sålda
                       </div>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
@@ -373,6 +358,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         className="text-slate-600 hover:text-slate-900 underline"
                       >
                         Redigera
+                      </button>
+                      <Link to={`/admin/event/${event.id}`} className="text-slate-600 hover:text-slate-900 underline">
+                        Biljettyper
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePublish(event)}
+                        className="text-slate-600 hover:text-slate-900 underline"
+                      >
+                        {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
                       </button>
                       <button
                         type="button"
@@ -410,71 +405,36 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
                   <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
-                    <input
-                      type="datetime-local"
-                      required
-                      value={startsAt}
-                      onChange={(e) => setStartsAt(e.target.value)}
-                      className="field"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">
-                      Platsantal
-                      {editingEvent && (
-                        <span className="font-normal text-[var(--text-muted)]"> ({editingEvent.sold_count} sålda)</span>
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      required
-                      value={capacity}
-                      onChange={(e) => setCapacity(Number(e.target.value))}
-                      className={`field ${capacityTooLow ? 'border-red-400' : ''}`}
-                    />
-                    {capacityTooLow && (
-                      <p className="text-red-600 text-xs mt-1">
-                        Kan inte vara lägre än antal sålda biljetter ({editingEvent?.sold_count}).
-                      </p>
-                    )}
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
+                    className="field"
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      required
-                      value={priceKr}
-                      onChange={(e) => setPriceKr(Number(e.target.value))}
-                      className="field"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
-                    <select value={vatRate} onChange={(e) => setVatRate(Number(e.target.value))} className="field">
-                      <option value={6}>6 % (standard, scenframträdande)</option>
-                      <option value={12}>12 %</option>
-                      <option value={25}>25 %</option>
-                      <option value={0}>0 %</option>
-                    </select>
-                  </div>
-                </div>
+                <p className="text-sm text-[var(--text-muted)]">
+                  Pris, moms och platsantal hanteras per biljettyp på eventets egen sida.{' '}
+                  <Link to={`/admin/event/${editingEventId}`} className="link-accent">
+                    Hantera biljettyper →
+                  </Link>
+                </p>
 
                 {createError && <p className="text-red-600 text-sm">{createError}</p>}
-                <button type="submit" disabled={creating || capacityTooLow} className="btn-primary">
+                <button type="submit" disabled={creating} className="btn-primary">
                   {creating ? 'Sparar…' : 'Spara ändringar'}
                 </button>
               </form>
             </section>
           ) : creatingNew ? (
-            <CreateEventWizard onCreated={loadEvents} onClose={() => setCreatingNew(false)} />
+            <CreateEventWizard
+              onCreated={async () => {
+                await loadEvents()
+              }}
+              onClose={() => setCreatingNew(false)}
+            />
           ) : (
             <section className="card text-center py-10">
               <p className="text-[var(--text-muted)] text-sm mb-4">Redo att lägga till en ny föreställning?</p>
@@ -483,6 +443,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </button>
             </section>
           )}
+
+          <DiscountCodesSection events={events ?? []} />
 
           <ExportSection events={events ?? []} />
         </div>
@@ -496,8 +458,8 @@ type ExportScope = 'day' | 'range' | 'event'
 // Exportknappar för bokföring (CSV och SIE4). Läggs som en egen sektion i
 // admin-dashboarden - se supabase/functions/export-sales/index.ts för hur
 // filerna byggs (alltid från ordrarnas egen pris/moms-ögonblicksbild, inte
-// eventets nuvarande värden).
-function ExportSection({ events }: { events: EventRow[] }) {
+// ticket_types nuvarande värden).
+function ExportSection({ events }: { events: AdminEventRow[] }) {
   const today = new Date().toISOString().slice(0, 10)
 
   const [scope, setScope] = useState<ExportScope>('day')
@@ -546,7 +508,7 @@ function ExportSection({ events }: { events: EventRow[] }) {
       <h2 className="font-semibold mb-2 text-[var(--text)]">Exportera försäljning</h2>
       <p className="text-sm text-[var(--text-muted)] mb-4">
         CSV för kalkylark, SIE4 för bokföring (Fortnox m.fl.). Läser endast betalda ordrar och
-        använder alltid priset/momsen som gällde vid köptillfället, inte eventets nuvarande
+        använder alltid priset/momsen som gällde vid köptillfället, inte biljettypens nuvarande
         värden.{' '}
         <strong>Granska den första SIE-filen med en redovisningskonsult innan skarp import.</strong>
       </p>

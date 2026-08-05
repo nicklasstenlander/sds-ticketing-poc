@@ -123,6 +123,29 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte städa ordrar: ${deleteOrdersError.message}` }, 500)
   }
 
+  // ticket_types.event_id refererar events(id) utan cascade, precis som
+  // orders/tickets gjorde ovan - måste städas explicit innan event-raden
+  // kan raderas. Inga paid-ordrar finns kvar (kontrollerat ovan), så det
+  // finns ingen bokföringsdata i export-sales att förlora här.
+  const { error: deleteTicketTypesError } = await supabase.from('ticket_types').delete().eq('event_id', eventId)
+  if (deleteTicketTypesError) {
+    return jsonResponse({ error: `Kunde inte städa biljettyper: ${deleteTicketTypesError.message}` }, 500)
+  }
+
+  // Rabattkoder knutna till just detta event (event_id satt) skulle annars
+  // blockera raderingen via samma foreign key-mönster. Koden i sig har ett
+  // värde oberoende av eventet (historik/spårbarhet för redan gjorda köp
+  // på andra event om den återanvänts, eller bara för att inte tyst
+  // radera admins arbete) - vi kopplar loss den till "alla event"
+  // (event_id = null) snarare än att radera eller blockera.
+  const { error: unlinkDiscountCodesError } = await supabase
+    .from('discount_codes')
+    .update({ event_id: null })
+    .eq('event_id', eventId)
+  if (unlinkDiscountCodesError) {
+    return jsonResponse({ error: `Kunde inte koppla loss rabattkoder: ${unlinkDiscountCodesError.message}` }, 500)
+  }
+
   const { error: deleteError } = await supabase.from('events').delete().eq('id', eventId)
 
   if (deleteError) {

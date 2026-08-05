@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import type { EventRow } from '../lib/types'
+import type { EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
+
+interface EventWithTicketTypes extends EventRow {
+  ticket_types: TicketTypeRow[]
+}
 
 // /evenemang - listar alla publicerade event. RLS begränsar redan anon-
 // SELECT på events till status='published' (se migrationen från
 // 2026-01-01), så ingen extra statusfiltrering behövs i frågan här.
+// ticket_types hämtas i samma anrop via PostgREST-embedding (samma RLS-
+// mönster: anon ser bara typer kopplade till ett publicerat event).
 export function EventsPage() {
-  const [events, setEvents] = useState<EventRow[] | null>(null)
+  const [events, setEvents] = useState<EventWithTicketTypes[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -17,11 +23,11 @@ export function EventsPage() {
     async function load() {
       const { data, error } = await supabase
         .from('events')
-        .select('*')
+        .select('*, ticket_types(*)')
         .order('starts_at', { ascending: true })
       if (cancelled) return
       if (error) setError(error.message)
-      else setEvents(data as EventRow[])
+      else setEvents(data as unknown as EventWithTicketTypes[])
     }
     load()
     return () => {
@@ -45,8 +51,15 @@ export function EventsPage() {
 
       <ul className="space-y-4">
         {events?.map((event) => {
-          const soldOut = event.sold_count >= event.capacity
-          const pct = event.capacity > 0 ? Math.min(100, Math.round((event.sold_count / event.capacity) * 100)) : 0
+          const types = event.ticket_types ?? []
+          const totalCapacity = types.reduce((sum, t) => sum + t.capacity, 0)
+          const totalSold = types.reduce((sum, t) => sum + t.sold_count, 0)
+          const soldOut = types.length > 0 && totalSold >= totalCapacity
+          const pct = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : 0
+          const prices = types.map((t) => t.price_ore)
+          const minPrice = prices.length > 0 ? Math.min(...prices) : null
+          const hasMultiplePrices = new Set(prices).size > 1
+
           return (
             <li key={event.id} className="card">
               <div className="flex items-center gap-5">
@@ -70,19 +83,27 @@ export function EventsPage() {
                     })}
                     {event.venue ? ` · ${event.venue}` : ''}
                   </div>
-                  <div className="progress-track max-w-[220px] mb-2">
-                    <div className="progress-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="text-sm text-[var(--text-muted)]">
-                    {event.sold_count} / {event.capacity} sålda
-                  </div>
+                  {totalCapacity > 0 && (
+                    <>
+                      <div className="progress-track max-w-[220px] mb-2">
+                        <div className="progress-fill" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="text-sm text-[var(--text-muted)]">
+                        {totalSold} / {totalCapacity} sålda
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-semibold text-[var(--text)] mb-2">
-                    {(event.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+                    {minPrice === null
+                      ? '–'
+                      : `${hasMultiplePrices ? 'Från ' : ''}${(minPrice / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
                   </div>
-                  {soldOut ? (
-                    <span className="text-sm text-[var(--text-muted)]">Slutsålt</span>
+                  {types.length === 0 || soldOut ? (
+                    <span className="text-sm text-[var(--text-muted)]">
+                      {types.length === 0 ? 'Ej till salu ännu' : 'Slutsålt'}
+                    </span>
                   ) : (
                     <Link to={`/kop/${event.slug}`} className="btn-primary text-sm">
                       Köp biljett

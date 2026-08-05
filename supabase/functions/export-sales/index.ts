@@ -36,12 +36,18 @@ interface PaidOrderRow {
   vat_rate: number
   paid_at: string
   stripe_session_id: string | null
+  discount_amount_ore: number
   events: { title: string } | { title: string }[] | null
+  ticket_types: { name: string } | { name: string }[] | null
+  discount_codes: { code: string } | { code: string }[] | null
 }
 
 interface SaleRow {
   orderId: string
   eventTitle: string
+  ticketTypeName: string
+  discountCode: string
+  discountAmountOre: number
   qty: number
   priceOre: number
   vatRate: number
@@ -75,6 +81,18 @@ function eventTitleOf(row: PaidOrderRow): string {
   return rel?.title ?? 'Okänt event'
 }
 
+function ticketTypeNameOf(row: PaidOrderRow): string {
+  const rel = row.ticket_types
+  if (Array.isArray(rel)) return rel[0]?.name ?? '-'
+  return rel?.name ?? '-'
+}
+
+function discountCodeOf(row: PaidOrderRow): string {
+  const rel = row.discount_codes
+  if (Array.isArray(rel)) return rel[0]?.code ?? ''
+  return rel?.code ?? ''
+}
+
 // Moms beräknas ur bruttobeloppet (priset kunden faktiskt betalade
 // inkluderar moms, precis som Stripe Checkout-priset i create-order gör) -
 // inte lagt ovanpå ett nettopris. netto = brutto / (1 + vat/100).
@@ -92,6 +110,9 @@ function toSaleRows(orders: PaidOrderRow[]): SaleRow[] {
     return {
       orderId: o.id,
       eventTitle: eventTitleOf(o),
+      ticketTypeName: ticketTypeNameOf(o),
+      discountCode: discountCodeOf(o),
+      discountAmountOre: o.discount_amount_ore,
       qty: o.qty,
       priceOre: o.price_ore,
       vatRate: o.vat_rate,
@@ -120,11 +141,14 @@ function buildCsv(rows: SaleRow[]): string {
     'datum',
     'order_id',
     'event',
+    'biljettyp',
     'antal',
     'brutto_ore',
     'moms_ore',
     'netto_ore',
     'momssats',
+    'rabattkod',
+    'rabatt_ore',
     'betalsatt',
     'stripe_session_id',
   ].join(',')
@@ -134,11 +158,14 @@ function buildCsv(rows: SaleRow[]): string {
       r.paidAt,
       r.orderId,
       csvEscape(r.eventTitle),
+      csvEscape(r.ticketTypeName),
       String(r.qty),
       String(r.bruttoOre),
       String(r.momsOre),
       String(r.nettoOre),
       `${r.vatRate}%`,
+      csvEscape(r.discountCode),
+      String(r.discountAmountOre),
       'Kort (Stripe)',
       r.stripeSessionId ?? '',
     ].join(','),
@@ -271,7 +298,9 @@ Deno.serve(async (req: Request) => {
 
   let query = supabase
     .from('orders')
-    .select('id, event_id, qty, price_ore, vat_rate, paid_at, stripe_session_id, events(title)')
+    .select(
+      'id, event_id, qty, price_ore, vat_rate, paid_at, stripe_session_id, discount_amount_ore, events(title), ticket_types(name), discount_codes(code)',
+    )
     .eq('status', 'paid')
     .order('paid_at', { ascending: true })
 

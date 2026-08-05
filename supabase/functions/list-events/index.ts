@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('events')
-    .select('id, title, venue, starts_at, capacity, sold_count')
+    .select('id, title, venue, starts_at, ticket_types(capacity, sold_count)')
     .eq('status', 'published')
     .order('starts_at', { ascending: true })
 
@@ -38,7 +38,21 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte hämta events: ${error.message}` }, 500)
   }
 
-  const publishedEvents = data ?? []
+  // capacity/sold_count finns inte längre direkt på events (flyttat till
+  // ticket_types) - summeras här över eventets biljettyper så att appens
+  // svarsformat (och därmed iOS-appen) förblir oförändrat.
+  type TicketTypeAgg = { capacity: number; sold_count: number }
+  const publishedEvents = (data ?? []).map((e) => {
+    const types = (e.ticket_types ?? []) as TicketTypeAgg[]
+    return {
+      id: e.id,
+      title: e.title,
+      venue: e.venue,
+      starts_at: e.starts_at,
+      capacity: types.reduce((sum, t) => sum + t.capacity, 0),
+      sold_count: types.reduce((sum, t) => sum + t.sold_count, 0),
+    }
+  })
 
   // checked_in_count är obligatoriskt i svaret: med två entréer igång kan
   // appen inte räkna incheckningar lokalt (varje enhet ser bara sina egna
