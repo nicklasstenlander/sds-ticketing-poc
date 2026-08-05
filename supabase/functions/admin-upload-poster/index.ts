@@ -16,7 +16,7 @@
 // igenom ger bara en snedvriden bild i UI, inget säkerhets- eller
 // dataintegritetsproblem - acceptabel risk för en PoC.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
 interface UploadPosterBody {
@@ -53,13 +53,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -92,11 +87,13 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, status')
+    .select('id, status, organizer_id')
     .eq('id', eventId)
     .maybeSingle()
   if (eventError) return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
-  if (!event) return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
+  if (!event || event.organizer_id !== auth.organizerId) {
+    return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
+  }
   if (event.status === 'cancelled') {
     return jsonResponse({ error: 'Eventet är inställt och kan inte redigeras.' }, 409)
   }

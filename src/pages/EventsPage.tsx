@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
-import type { EventRow, TicketTypeRow } from '../lib/types'
+import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
+  organizers: EventOrganizerRelation | EventOrganizerRelation[] | null
 }
 
 // /evenemang - listar alla publicerade event. RLS begränsar redan anon-
@@ -26,7 +27,7 @@ export function EventsPage() {
     async function load() {
       const { data, error } = await supabase
         .from('events')
-        .select('*, ticket_types(*)')
+        .select('*, ticket_types(*), organizers(name)')
         .order('starts_at', { ascending: true })
       if (cancelled) return
       if (error) setError(error.message)
@@ -60,6 +61,7 @@ export function EventsPage() {
           const prices = types.map((t) => t.price_ore)
           const minPrice = prices.length > 0 ? Math.min(...prices) : null
           const hasMultiplePrices = new Set(prices).size > 1
+          const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
 
           return (
             <li key={event.id} className="card">
@@ -92,6 +94,7 @@ export function EventsPage() {
                       timeStyle: 'short',
                     })}
                     {event.venue ? ` · ${event.venue}` : ''}
+                    {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
                   </div>
                   {event.capacity > 0 && (
                     <>

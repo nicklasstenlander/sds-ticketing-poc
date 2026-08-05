@@ -2,7 +2,11 @@
 //
 // Redigerar ett befintligt event. PATCH-liknande semantik: bara fält som
 // faktiskt skickas i body uppdateras, resten lämnas orörda. Kräver giltig
-// admin-sessionstoken, precis som admin-create-event.
+// Supabase Auth-JWT (se _shared/organizerAuth.ts), och - avgörande för
+// dataisoleringen (Tilläggsordern 2026-08-05) - eventet måste TILLHÖRA
+// den inloggade användarens egen arrangör. Ett event_id som pekar på en
+// annan arrangörs event ger 404, INTE 403 - avslöjar inte ens att raden
+// existerar.
 //
 // Pris/moms hanteras INTE längre här - se admin-ticket-types. capacity
 // hanteras dock HÄR (rättelseordern 2026-08-05, delad kapacitetspool) -
@@ -15,7 +19,7 @@
 // här, inte bara i frontend, eftersom backend-spärren är den som faktiskt
 // gäller.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
 
@@ -36,13 +40,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -62,14 +61,16 @@ Deno.serve(async (req: Request) => {
 
   const { data: current, error: currentError } = await supabase
     .from('events')
-    .select('id, status, sold_count')
+    .select('id, status, sold_count, organizer_id')
     .eq('id', eventId)
     .maybeSingle()
 
   if (currentError) {
     return jsonResponse({ error: `Databasfel: ${currentError.message}` }, 500)
   }
-  if (!current) {
+  // Ingen träff ELLER en annan arrangörs event - samma 404 i båda fallen,
+  // avslöjar inte att raden existerar hos någon annan.
+  if (!current || current.organizer_id !== auth.organizerId) {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
   if (current.status === 'cancelled') {

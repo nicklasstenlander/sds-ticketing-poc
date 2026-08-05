@@ -15,7 +15,7 @@
 // slug (som redan är tänkt att vara publik, den utgör själva köp-URL:en).
 //
 // GET public-events (inga query-params, inga headers)
-// -> { events: { slug, title, venue, date, from_price_ore, poster_landscape_url, poster_portrait_url }[] }
+// -> { events: { slug, title, venue, date, from_price_ore, poster_landscape_url, poster_portrait_url, organizer_name }[] }
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
@@ -28,6 +28,7 @@ interface PublicEvent {
   from_price_ore: number | null
   poster_landscape_url: string | null
   poster_portrait_url: string | null
+  organizer_name: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -42,7 +43,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: events, error: eventsError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url')
+    .select('id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url, organizers(name)')
     .eq('status', 'published')
     .order('starts_at', { ascending: true })
 
@@ -74,15 +75,19 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const result: PublicEvent[] = publishedEvents.map((ev) => ({
-    slug: ev.slug,
-    title: ev.title,
-    venue: ev.venue,
-    date: toIso8601Seconds(ev.starts_at),
-    from_price_ore: minPriceByEventId.get(ev.id) ?? null,
-    poster_landscape_url: ev.poster_landscape_url,
-    poster_portrait_url: ev.poster_portrait_url,
-  }))
+  const result: PublicEvent[] = publishedEvents.map((ev) => {
+    const organizer = Array.isArray(ev.organizers) ? ev.organizers[0] : ev.organizers
+    return {
+      slug: ev.slug,
+      title: ev.title,
+      venue: ev.venue,
+      date: toIso8601Seconds(ev.starts_at),
+      from_price_ore: minPriceByEventId.get(ev.id) ?? null,
+      poster_landscape_url: ev.poster_landscape_url,
+      poster_portrait_url: ev.poster_portrait_url,
+      organizer_name: organizer?.name ?? null,
+    }
+  })
 
   return jsonResponse({ events: result }, 200)
 })

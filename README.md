@@ -20,9 +20,9 @@ fungerande.
 | Databasmigrationer körda, RLS bekräftat aktiverat på alla tabeller | ✅ Klart |
 | Storage-bucket `qr` bekräftat skapad och publik | ✅ Klart |
 | `.env` ifylld med riktig `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` | ✅ Klart |
-| Secrets satta (`RESEND_API_KEY`, `ADMIN_PIN`, `SCANNER_BEARER_TOKEN`) | ⬜ Återstår - se avsnitt 3 |
+| Secrets satta (`RESEND_API_KEY`, `SCANNER_BEARER_TOKEN`) | ⬜ Återstår - se avsnitt 3 |
 | Resend konfigurerat | ⬜ Återstår - se avsnitt 4 |
-| Edge Functions deployade med `verify_jwt` av | ⬜ Återstår - se avsnitt 5 |
+| Edge Functions deployade med korrekt `verify_jwt` (av för publika/token-baserade, PÅ för admin-*/export-sales) | ⬜ Återstår - se avsnitt 5 |
 | curl-verifiering av samtliga funktioner | ⬜ Återstår - se avsnitt 5 |
 | Frontend deployad | ⬜ Återstår - se avsnitt 7 |
 | Stripe Checkout (Test mode) - `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` | ✅ Redan satta av kontoägaren (enligt Tilläggsorder) |
@@ -36,18 +36,23 @@ sådant bara du kan göra - se respektive avsnitt nedan för exakta kommandon.
 
 ## Vad ingår
 
-- `/admin` - PIN-skyddad admin-vy: skapa event (inkl. pris och momssats),
-  se sålda biljetter per event, se biljettstatus och incheckningstid, samt
-  exportera betald försäljning som CSV/SIE4.
+- `/admin` - inloggningsskyddad admin-vy (riktig Supabase Auth,
+  e-post + lösenord per arrangörsanvändare - se avsnitt "Flera
+  arrangörer" nedan): skapa event (inkl. pris och momssats), se sålda
+  biljetter per event, se biljettstatus och incheckningstid, samt
+  exportera betald försäljning som CSV/SIE4. En inloggad användare ser
+  och kan bara redigera sin EGEN arrangörs event - detta gäller på
+  databasnivå (RLS) och i varje admin-Edge Function, inte bara i UI:t.
 - `/kop/:slug` - publik köpsida (namn, e-post, antal 1-6) som skickar
   vidare till **Stripe Checkout (Test mode)** för betalning.
 - `/kop/:slug/klar` - bekräftelsesida som pollar orderstatus tills
   betalningen är bekräftad (eller sessionen gått ut/avbrutits).
 - Publika/interna Edge Functions: `create-order`, `order-status`,
-  `stripe-webhook`, `release-expired-orders`, `scan-ticket`, `list-events`,
-  `admin-auth`.
-- Admin-interna Edge Functions: `admin-create-event`, `admin-update-event`,
+  `stripe-webhook`, `release-expired-orders`, `scan-ticket`, `list-events`.
+- Admin-interna Edge Functions (kräver en inloggad arrangörsanvändares
+  Supabase Auth-JWT): `admin-create-event`, `admin-update-event`,
   `admin-delete-event`, `admin-events`, `admin-event-tickets`,
+  `admin-ticket-types`, `admin-discount-codes`, `admin-upload-poster`,
   `export-sales` - se "Arkitekturbeslut" nedan för varför dessa behövdes
   utöver spec-listan.
 - Admin kan redigera (titel, plats, datum, kapacitet, pris, momssats) och
@@ -61,8 +66,10 @@ Flera biljettyper eller momssatser per event, PDF-generering, Apple/Google
 Wallet, återbetalning/avbokning i UI (hanteras manuellt i Stripe
 Dashboard), offline-stöd, inloggning utöver PIN-koden,
 SODSS-varumärkesanpassad design, Stripe Connect/split till separat
-arrangörskonto, Swish, Stripe Invoicing/fakturering, automatisk
-schemalagd SIE-export (manuell nedladdning i v1).
+arrangörskonto (varje arrangör delar samma Stripe-konto i denna PoC,
+se avsnittet "Flera arrangörer"), Swish, Stripe Invoicing/fakturering,
+automatisk schemalagd SIE-export (manuell nedladdning i v1),
+självregistrering av nya arrangörer (skapas manuellt, se nedan).
 
 ---
 
@@ -147,14 +154,21 @@ supabase link --project-ref oyqgxnmwojjjpoubdlfa
 `SUPABASE_SERVICE_ROLE_KEY` och `SUPABASE_URL` finns automatiskt
 tillgängliga i alla Edge Functions - de behöver INTE sättas manuellt.
 
-Följande tre hemligheter måste däremot sättas explicit, och används ENDAST
+Följande hemligheter måste däremot sättas explicit, och används ENDAST
 server-side (aldrig i frontendens `VITE_`-variabler):
 
 ```bash
 supabase secrets set RESEND_API_KEY=re_xxxxxxxxxxxx
-supabase secrets set ADMIN_PIN=1234           # välj en egen PIN-kod
 supabase secrets set SCANNER_BEARER_TOKEN=$(openssl rand -hex 32)
 ```
+
+> **`ADMIN_PIN` är borttagen** (Tilläggsordern 2026-08-05, "Flera
+> arrangörer: riktiga inloggningar och dataisolering") - admin-inloggning
+> sker numera med riktig Supabase Auth (e-post + lösenord per
+> arrangörsanvändare), inte en delad PIN-kod. Om `ADMIN_PIN` redan är satt
+> som secret på projektet gör det ingen skada att lämna kvar den (ingen
+> kod läser den längre), men den kan tas bort med
+> `supabase secrets unset ADMIN_PIN`.
 
 Valfritt - avsändaradress för Resend (annars används `biljett@resend.dev`,
 som bara fungerar för testmail till din egen Resend-inloggade adress):
@@ -177,57 +191,76 @@ supabase secrets set RESEND_FROM="Biljetter <biljetter@dindomän.se>"
 
 ## 5. Deploya Edge Functions
 
-### Varför `verify_jwt` måste vara AV på alla sju funktioner
+### Varför `verify_jwt` är AV på de publika/token-baserade funktionerna
+### men PÅ på admin-*/export-sales (sedan Tilläggsordern 2026-08-05)
 
 Supabase Edge Functions kräver som standard en giltig **Supabase-utfärdad**
 JWT i `Authorization`-headern. Gatewayen avvisar anropet med 401 **innan**
-funktionskoden ens körs. Ingen av våra sju funktioner skickar en sådan JWT:
+funktionskoden ens körs.
 
-- `create-order` skickar ingen `Authorization`-header alls (publik).
+- `create-order`/`order-status`/`public-events` skickar ingen
+  `Authorization`-header alls (publika) → `verify_jwt = false`.
 - `scan-ticket`/`list-events` skickar `SCANNER_BEARER_TOKEN` - en egen
-  statisk hemlighet, inte en Supabase-JWT.
-- `admin-auth`/`admin-create-event`/`admin-events`/`admin-event-tickets`
-  skickar antingen inget (admin-auth) eller vår egen HMAC-signerade
-  admin-sessionstoken - inte heller det en Supabase-JWT.
+  statisk hemlighet, inte en Supabase-JWT → `verify_jwt = false`.
+- `stripe-webhook`/`release-expired-orders` skickar inte heller en
+  Supabase-JWT (Stripe-signatur respektive `CRON_SECRET`) →
+  `verify_jwt = false`.
+- `admin-create-event`/`admin-update-event`/`admin-delete-event`/
+  `admin-events`/`admin-event-tickets`/`admin-ticket-types`/
+  `admin-discount-codes`/`admin-upload-poster`/`export-sales` kräver
+  DÄREMOT numera en riktig Supabase Auth-JWT för en inloggad
+  arrangörsanvändare (Tilläggsordern 2026-08-05, "Flera arrangörer: riktiga
+  inloggningar och dataisolering" - ersätter den tidigare delade PIN-koden
+  och `admin-auth`, som är borttagen) → `verify_jwt = true`. Gatewayen
+  verifierar JWT-signaturen INNAN funktionskoden körs; funktionskoden
+  härleder därefter `organizer_id` från JWT:n via `organizer_members` (se
+  `supabase/functions/_shared/organizerAuth.ts`) - klienten skickar aldrig
+  och litas aldrig på för `organizer_id`.
 
-Med standardinställningen skulle alltså **samtliga** funktioner ge 401 på
-gatewaynivå, oavsett vad koden i funktionen gör. Detta är löst på två sätt
-samtidigt (bälte och hängslen):
+Detta är löst på två sätt samtidigt (bälte och hängslen):
 
-1. `supabase/config.toml` sätter `verify_jwt = false` per funktion - detta
-   är den metod Supabase CLI:t själv rekommenderar och läses vid varje
+1. `supabase/config.toml` sätter `verify_jwt` per funktion (`false` för de
+   publika/token-baserade, `true` för admin-*/export-sales) - detta är den
+   metod Supabase CLI:t själv rekommenderar och läses vid varje
    `supabase functions deploy`.
-2. Deploykommandona nedan skickar även den explicita flaggan
-   `--no-verify-jwt`.
+2. Deploykommandona nedan skickar den explicita flaggan `--no-verify-jwt`
+   ENDAST för funktionerna som ska ha `verify_jwt = false`. Admin-*/
+   export-sales deployas UTAN den flaggan - att av misstag lägga till
+   `--no-verify-jwt` på en admin-funktion skulle stänga av JWT-
+   verifieringen på gatewaynivå och göra funktionens egen
+   `resolveOrganizer()`-kontroll till den enda spärren, vilket inte är
+   den avsedda bälte-och-hängslen-modellen.
 
 **Känd CLI-svaghet:** det finns rapporterade fall (Supabase CLI, GitHub-
 issue #4059) där `verify_jwt`-inställningen ibland inte appliceras korrekt
 vid en OMDEPLOY av en redan existerande funktion, även om `config.toml` är
-korrekt. Om en funktion börjar ge 401 efter en omdeploy trots korrekt
-token: kör om deploy-kommandot för just den funktionen (redeploy brukar
-lösa det), och verifiera alltid med curl-stegen nedan innan du litar på
-att det fungerar - anta aldrig att en lyckad `deploy`-körning räcker som
-bevis.
+korrekt. Om en funktion börjar ge fel typ av 401 efter en omdeploy: kör om
+deploy-kommandot för just den funktionen (redeploy brukar lösa det), och
+verifiera alltid med curl-stegen nedan innan du litar på att det fungerar
+- anta aldrig att en lyckad `deploy`-körning räcker som bevis.
 
 ```bash
+# verify_jwt = false - publika/token-baserade funktioner
 supabase functions deploy create-order --no-verify-jwt
+supabase functions deploy order-status --no-verify-jwt
 supabase functions deploy scan-ticket --no-verify-jwt
 supabase functions deploy list-events --no-verify-jwt
-supabase functions deploy admin-auth --no-verify-jwt
-supabase functions deploy admin-create-event --no-verify-jwt
-supabase functions deploy admin-update-event --no-verify-jwt
-supabase functions deploy admin-delete-event --no-verify-jwt
-supabase functions deploy admin-events --no-verify-jwt
-supabase functions deploy admin-event-tickets --no-verify-jwt
-supabase functions deploy admin-ticket-types --no-verify-jwt
-supabase functions deploy admin-discount-codes --no-verify-jwt
 supabase functions deploy public-events --no-verify-jwt
-supabase functions deploy admin-upload-poster --no-verify-jwt
-```
+supabase functions deploy stripe-webhook --no-verify-jwt
+supabase functions deploy release-expired-orders --no-verify-jwt
 
-(Eller `supabase functions deploy --no-verify-jwt` utan namn för att
-deploya alla på en gång - men deploya då fortfarande om enskilda funktioner
-separat om curl-verifieringen nedan avslöjar problem med bara en av dem.)
+# verify_jwt = true - kräver en inloggad arrangörsanvändares Supabase
+# Auth-JWT. INGEN --no-verify-jwt-flagga på dessa.
+supabase functions deploy admin-create-event
+supabase functions deploy admin-update-event
+supabase functions deploy admin-delete-event
+supabase functions deploy admin-events
+supabase functions deploy admin-event-tickets
+supabase functions deploy admin-ticket-types
+supabase functions deploy admin-discount-codes
+supabase functions deploy admin-upload-poster
+supabase functions deploy export-sales
+```
 
 ### Bekräftad bas-URL-form
 
@@ -307,7 +340,7 @@ npm run build
    publika värden som redan finns i din lokala `.env`. Detta är den
    publika anon/publishable-nyckeln, inte service role-nyckeln - samma
    nyckel som redan är avsedd att synas i klientkoden. Inga av de fem
-   hemligheterna (`SCANNER_BEARER_TOKEN`, `ADMIN_PIN`, `RESEND_API_KEY`,
+   hemligheterna (`SCANNER_BEARER_TOKEN`, `RESEND_API_KEY`,
    `RESEND_FROM`, service role-nyckeln) ska någonsin läggas som
    GitHub-secret här - de rör bara Edge Functions och är redan satta som
    Supabase secrets (avsnitt 3).
@@ -362,15 +395,17 @@ med händelserna `checkout.session.completed` och `checkout.session.expired`.
    supabase secrets set CRON_SECRET=$(openssl rand -hex 32)
    ```
 
-4. **Deploya de nya funktionerna** (samma `--no-verify-jwt`-krav som övriga,
-   se avsnitt 5 - `config.toml` är redan uppdaterad med samtliga):
+4. **Deploya de nya funktionerna** (se avsnitt 5 för fullständig
+   `verify_jwt`-förklaring - `config.toml` är redan uppdaterad med
+   samtliga; notera att `admin-create-event`/`export-sales` INTE ska ha
+   `--no-verify-jwt` sedan Tilläggsordern 2026-08-05):
    ```bash
    supabase functions deploy create-order --no-verify-jwt
    supabase functions deploy order-status --no-verify-jwt
    supabase functions deploy stripe-webhook --no-verify-jwt
    supabase functions deploy release-expired-orders --no-verify-jwt
-   supabase functions deploy admin-create-event --no-verify-jwt
-   supabase functions deploy export-sales --no-verify-jwt
+   supabase functions deploy admin-create-event
+   supabase functions deploy export-sales
    ```
 
 5. **Schemalägg `release-expired-orders`.** Detta är ett komplement till
@@ -437,8 +472,9 @@ inklistrad från en PDF, som annars gav `?` istället för å/ä/ö), och
 SIE-verifikationer med totalt bruttobelopp 0 kr (t.ex. ett gratis testköp)
 hoppas nu över helt i SIE-läget - de balanserade tekniskt men var bara
 brus. Om din senast deployade `export-sales`-funktion är äldre än detta:
-**deploya om den** (`supabase functions deploy export-sales
---no-verify-jwt`) innan du testar igen - koden i repot kan ha rättningar
+**deploya om den** (`supabase functions deploy export-sales`, UTAN
+`--no-verify-jwt` sedan Tilläggsordern 2026-08-05 - se avsnitt 5) innan
+du testar igen - koden i repot kan ha rättningar
 som inte finns i en tidigare deployad version. Verifiera enligt punkt 3-4
 i Definition of Done nedan (`file --mime-encoding` ska INTE visa `utf-8`,
 och filen öppnad med CP437 som kodning ska visa å/ä/ö korrekt).
@@ -482,9 +518,10 @@ som avsnitt 2/8) innan du deployar `admin-update-event`/`admin-delete-event`.
   (gråtonad, märkt "Inställt") och i `export-sales` underlag.
 
 ```bash
-supabase functions deploy admin-update-event --no-verify-jwt
-supabase functions deploy admin-delete-event --no-verify-jwt
+supabase functions deploy admin-update-event
+supabase functions deploy admin-delete-event
 ```
+(Ingen `--no-verify-jwt` sedan Tilläggsordern 2026-08-05 - se avsnitt 5.)
 
 ---
 
@@ -520,6 +557,76 @@ tidigare enstegsformuläret, och tvåkolumnslayouten i admin är oförändrad.
 
 ---
 
+## 12. Flera arrangörer: riktiga inloggningar och dataisolering
+
+Tilläggsordern 2026-08-05 ("Flera arrangörer: riktiga inloggningar och
+dataisolering") ersätter den delade admin-PIN-koden med riktig Supabase
+Auth, en per arrangör (`organizers`) och kopplade användare
+(`organizer_members`). Varje event/biljettyp/rabattkod hör till exakt en
+arrangör, och en inloggad användare ser och kan bara redigera sin EGEN
+arrangörs data - både i varje admin-Edge-funktion (server-side kontroll,
+se `supabase/functions/_shared/organizerAuth.ts`) och i databasens RLS-
+policyer (se migrationen nedan).
+
+1. **Kör migrationen** (samma mönster som avsnitt 2/8/10):
+   ```bash
+   # via SQL Editor i Supabase Dashboard, eller:
+   supabase db push
+   ```
+   Filen `supabase/migrations/20260108000000_organizers_auth.sql` skapar
+   `organizers`/`organizer_members`, lägger till `events.organizer_id`
+   (backfyllat till en ny rad "Sollentuna Dans & Scenskola", slug `sds`,
+   så att alla befintliga event får en ägare) och
+   `discount_codes.organizer_id` (en dokumenterad avvikelse från
+   ordertexten - se kommentaren högst upp i migrationsfilen för varför
+   transitiv scoping via `event_id` inte räcker för globala koder).
+
+2. **Skapa arrangörsanvändare.** Ingen självregistrering finns i denna
+   PoC - varje inloggning skapas manuellt:
+   - Supabase Dashboard → Authentication → Users → "Add user" (sätt
+     e-post + lösenord, eller skicka en inbjudan).
+   - Koppla användaren till en arrangör med en rad i `organizer_members`
+     (SQL Editor):
+     ```sql
+     insert into organizer_members (organizer_id, user_id)
+     values (
+       (select id from organizers where slug = 'sds'),
+       (select id from auth.users where email = 'namn@arrangor.se')
+     );
+     ```
+   - För en ANDRA arrangör (t.ex. för att testa dataisoleringen), skapa
+     först arrangören:
+     ```sql
+     insert into organizers (name, slug, contact_email)
+     values ('Testscenen', 'testscenen', 'kontakt@testscenen.se');
+     ```
+     och koppla en andra testanvändare till den på samma sätt som ovan.
+
+3. **Deploya om samtliga admin-*-funktioner och `export-sales`** - se
+   avsnitt 5 ovan för fullständig `verify_jwt`-förklaring. Kom ihåg: dessa
+   funktioner ska INTE ha `--no-verify-jwt` (de kräver nu en riktig
+   Supabase Auth-JWT, till skillnad från övriga funktioner).
+
+4. **Verifiera dataisoleringen manuellt** (den kritiska testpunkten i
+   Tilläggsordern):
+   - Logga in som arrangör A (SDS), skapa ett event.
+   - Logga ut, logga in som arrangör B (Testscenen).
+   - Bekräfta att arrangör B INTE ser arrangör A:s event i admin-listan,
+     och att ett direkt `admin-update-event`/`admin-event-tickets`-anrop
+     med arrangör A:s `event_id` ger 404 (inte 403 - avslöjar inte att
+     raden finns).
+   - Skapa en global rabattkod som arrangör A, bekräfta att den INTE går
+     att använda vid köp på arrangör B:s event (se
+     `validateDiscountCode` i `create-order/index.ts`, som numera kräver
+     `discount_codes.organizer_id === events.organizer_id` oavsett
+     `event_id`).
+   - Bekräfta att den publika evenemangslistan (`/evenemang`) och
+     köpsidan (`/kop/:slug`) visar "Arrangör: X" korrekt för respektive
+     arrangörs event (`organizers(name)` - publikt läsbar via en egen
+     RLS-policy, se migrationen).
+
+---
+
 ## Arkitekturbeslut och medvetna förenklingar
 
 - **Biljettkod:** 128 bitars slumpmässighet (`crypto.getRandomValues`,
@@ -549,20 +656,38 @@ tidigare enstegsformuläret, och tvåkolumnslayouten i admin är oförändrad.
   att den kan anropas via Supabase-klientbiblioteket. Noll rader tillbaka
   → HTTP 409 "slutsålt".
 
-- **Admin-autentisering:** `admin-auth` jämför PIN-koden mot secreten
-  `ADMIN_PIN` server-side och utfärdar en kortlivad (12h), HMAC-signerad
-  sessionstoken (signerad med `ADMIN_PIN` som HMAC-nyckel, ingen extra
-  secret behövs). PIN-koden jämförs eller lagras aldrig i klient-JS.
+- **Admin-autentisering (ersatt 2026-08-05):** admin-inloggning skedde
+  tidigare med en delad PIN-kod (`admin-auth`, HMAC-signerad
+  sessionstoken). Sedan Tilläggsordern "Flera arrangörer: riktiga
+  inloggningar och dataisolering" är detta ersatt med riktig Supabase
+  Auth (e-post + lösenord per arrangörsanvändare, `admin-auth` borttagen).
+  Varje arrangör (`organizers`) har en eller flera kopplade användare
+  (`organizer_members`, `user_id` → `auth.users`). Admin-Edge-funktionerna
+  härleder `organizer_id` uteslutande server-side från JWT:n via
+  `supabase/functions/_shared/organizerAuth.ts` - ett `organizer_id` som
+  eventuellt skickas från klienten litas ALDRIG på. Dataisolering
+  garanteras dubbelt: dels av explicita ägarskapskontroller i varje
+  admin-funktion (404 om ett event/en biljettyp/en rabattkod tillhör en
+  annan arrangör), dels av RLS-policyer på `events`/`ticket_types`/
+  `discount_codes`/`organizers` (se
+  `supabase/migrations/20260108000000_organizers_auth.sql`). Nya
+  arrangörsanvändare skapas manuellt i Supabase Dashboard → Authentication
+  (eller via `supabase.auth.admin.createUser` från en betrodd miljö) och
+  kopplas till en arrangör med en rad i `organizer_members` - det finns
+  ingen självregistrering i denna PoC.
 
 - **Extra admin-funktioner utöver spec-listan:** utöver de fyra uttryckligen
-  namngivna funktionerna (`create-order`, `scan-ticket`, `list-events`,
-  `admin-auth`) tillkommer `admin-create-event`, `admin-events` och
-  `admin-event-tickets`. Anledningen: RLS nekar all åtkomst till
-  `orders`/`tickets` för anon-nyckeln (per spec), och `events`-policyn
-  visar bara publicerade events - admin-panelen (skapa event, se
-  utkast, se biljettlistor) MÅSTE därför gå via egna service-role-skyddade
-  Edge Functions, precis som `create-order`/`scan-ticket` gör. Alla dessa
-  tre kräver en giltig admin-sessionstoken i `Authorization`-headern.
+  namngivna funktionerna i grundspecen (`create-order`, `scan-ticket`,
+  `list-events` och den numera borttagna `admin-auth`) tillkommer
+  `admin-create-event`, `admin-update-event`, `admin-delete-event`,
+  `admin-events`, `admin-event-tickets`, `admin-ticket-types`,
+  `admin-discount-codes`, `admin-upload-poster` och `export-sales`.
+  Anledningen: RLS nekar all åtkomst till `orders`/`tickets` för
+  anon-nyckeln (per spec), och `events`-policyn visar bara publicerade
+  events för icke-ägare - admin-panelen (skapa event, se utkast, se
+  biljettlistor) MÅSTE därför gå via egna Edge Functions, precis som
+  `create-order`/`scan-ticket` gör. Samtliga kräver en giltig, inloggad
+  arrangörsanvändares Supabase Auth-JWT i `Authorization`-headern.
 
 - **Deploy-mål frontend:** GitHub Pages, samma repo som koden. Bygget körs
   av `.github/workflows/deploy.yml` vid varje push till `main`. Kräver
@@ -580,11 +705,12 @@ tidigare enstegsformuläret, och tvåkolumnslayouten i admin är oförändrad.
   någon gång skulle förekomma.
 
 - **Konstanttidsjämförelse av hemligheter:** `SCANNER_BEARER_TOKEN` (i
-  `scan-ticket`/`list-events`) och `ADMIN_PIN` (i `admin-auth`) jämförs med
-  `timingSafeEqual` i `supabase/functions/_shared/adminToken.ts` istället
-  för `===`, för att inte läcka information om var första avvikande tecken
-  finns via svarstiden. Admin-sessionstokens HMAC-signatur jämfördes redan
-  konstanttid från början.
+  `scan-ticket`/`list-events`) jämförs med `timingSafeEqual` i
+  `supabase/functions/_shared/adminToken.ts` istället för `===`, för att
+  inte läcka information om var första avvikande tecken finns via
+  svarstiden. Admin-inloggning använder numera Supabase Auth (se ovan)
+  istället för en egen jämförd hemlighet, så den tidigare PIN-jämförelsen
+  gäller inte längre.
 
 - **Ett enda datumformat i hela API:et:** samtliga timestamps som lämnar en
   Edge Function går genom `toIso8601Seconds()` i

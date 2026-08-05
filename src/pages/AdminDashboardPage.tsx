@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
-import { callFunction, getAdminToken } from '../lib/functionsApi'
+import { callFunction } from '../lib/functionsApi'
+import { supabase } from '../lib/supabaseClient'
 import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 
@@ -23,8 +24,10 @@ export function AdminDashboardPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setAuthed(Boolean(getAdminToken()))
-    setCheckingAuth(false)
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthed(Boolean(data.session))
+      setCheckingAuth(false)
+    })
   }, [])
 
   useEffect(() => {

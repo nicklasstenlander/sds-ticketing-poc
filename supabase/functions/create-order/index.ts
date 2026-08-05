@@ -44,6 +44,7 @@ interface DiscountCodeRow {
   discount_type: 'percent' | 'amount'
   value: number
   event_id: string | null
+  organizer_id: string
   max_uses: number | null
   used_count: number
   valid_from: string | null
@@ -61,9 +62,22 @@ interface CartLine {
 }
 
 /** Validerar en rabattkod mot ett event. Returnerar ett köparvänligt
- * felmeddelande om koden inte gäller - ALDRIG tyst ignorerad. */
-function validateDiscountCode(code: DiscountCodeRow, eventId: string): string | null {
+ * felmeddelande om koden inte gäller - ALDRIG tyst ignorerad.
+ *
+ * organizerId-kontrollen (Tilläggsordern 2026-08-05, "Flera arrangörer")
+ * är den avgörande isoleringsspärren för GLOBALA koder (event_id === null):
+ * utan den skulle en global kod skapad av arrangör A gälla rabatt på
+ * arrangör B:s event också, bara för att event_id råkar vara null hos
+ * koden. "Global" betyder alltså konsekvent "global inom den egna
+ * arrangörens event", aldrig global över hela plattformen. Kontrollen
+ * körs FÖRE event_id-kontrollen (som ändå aldrig kan slå till för en kod
+ * som redan hör till fel arrangör) och oberoende av om koden är knuten
+ * till ett specifikt event eller ej. */
+function validateDiscountCode(code: DiscountCodeRow, eventId: string, eventOrganizerId: string): string | null {
   if (!code.active) return 'Rabattkoden är inte längre giltig.'
+  if (code.organizer_id !== eventOrganizerId) {
+    return 'Rabattkoden gäller inte för det här eventet.'
+  }
   const now = Date.now()
   if (code.valid_from && now < Date.parse(code.valid_from)) {
     return 'Rabattkoden gäller inte ännu.'
@@ -191,7 +205,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status')
+    .select('id, slug, title, venue, starts_at, status, organizer_id')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -238,7 +252,7 @@ Deno.serve(async (req: Request) => {
     const { data: codeRow, error: codeError } = await supabase
       .from('discount_codes')
       .select(
-        'id, code, discount_type, value, event_id, max_uses, used_count, valid_from, valid_until, active',
+        'id, code, discount_type, value, event_id, organizer_id, max_uses, used_count, valid_from, valid_until, active',
       )
       .ilike('code', discountCodeInput)
       .maybeSingle()
@@ -249,7 +263,7 @@ Deno.serve(async (req: Request) => {
     if (!codeRow) {
       return jsonResponse({ error: 'Rabattkoden finns inte.' }, 400)
     }
-    const validationError = validateDiscountCode(codeRow as DiscountCodeRow, event.id)
+    const validationError = validateDiscountCode(codeRow as DiscountCodeRow, event.id, event.organizer_id)
     if (validationError) {
       return jsonResponse({ error: validationError }, 400)
     }

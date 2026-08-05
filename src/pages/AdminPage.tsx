@@ -2,22 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
-import {
-  callFunction,
-  clearAdminToken,
-  downloadAdminFile,
-  getAdminToken,
-  setAdminToken,
-} from '../lib/functionsApi'
+import { callFunction, downloadAdminFile } from '../lib/functionsApi'
+import { supabase } from '../lib/supabaseClient'
 import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
-
-interface AdminAuthResponse {
-  token: string
-  expires_at: string
-}
 
 interface AdminEventsResponse {
   events: AdminEventRow[]
@@ -41,8 +31,18 @@ export function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true)
 
   useEffect(() => {
-    setAuthed(Boolean(getAdminToken()))
-    setCheckingAuth(false)
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthed(Boolean(data.session))
+      setCheckingAuth(false)
+    })
+    // Håller authed i synk om sessionen ändras utanför denna komponent
+    // (utloggning i en annan flik, en misslyckad token-refresh, m.m.) -
+    // ingen egen sessionStorage-bokföring behövs längre, Supabase Auth-
+    // klienten är källan till sanningen.
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(Boolean(session))
+    })
+    return () => subscription.subscription.unsubscribe()
   }, [])
 
   if (checkingAuth) return null
@@ -50,7 +50,7 @@ export function AdminPage() {
   if (!authed) {
     return (
       <Layout>
-        <PinGate onSuccess={() => setAuthed(true)} />
+        <LoginForm onSuccess={() => setAuthed(true)} />
       </Layout>
     )
   }
@@ -62,8 +62,14 @@ export function AdminPage() {
   )
 }
 
-function PinGate({ onSuccess }: { onSuccess: () => void }) {
-  const [pin, setPin] = useState('')
+// Riktig Supabase Auth-inloggning (e-post + lösenord) - ersätter den
+// delade admin-PIN-koden (Tilläggsordern 2026-08-05, "Flera arrangörer:
+// riktiga inloggningar och dataisolering"). Ingen arrangörsväljare här:
+// vilken arrangör användaren tillhör härleds uteslutande server-side via
+// organizer_members (se _shared/organizerAuth.ts), aldrig valt i UI:t.
+function LoginForm({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -71,18 +77,14 @@ function PinGate({ onSuccess }: { onSuccess: () => void }) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    try {
-      const res = await callFunction<AdminAuthResponse>('admin-auth', {
-        method: 'POST',
-        body: { pin },
-      })
-      setAdminToken(res.token)
-      onSuccess()
-    } catch {
-      setError('Fel PIN-kod.')
-    } finally {
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInError) {
+      setError('Fel e-postadress eller lösenord.')
       setLoading(false)
+      return
     }
+    onSuccess()
+    setLoading(false)
   }
 
   return (
@@ -90,18 +92,34 @@ function PinGate({ onSuccess }: { onSuccess: () => void }) {
       <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Admin - logga in</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="password"
-          inputMode="numeric"
-          placeholder="PIN-kod"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          className="field"
-          autoFocus
-        />
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[var(--text)]">E-post</label>
+          <input
+            type="email"
+            required
+            autoComplete="username"
+            placeholder="namn@arrangor.se"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="field"
+            autoFocus
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Lösenord</label>
+          <input
+            type="password"
+            required
+            autoComplete="current-password"
+            placeholder="Lösenord"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="field"
+          />
+        </div>
         {error && <p className="text-red-600 text-sm">{error}</p>}
         <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? 'Kontrollerar…' : 'Logga in'}
+          {loading ? 'Loggar in…' : 'Logga in'}
         </button>
       </form>
     </div>
@@ -247,8 +265,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   function handleLogout() {
-    clearAdminToken()
-    onLogout()
+    supabase.auth.signOut().then(onLogout)
   }
 
   return (

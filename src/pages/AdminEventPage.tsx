@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
-import { callFunction, getAdminToken } from '../lib/functionsApi'
+import { callFunction } from '../lib/functionsApi'
+import { supabase } from '../lib/supabaseClient'
 import type { EventRow, TicketRow, TicketTypeRow } from '../lib/types'
 
 interface AdminEventTicketsResponse {
@@ -50,11 +51,13 @@ export function AdminEventPage() {
   }
 
   useEffect(() => {
-    if (!getAdminToken()) {
-      navigate('/admin')
-      return
-    }
-    load()
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        navigate('/admin')
+        return
+      }
+      load()
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, navigate])
 

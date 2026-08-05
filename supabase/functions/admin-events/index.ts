@@ -1,9 +1,12 @@
 // admin-events
 //
-// Listar ALLA events (både draft och published) för admin-vyn. Kräver
-// giltig admin-sessionstoken. Anon-nyckeln ser bara publicerade events
-// (via RLS), så admin-listan måste gå via en service-role-funktion för
-// att även visa utkast.
+// Listar ALLA events (både draft och published) för INLOGGAD arrangörs
+// admin-vy. Kräver en giltig Supabase Auth-JWT (se _shared/organizerAuth.ts)
+// - PIN-baserad admin-sessionstoken är borttagen (Tilläggsordern
+// 2026-08-05, "Flera arrangörer: riktiga inloggningar och dataisolering").
+// organizer_id härleds ALLTID från JWT:n via organizer_members, ALDRIG
+// från klienten - listan filtreras strikt på den inloggade användarens
+// egen arrangör.
 //
 // capacity/sold_count ligger direkt på events (delad kapacitetspool, se
 // rättelseordern 2026-08-05) och kommer med rakt av i selecten nedan.
@@ -11,7 +14,7 @@
 // (antal typer, lägsta/högsta pris) - bekvämt för listvyn utan att varje
 // anropare måste räkna själv.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
 
@@ -29,13 +32,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -43,6 +41,7 @@ Deno.serve(async (req: Request) => {
   const { data, error } = await supabase
     .from('events')
     .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url')
+    .eq('organizer_id', auth.organizerId)
     .order('starts_at', { ascending: true })
 
   if (error) {

@@ -1,15 +1,25 @@
 // admin-discount-codes
 //
-// CRUD (list/create/update) för rabattkoder. Kräver giltig
-// admin-sessionstoken. Rabattkoder har medvetet ingen anon-läspolicy (se
-// migrationen) - all åtkomst går via den här admin-skyddade funktionen
-// (för listning/hantering) eller create-order (för validering vid köp).
+// CRUD (list/create/update) för rabattkoder. Kräver giltig Supabase
+// Auth-JWT (se _shared/organizerAuth.ts). Rabattkoder har medvetet ingen
+// anon-läspolicy (se migrationen) - all åtkomst går via den här
+// admin-skyddade funktionen (för listning/hantering) eller create-order
+// (för validering vid köp).
+//
+// Dataisolering (Tilläggsordern 2026-08-05): discount_codes.organizer_id
+// (tillagd i 20260108000000_organizers_auth.sql, en dokumenterad avvikelse
+// från ordern - se migrationens kommentar) scopar ALLA operationer här
+// direkt, inte transitivt via event_id (som är nullable för globala
+// koder och därför inte räcker som isoleringsgräns på egen hand). Om
+// koden knyts till ett specifikt event (event_id satt) kontrolleras
+// dessutom att just DET eventet tillhör samma arrangör - annars skulle en
+// arrangör kunna knyta sin kod till en annan arrangörs event.
 //
 // "Radera" finns inte som operation i v1 (Tilläggsordern avsnitt 6) -
 // koder inaktiveras istället (active = false) så att de fortfarande syns
 // i exportunderlaget för redan gjorda köp.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
 interface Body {
@@ -33,13 +43,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -51,6 +56,7 @@ Deno.serve(async (req: Request) => {
       .select(
         'id, code, discount_type, value, event_id, max_uses, used_count, valid_from, valid_until, active, created_at, events(title)',
       )
+      .eq('organizer_id', auth.organizerId)
       .order('created_at', { ascending: false })
     if (error) return jsonResponse({ error: `Kunde inte hämta rabattkoder: ${error.message}` }, 500)
     return jsonResponse({ discount_codes: data ?? [] })
@@ -89,6 +95,21 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Max antal användningar måste vara ett heltal >= 1, eller lämnas tomt.' }, 400)
     }
 
+    // Ett event_id måste tillhöra samma arrangör som den inloggade
+    // användaren - annars skulle koden kunna knytas till (och därmed
+    // gälla rabatt på) en annan arrangörs event.
+    if (eventId) {
+      const { data: event, error: eventError } = await supabase
+        .from('events')
+        .select('id, organizer_id')
+        .eq('id', eventId)
+        .maybeSingle()
+      if (eventError) return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
+      if (!event || event.organizer_id !== auth.organizerId) {
+        return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
+      }
+    }
+
     const { data: existing } = await supabase
       .from('discount_codes')
       .select('id')
@@ -109,6 +130,7 @@ Deno.serve(async (req: Request) => {
         valid_from: validFrom,
         valid_until: validUntil,
         active: true,
+        organizer_id: auth.organizerId,
       })
       .select()
       .single()
@@ -120,6 +142,16 @@ Deno.serve(async (req: Request) => {
   if (body.action === 'update') {
     const discountCodeId = (body.discount_code_id ?? '').trim()
     if (!discountCodeId) return jsonResponse({ error: 'discount_code_id krävs.' }, 400)
+
+    const { data: current, error: currentError } = await supabase
+      .from('discount_codes')
+      .select('id, organizer_id')
+      .eq('id', discountCodeId)
+      .maybeSingle()
+    if (currentError) return jsonResponse({ error: `Databasfel: ${currentError.message}` }, 500)
+    if (!current || current.organizer_id !== auth.organizerId) {
+      return jsonResponse({ error: 'Rabattkoden hittades inte.' }, 404)
+    }
 
     const update: Record<string, unknown> = {}
     if (body.active !== undefined) update.active = Boolean(body.active)

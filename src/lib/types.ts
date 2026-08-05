@@ -19,6 +19,16 @@ export interface EventRow {
   poster_portrait_url: string | null
 }
 
+// Publika sidor (EventsPage, PurchasePage) joinar organizers(name) via
+// PostgREST-embedding för att visa vilken arrangör som står bakom eventet
+// (Tilläggsordern 2026-08-05, "Flera arrangörer") - PostgREST returnerar
+// en relation, inte ett skalärt fält, därför en egen typ istället för att
+// lägga organizer_name direkt på EventRow (som gäller admin-anrop där
+// namnet inte hämtas alls).
+export interface EventOrganizerRelation {
+  name: string
+}
+
 export interface TicketTypeSummary {
   ticket_type_count: number
   min_price_ore: number | null

@@ -1,31 +1,36 @@
 # Supabase CLI-konfiguration för sds-ticketing-poc.
 #
-# verify_jwt = false på VARJE funktion nedan, av samma anledning för alla:
-# ingen av dem tar emot en Supabase-utfärdad JWT i Authorization-headern.
+# verify_jwt = false på de flesta funktionerna nedan, av samma anledning
+# för alla: de tar inte emot en Supabase-utfärdad JWT i
+# Authorization-headern, utan ett eget statiskt/HMAC-baserat schema.
 #   - create-order / order-status / public-events: publika, ingen
 #     Authorization-header alls (order-status tar emot order_id som
 #     query-param; public-events är avsiktligt tokenfri - se dess egen
 #     filkommentar för motivering, den är tänkt att anropas direkt från en
 #     Squarespace Code Block där en hemlig token inte kan gömmas).
 #   - scan-ticket / list-events: statisk SCANNER_BEARER_TOKEN (iOS-appen).
-#   - admin-auth: publik (tar emot PIN-koden i body, inte headern).
-#   - admin-create-event / admin-update-event / admin-delete-event /
-#     admin-events / admin-event-tickets / export-sales: egen HMAC-signerad
-#     admin-sessionstoken (se supabase/functions/_shared/adminToken.ts),
-#     inte en Supabase JWT.
 #   - stripe-webhook: Stripe skickar en stripe-signature-header, ingen
 #     Supabase-JWT och inget Authorization-Bearer alls (Stripe stöder inte
 #     egna headers på webhook-endpoints).
 #   - release-expired-orders: statisk CRON_SECRET (schemalagt GitHub
 #     Actions-jobb, se .github/workflows/release-expired-orders.yml).
 #
-# Utan detta avvisar Supabase-gatewayen ALLA dessa anrop med 401 INNAN
-# funktionskoden ens körs - då spelar det ingen roll att koden i sig
-# jämför rätt token, den koden nås aldrig. Se README.md, avsnittet
+# admin-* och export-sales har DÄREMOT verify_jwt = true (Tilläggsordern
+# 2026-08-05, "Flera arrangörer: riktiga inloggningar och dataisolering")
+# - de kräver nu en riktig Supabase Auth-JWT (inloggad arrangörsanvändare),
+# inte längre en egen HMAC-signerad admin-sessionstoken. Gatewayen
+# verifierar JWT-signaturen INNAN funktionskoden körs; funktionskoden
+# härleder därefter organizer_id från JWT:n via organizer_members (se
+# _shared/organizerAuth.ts) - klienten skickar aldrig och litas aldrig på
+# för organizer_id. Den gamla PIN-inloggningen (admin-auth) är borttagen.
+#
+# Utan rätt verify_jwt-inställning avvisar/accepterar Supabase-gatewayen
+# fel typ av anrop INNAN funktionskoden ens körs. Se README.md, avsnittet
 # "Verifiera verify_jwt med curl" för hur man bekräftar att detta faktiskt
-# är aktivt efter deploy. Kom ihåg --no-verify-jwt vid varje deploy också
-# (se README) - känd CLI-flakiness (supabase/cli#4059) gör att config.toml
-# ensamt ibland inte räcker vid en redeploy.
+# är aktivt efter deploy. Kom ihåg att INTE använda --no-verify-jwt vid
+# deploy av admin-*/export-sales (till skillnad från övriga funktioner,
+# se README) - känd CLI-flakiness (supabase/cli#4059) gör att config.toml
+# ensamt ibland inte räcker vid en redeploy, flaggan måste matcha.
 project_id = "sds-ticketing-poc"
 
 [functions.create-order]
@@ -43,32 +48,29 @@ verify_jwt = false
 [functions.public-events]
 verify_jwt = false
 
-[functions.admin-auth]
-verify_jwt = false
-
 [functions.admin-create-event]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-update-event]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-delete-event]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-events]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-event-tickets]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-ticket-types]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-discount-codes]
-verify_jwt = false
+verify_jwt = true
 
 [functions.admin-upload-poster]
-verify_jwt = false
+verify_jwt = true
 
 [functions.stripe-webhook]
 verify_jwt = false
@@ -77,4 +79,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.export-sales]
-verify_jwt = false
+verify_jwt = true

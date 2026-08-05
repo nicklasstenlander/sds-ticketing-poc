@@ -34,7 +34,7 @@
 // Tilläggsordern, men den FÖRSTA riktiga filen bör granskas av en
 // redovisningskonsult innan den importeras skarpt i Fortnox. Se README.md.
 import { handleOptions, corsHeaders, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { encodeCp437 } from '../_shared/cp437.ts'
 
@@ -297,13 +297,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -327,9 +322,10 @@ Deno.serve(async (req: Request) => {
   let query = supabase
     .from('order_items')
     .select(
-      'id, order_id, qty, unit_price_ore, vat_rate, ticket_types(name), orders!inner(id, event_id, paid_at, stripe_session_id, status, discount_amount_ore, events(title), discount_codes(code))',
+      'id, order_id, qty, unit_price_ore, vat_rate, ticket_types(name), orders!inner(id, event_id, paid_at, stripe_session_id, status, discount_amount_ore, events!inner(title, organizer_id), discount_codes(code))',
     )
     .eq('orders.status', 'paid')
+    .eq('orders.events.organizer_id', auth.organizerId)
 
   if (scope === 'day') {
     const date = url.searchParams.get('date')
@@ -352,6 +348,15 @@ Deno.serve(async (req: Request) => {
     const eventId = url.searchParams.get('event_id')
     if (!eventId) {
       return jsonResponse({ error: 'event_id krävs för scope=event.' }, 400)
+    }
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('id, organizer_id')
+      .eq('id', eventId)
+      .maybeSingle()
+    if (eventError) return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
+    if (!event || event.organizer_id !== auth.organizerId) {
+      return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
     }
     query = query.eq('orders.event_id', eventId)
   }

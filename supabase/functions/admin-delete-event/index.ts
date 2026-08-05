@@ -13,9 +13,12 @@
 // biljetter) blockerar DÄREMOT inte radering, och städas bort explicit
 // innan event-raden raderas.
 //
-// Kräver giltig admin-sessionstoken, precis som övriga admin-funktioner.
+// Kräver giltig Supabase Auth-JWT (se _shared/organizerAuth.ts), och
+// eventet måste tillhöra den inloggade användarens egen arrangör
+// (Tilläggsordern 2026-08-05) - samma 404-för-annan-arrangörs-event-
+// mönster som admin-update-event.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
 interface DeleteEventBody {
@@ -30,13 +33,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -56,14 +54,14 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, status')
+    .select('id, status, organizer_id')
     .eq('id', eventId)
     .maybeSingle()
 
   if (eventError) {
     return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
   }
-  if (!event) {
+  if (!event || event.organizer_id !== auth.organizerId) {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
@@ -136,8 +134,9 @@ Deno.serve(async (req: Request) => {
   // blockera raderingen via samma foreign key-mönster. Koden i sig har ett
   // värde oberoende av eventet (historik/spårbarhet för redan gjorda köp
   // på andra event om den återanvänts, eller bara för att inte tyst
-  // radera admins arbete) - vi kopplar loss den till "alla event"
-  // (event_id = null) snarare än att radera eller blockera.
+  // radera admins arbete) - vi kopplar loss den till "alla event för samma
+  // arrangör" (event_id = null) snarare än att radera eller blockera. Ingen
+  // ägarbyte sker - koden har redan samma organizer_id som eventet hade.
   const { error: unlinkDiscountCodesError } = await supabase
     .from('discount_codes')
     .update({ event_id: null })

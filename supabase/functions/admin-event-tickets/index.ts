@@ -1,11 +1,13 @@
 // admin-event-tickets
 //
 // Returnerar ett event, dess biljettyper och dess biljetter (status,
-// incheckningstid m.m.) för admin-detaljvyn. Kräver giltig
-// admin-sessionstoken. event_id skickas som query-param:
-// /admin-event-tickets?event_id=<uuid>
+// incheckningstid m.m.) för admin-detaljvyn. Kräver giltig Supabase
+// Auth-JWT (se _shared/organizerAuth.ts), och eventet måste tillhöra den
+// inloggade användarens egen arrangör (Tilläggsordern 2026-08-05) - samma
+// 404-för-annan-arrangörs-event-mönster som admin-update-event.
+// event_id skickas som query-param: /admin-event-tickets?event_id=<uuid>
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
 
@@ -17,13 +19,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -37,14 +34,14 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url')
+    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, organizer_id')
     .eq('id', eventId)
     .maybeSingle()
 
   if (eventError) {
     return jsonResponse({ error: `Kunde inte hämta event: ${eventError.message}` }, 500)
   }
-  if (!event) {
+  if (!event || event.organizer_id !== auth.organizerId) {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
@@ -68,8 +65,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte hämta biljetter: ${ticketsError.message}` }, 500)
   }
 
+  const { organizer_id: _organizerId, ...eventWithoutOrganizerId } = event
   const formattedEvent = {
-    ...event,
+    ...eventWithoutOrganizerId,
     starts_at: toIso8601Seconds(event.starts_at),
     created_at: toIso8601Seconds(event.created_at),
   }

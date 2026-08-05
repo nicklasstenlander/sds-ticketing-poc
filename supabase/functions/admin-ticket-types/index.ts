@@ -1,10 +1,16 @@
 // admin-ticket-types
 //
 // CRUD för biljettyper (ticket_types) inom ett event. Kräver giltig
-// admin-sessionstoken, precis som övriga admin-funktioner. Ett enda
-// POST-anrop med ett "action"-fält (create/update/delete) istället för
-// separata funktioner - samma yta som resten av admin-API:et men slipper
-// tre nästan identiska edge functions för en så pass liten resurs.
+// Supabase Auth-JWT (se _shared/organizerAuth.ts). Ett enda POST-anrop
+// med ett "action"-fält (create/update/delete) istället för separata
+// funktioner - samma yta som resten av admin-API:et men slipper tre
+// nästan identiska edge functions för en så pass liten resurs.
+//
+// Dataisolering (Tilläggsordern 2026-08-05): ticket_types har ingen egen
+// organizer_id-kolumn, ägarskap härleds alltid transitivt via
+// ticket_types.event_id -> events.organizer_id. Varje create/update/delete
+// kontrollerar explicit att det berörda eventet tillhör den inloggade
+// användarens arrangör - annars 404, avslöjar inte att raden existerar.
 //
 // Ingen capacity på biljettypen (rättelseordern 2026-08-05, delad
 // kapacitetspool) - kapacitet hanteras uteslutande på eventet
@@ -15,7 +21,7 @@
 // avsnitt 5) - en biljettyp utan PAID-ordrar raderas, en med paid-ordrar
 // kan inte tas bort (ingen "inaktivera"-flagga i v1, se Tilläggsordern).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
 const VALID_VAT_RATES = [0, 6, 12, 25]
@@ -38,13 +44,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -74,11 +75,13 @@ Deno.serve(async (req: Request) => {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, status')
+      .select('id, status, organizer_id')
       .eq('id', eventId)
       .maybeSingle()
     if (eventError) return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
-    if (!event) return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
+    if (!event || event.organizer_id !== auth.organizerId) {
+      return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
+    }
     if (event.status === 'cancelled') {
       return jsonResponse({ error: 'Eventet är inställt och kan inte redigeras.' }, 409)
     }
@@ -105,11 +108,14 @@ Deno.serve(async (req: Request) => {
 
     const { data: current, error: currentError } = await supabase
       .from('ticket_types')
-      .select('id, sold_count')
+      .select('id, sold_count, events!inner(organizer_id)')
       .eq('id', ticketTypeId)
       .maybeSingle()
     if (currentError) return jsonResponse({ error: `Databasfel: ${currentError.message}` }, 500)
-    if (!current) return jsonResponse({ error: 'Biljettypen hittades inte.' }, 404)
+    const currentEvent = current ? (Array.isArray(current.events) ? current.events[0] : current.events) : null
+    if (!current || !currentEvent || currentEvent.organizer_id !== auth.organizerId) {
+      return jsonResponse({ error: 'Biljettypen hittades inte.' }, 404)
+    }
 
     const update: Record<string, unknown> = {}
 
@@ -157,11 +163,14 @@ Deno.serve(async (req: Request) => {
 
     const { data: ticketType, error: ticketTypeError } = await supabase
       .from('ticket_types')
-      .select('id')
+      .select('id, events!inner(organizer_id)')
       .eq('id', ticketTypeId)
       .maybeSingle()
     if (ticketTypeError) return jsonResponse({ error: `Databasfel: ${ticketTypeError.message}` }, 500)
-    if (!ticketType) return jsonResponse({ error: 'Biljettypen hittades inte.' }, 404)
+    const ownerEvent = ticketType ? (Array.isArray(ticketType.events) ? ticketType.events[0] : ticketType.events) : null
+    if (!ticketType || !ownerEvent || ownerEvent.organizer_id !== auth.organizerId) {
+      return jsonResponse({ error: 'Biljettypen hittades inte.' }, 404)
+    }
 
     const { count: paidOrderCount, error: countError } = await supabase
       .from('orders')

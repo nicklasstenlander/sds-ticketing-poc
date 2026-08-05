@@ -1,8 +1,12 @@
 // admin-create-event
 //
-// Skapar ett nytt event. Kräver en giltig admin-sessionstoken (utfärdad av
-// admin-auth) i Authorization-headern. Skriver med service role-nyckeln,
-// eftersom anon-nyckeln inte har någon INSERT-policy på events.
+// Skapar ett nytt event. Kräver en giltig Supabase Auth-JWT (se
+// _shared/organizerAuth.ts) - PIN-baserad admin-sessionstoken är
+// borttagen (Tilläggsordern 2026-08-05, multi-tenant). Eventet knyts
+// ALLTID till den inloggade användarens EGEN arrangör (organizer_id
+// härleds från JWT:n via organizer_members) - ett organizer_id som
+// eventuellt skickas i body ignoreras helt, det litar vi aldrig på från
+// klienten.
 //
 // Pris/moms skapas INTE här längre - de hör till biljettyper
 // (ticket_types), inte eventet, se admin-ticket-types. capacity finns
@@ -13,7 +17,7 @@
 // admin-update-event, publiceringsspärren i avsnitt 5 av Tilläggsordern)
 // - ett event utan biljettyper går inte att publicera.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
-import { bearerTokenFrom, verifyAdminToken } from '../_shared/adminToken.ts'
+import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
 
@@ -44,13 +48,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const adminPin = Deno.env.get('ADMIN_PIN')
-  if (!adminPin) {
-    return jsonResponse({ error: 'ADMIN_PIN är inte konfigurerad på servern.' }, 500)
-  }
-
-  const token = bearerTokenFrom(req)
-  if (!(await verifyAdminToken(adminPin, token))) {
+  const auth = await resolveOrganizer(req)
+  if (!auth) {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
@@ -80,6 +79,8 @@ Deno.serve(async (req: Request) => {
   const supabase = createAdminClient()
 
   // Säkerställ unik slug - prova baseSlug, sedan baseSlug-2, baseSlug-3, ...
+  // Slugen är unik globalt (över alla arrangörer), inte bara inom en
+  // arrangör, eftersom den utgör den publika köp-URL:en.
   let slug = baseSlug
   for (let attempt = 2; attempt <= 20; attempt++) {
     const { data: existing } = await supabase
@@ -92,7 +93,8 @@ Deno.serve(async (req: Request) => {
   }
 
   // Skapas alltid som "draft" - publicering sker via admin-update-event,
-  // som spärrar publicering tills minst en biljettyp finns.
+  // som spärrar publicering tills minst en biljettyp finns. organizer_id
+  // sätts till den inloggade användarens egen arrangör - aldrig från body.
   const { data, error } = await supabase
     .from('events')
     .insert({
@@ -102,6 +104,7 @@ Deno.serve(async (req: Request) => {
       starts_at: new Date(startsAt).toISOString(),
       status: 'draft',
       capacity,
+      organizer_id: auth.organizerId,
     })
     .select()
     .single()

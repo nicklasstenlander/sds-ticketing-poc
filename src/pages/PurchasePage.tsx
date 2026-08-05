@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { callFunction, ApiError } from '../lib/functionsApi'
-import type { EventRow, TicketTypeRow } from '../lib/types'
+import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 
@@ -20,10 +20,14 @@ const MAX_TOTAL_QTY = 6
 // eventets delade kapacitetspool (rättelseordern 2026-08-05) - remaining
 // nedan är alltså en pott som delas mellan alla rader, inte en gräns per
 // rad.
+interface EventWithOrganizer extends EventRow {
+  organizers: EventOrganizerRelation | EventOrganizerRelation[] | null
+}
+
 export function PurchasePage() {
   const { slug } = useParams<{ slug: string }>()
 
-  const [event, setEvent] = useState<EventRow | null>(null)
+  const [event, setEvent] = useState<EventWithOrganizer | null>(null)
   const [ticketTypes, setTicketTypes] = useState<TicketTypeRow[] | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -41,7 +45,7 @@ export function PurchasePage() {
     async function load() {
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('*')
+        .select('*, organizers(name)')
         .eq('slug', slug)
         .maybeSingle()
       if (cancelled) return
@@ -53,7 +57,7 @@ export function PurchasePage() {
         setNotFound(true)
         return
       }
-      setEvent(eventData as EventRow)
+      setEvent(eventData as EventWithOrganizer)
 
       const { data: ticketTypeData, error: ticketTypeError } = await supabase
         .from('ticket_types')
@@ -171,6 +175,10 @@ export function PurchasePage() {
           timeStyle: 'short',
         })}
         {event.venue ? ` · ${event.venue}` : ''}
+        {(() => {
+          const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
+          return organizer?.name ? ` · Arrangör: ${organizer.name}` : ''
+        })()}
       </p>
       <p className="text-[var(--text-muted)] mb-8">
         {soldOut ? 'Slutsålt' : `${remaining} platser kvar av ${event.capacity}`}
