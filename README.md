@@ -469,6 +469,18 @@ events on Connected accounts" ikryssad, annars kommer `account.updated`
 aldrig fram och `stripe_onboarding_complete` fastnar på `false` även efter
 en lyckad onboarding.
 
+**Två webhook-destinationer, två hemligheter.** I Stripes nuvarande
+Workbench-UI går det inte att i efterhand ändra en befintlig
+händelsedestinations "Händelser från"-omfattning (Ditt konto / Anslutna
+konton) - fältet låses efter att destinationen skapats. Den befintliga
+"Biljett-checkout"-destinationen (Ditt konto, `checkout.session.*`) kan
+alltså inte byggas ut att även ta emot `account.updated`. Istället finns
+en andra, separat destination ("Stripe Connect-onboarding", Anslutna
+konton, samma URL) med sin egen signeringshemlighet, sparad som secreten
+`STRIPE_CONNECT_WEBHOOK_SECRET`. `stripe-webhook` provar `STRIPE_WEBHOOK_SECRET`
+först och faller tillbaka på `STRIPE_CONNECT_WEBHOOK_SECRET` om den första
+verifieringen misslyckas, innan den avvisar med 400.
+
 > ⚠️ **Plattformskontot är preliminärt, inte permanent.** Det Stripe-konto
 > som `STRIPE_SECRET_KEY` pekar på just nu är Moon Movements ABs konto.
 > Det separata bolaget som ska äga plattformen på sikt (Childproof AB) är

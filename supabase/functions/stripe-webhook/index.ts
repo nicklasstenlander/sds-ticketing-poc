@@ -352,6 +352,18 @@ Deno.serve(async (req: Request) => {
   if (!webhookSecret) {
     return textResponse('STRIPE_WEBHOOK_SECRET är inte konfigurerad på servern.', 500)
   }
+  // Tilläggsordern 2026-08-06 ("Stripe Connect - eget underkonto per
+  // arrangör"): Stripes nuvarande Workbench-UI tillåter inte att en
+  // befintlig händelsedestinations "Händelser från"-omfattning (Ditt konto
+  // vs Anslutna konton) ändras i efterhand - fältet är låst efter att
+  // destinationen skapats ("Det här fältet kan inte ändras"). Därför krävs
+  // en HELT SEPARAT destination för account.updated (Anslutna konton), och
+  // den destinationen får sin EGEN signeringshemlighet, skild från
+  // STRIPE_WEBHOOK_SECRET. STRIPE_CONNECT_WEBHOOK_SECRET är valfri (inte
+  // 500 om den saknas) eftersom den bara behövs av den nya destinationen -
+  // en miljö som ännu inte satt upp Connect-webhooken ska fortsätta kunna
+  // ta emot vanliga checkout.session.*-händelser utan avbrott.
+  const connectWebhookSecret = Deno.env.get('STRIPE_CONNECT_WEBHOOK_SECRET')
 
   const signature = req.headers.get('stripe-signature')
   if (!signature) {
@@ -369,10 +381,23 @@ Deno.serve(async (req: Request) => {
     // asynkront, till skillnad från Node.js där stripe-paketets synkrona
     // constructEvent normalt används.
     event = await stripe.webhooks.constructEventAsync(rawBody, signature, webhookSecret)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Okänt fel.'
-    console.error('Ogiltig Stripe-webhook-signatur:', message)
-    return textResponse(`Ogiltig signatur: ${message}`, 400)
+  } catch (primaryErr) {
+    // Prova den sekundära hemligheten (Connect-destinationen) innan vi ger
+    // upp - se kommentaren ovanför connectWebhookSecret för varför det
+    // finns två separata hemligheter att verifiera mot.
+    if (connectWebhookSecret) {
+      try {
+        event = await stripe.webhooks.constructEventAsync(rawBody, signature, connectWebhookSecret)
+      } catch (secondaryErr) {
+        const message = secondaryErr instanceof Error ? secondaryErr.message : 'Okänt fel.'
+        console.error('Ogiltig Stripe-webhook-signatur (båda hemligheterna testade):', message)
+        return textResponse(`Ogiltig signatur: ${message}`, 400)
+      }
+    } else {
+      const message = primaryErr instanceof Error ? primaryErr.message : 'Okänt fel.'
+      console.error('Ogiltig Stripe-webhook-signatur:', message)
+      return textResponse(`Ogiltig signatur: ${message}`, 400)
+    }
   }
 
   const supabase = createAdminClient()
