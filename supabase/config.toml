@@ -81,6 +81,18 @@ verify_jwt = true
 [functions.platform-create-organizer]
 verify_jwt = true
 
+[functions.admin-invite-member]
+verify_jwt = true
+
+[functions.admin-list-members]
+verify_jwt = true
+
+[functions.admin-remove-member]
+verify_jwt = true
+
+[functions.admin-update-organizer]
+verify_jwt = true
+
 [functions.stripe-webhook]
 verify_jwt = false
 

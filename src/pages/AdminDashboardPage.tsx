@@ -47,9 +47,14 @@ export function AdminDashboardPage() {
     <Layout wide>
       <div className="flex items-center justify-between mb-1">
         <div className="eyebrow">{APP_NAME}</div>
-        <Link to="/admin" className="text-sm link-accent">
-          ← Till admin
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link to="/admin" className="text-sm link-accent">
+            ← Till admin
+          </Link>
+          <Link to="/admin/organizers" className="text-sm link-accent">
+            Arrangörer
+          </Link>
+        </div>
       </div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Dashboard</h1>
       <p className="text-[var(--text-muted)] text-sm mb-8">Överblick över dina föreställningar.</p>

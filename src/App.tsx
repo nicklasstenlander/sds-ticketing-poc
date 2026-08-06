@@ -7,6 +7,7 @@ import { AdminPage } from './pages/AdminPage'
 import { AdminEventPage } from './pages/AdminEventPage'
 import { AdminDashboardPage } from './pages/AdminDashboardPage'
 import { AdminWelcomePage } from './pages/AdminWelcomePage'
+import { AdminOrganizersPage } from './pages/AdminOrganizersPage'
 
 // HashRouter (URL:er som /#/admin), inte BrowserRouter: GitHub Pages har
 // ingen serverkonfiguration som kan skicka godtyckliga sökvägar till
@@ -26,6 +27,7 @@ export function App() {
         <Route path="/admin/event/:id" element={<AdminEventPage />} />
         <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
         <Route path="/admin/valkommen" element={<AdminWelcomePage />} />
+        <Route path="/admin/organizers" element={<AdminOrganizersPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

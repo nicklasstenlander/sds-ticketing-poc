@@ -9,7 +9,6 @@ import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
-import { OrganizersSection } from './admin/OrganizersSection'
 
 interface AdminEventsResponse {
   events: AdminEventRow[]
@@ -395,6 +394,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <Link to="/admin/dashboard" className="text-sm link-accent">
             Dashboard
           </Link>
+          <Link to="/admin/organizers" className="text-sm link-accent">
+            Arrangörer
+          </Link>
           <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
             Logga ut
           </button>
@@ -614,8 +616,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </button>
             </section>
           )}
-
-          {isPlatformAdmin && <OrganizersSection />}
 
           <DiscountCodesSection events={events ?? []} />
 
