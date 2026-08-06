@@ -78,6 +78,9 @@ verify_jwt = true
 [functions.admin-duplicate-event]
 verify_jwt = true
 
+[functions.platform-create-organizer]
+verify_jwt = true
+
 [functions.stripe-webhook]
 verify_jwt = false
 
