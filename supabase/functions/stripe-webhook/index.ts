@@ -15,6 +15,12 @@
 //     ordern expired och återför HELA kundvagnens reserverade kapacitet i
 //     en enda kontroll mot eventets delade pool (se rättelseordern,
 //     2026-08-05).
+//   account.updated - Stripe Connect-kontostatus ändrad (Tilläggsordern
+//     2026-08-06, "Stripe Connect - eget underkonto per arrangör"): sätter
+//     stripe_onboarding_complete=true när kontot faktiskt kan ta emot
+//     betalningar. Kräver att webhook-endpointen i Stripe Dashboard har
+//     "Listen to events on Connected accounts" ikryssad, annars kommer
+//     dessa events aldrig fram (se README avsnitt 8b).
 //
 // Idempotens: Stripe kan leverera samma event flera gånger (retries). Vi
 // försöker INSERT:a (provider, provider_event_id) i webhook_events INNAN vi
@@ -274,6 +280,31 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 }
 
+// Tilläggsordern 2026-08-06 ("Stripe Connect - eget underkonto per
+// arrangör"). account.updated skickas av Stripe för Connect-konton -
+// fångar bland annat när ett konto går från "onboarding påbörjad" till
+// "kan faktiskt ta emot betalningar". Vi sätter stripe_onboarding_complete
+// bara när BÅDA charges_enabled och details_submitted är true - ett konto
+// kan ha details_submitted=true men ändå inte charges_enabled (t.ex. om
+// Stripe begär mer verifiering), och vi vill inte flagga ett sådant konto
+// som klart att ta betalt.
+//
+// Matchar på stripe_account_id, inte organizer_id - detta event kommer
+// inte med någon Supabase-koppling alls, bara Stripes egna account.id.
+async function handleAccountUpdated(account: Stripe.Account) {
+  if (!account.charges_enabled || !account.details_submitted) return
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('organizers')
+    .update({ stripe_onboarding_complete: true })
+    .eq('stripe_account_id', account.id)
+
+  if (error) {
+    console.error('Kunde inte sätta stripe_onboarding_complete för konto', account.id, error.message)
+  }
+}
+
 async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   const supabase = createAdminClient()
   const orderId = session.client_reference_id ?? session.metadata?.order_id
@@ -366,6 +397,8 @@ Deno.serve(async (req: Request) => {
       await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session)
     } else if (event.type === 'checkout.session.expired') {
       await handleCheckoutExpired(event.data.object as Stripe.Checkout.Session)
+    } else if (event.type === 'account.updated') {
+      await handleAccountUpdated(event.data.object as Stripe.Account)
     }
     // Övriga eventtyper (vi prenumererar bara på dessa två i Stripe Dashboard,
     // men om fler skulle skickas ändå kvitterar vi dem tyst med 200).

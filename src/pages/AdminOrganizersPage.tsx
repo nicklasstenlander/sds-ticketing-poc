@@ -111,6 +111,9 @@ export function AdminOrganizersPage() {
           <Link to="/admin/dashboard" className="text-sm link-accent">
             Dashboard
           </Link>
+          <Link to="/admin/stripe-installning" className="text-sm link-accent">
+            Stripe
+          </Link>
           <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
             Logga ut
           </button>

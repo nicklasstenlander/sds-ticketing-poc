@@ -11,6 +11,14 @@ import Stripe from 'npm:stripe@17'
 
 let cachedClient: Stripe | null = null
 
+// ⚠️ PLATTFORMSKONTOT ÄR PRELIMINÄRT (Tilläggsordern 2026-08-06, "Stripe
+// Connect - eget underkonto per arrangör", avsnitt 0). STRIPE_SECRET_KEY
+// pekar just nu på Moon Movements ABs Stripe-konto - det bolag som ska
+// äga plattformen på sikt ("Childproof AB") är inte bildat än. Detta är
+// helt okej i Test mode (inget hinder, ingen riktig betalning sker), MEN
+// STRIPE_SECRET_KEY MÅSTE bytas till Childproof ABs eget Stripe-konto
+// INNAN Live mode aktiveras för NÅGON arrangör - annars landar riktiga
+// pengar på fel bolags konto. Se README.md avsnitt 8 för samma flagga.
 export function createStripeClient(): Stripe {
   if (cachedClient) return cachedClient
   const secretKey = Deno.env.get('STRIPE_SECRET_KEY')

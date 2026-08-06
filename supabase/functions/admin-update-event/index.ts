@@ -151,6 +151,30 @@ Deno.serve(async (req: Request) => {
           400,
         )
       }
+      // Stripe Connect-spärr (Tilläggsordern 2026-08-06, "Stripe Connect -
+      // eget underkonto per arrangör"): en arrangör utan slutfört
+      // Stripe-konto ska inte kunna publicera ett event som säljer
+      // biljetter - annars skulle create-order senare behöva avvisa
+      // ordern (samma spärr finns även DÄR som ett sista skyddsnät, se
+      // create-order/index.ts), vilket vore ett betydligt sämre ställe
+      // att upptäcka problemet på än redan vid publiceringsförsöket.
+      const { data: organizerRow, error: organizerError } = await supabase
+        .from('organizers')
+        .select('stripe_onboarding_complete')
+        .eq('id', auth.organizerId)
+        .single()
+      if (organizerError || !organizerRow) {
+        return jsonResponse({ error: `Databasfel: ${organizerError?.message ?? 'okänt fel'}` }, 500)
+      }
+      if (!organizerRow.stripe_onboarding_complete) {
+        return jsonResponse(
+          {
+            error:
+              'Arrangören har inte anslutit ett Stripe-konto än. Anslut Stripe för att kunna publicera betalda event.',
+          },
+          400,
+        )
+      }
     }
     update.status = body.status
   }

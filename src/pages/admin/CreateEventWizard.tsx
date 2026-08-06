@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { callFunction } from '../../lib/functionsApi'
 import type { EventRow } from '../../lib/types'
 
@@ -325,7 +326,19 @@ export function CreateEventWizard({
               </div>
             ))}
           </div>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
+          {error && (
+            <p className="text-red-600 text-sm">
+              {error}
+              {error.includes('Stripe') && (
+                <>
+                  {' '}
+                  <Link to="/admin/stripe-installning" className="underline">
+                    Gå till Stripe-inställningar →
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
           <div className="flex gap-3 mt-2">
             <button type="button" onClick={goBack} disabled={submitting} className="btn-secondary flex-1">
               Tillbaka

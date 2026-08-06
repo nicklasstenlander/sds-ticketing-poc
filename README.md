@@ -64,12 +64,13 @@ sådant bara du kan göra - se respektive avsnitt nedan för exakta kommandon.
 
 Flera biljettyper eller momssatser per event, PDF-generering, Apple/Google
 Wallet, återbetalning/avbokning i UI (hanteras manuellt i Stripe
-Dashboard), offline-stöd, inloggning utöver PIN-koden,
-SODSS-varumärkesanpassad design, Stripe Connect/split till separat
-arrangörskonto (varje arrangör delar samma Stripe-konto i denna PoC,
-se avsnittet "Flera arrangörer"), Swish, Stripe Invoicing/fakturering,
-automatisk schemalagd SIE-export (manuell nedladdning i v1),
-självregistrering av nya arrangörer (skapas manuellt, se nedan).
+Dashboard, se avsnitt 8b för Connect-kontons refunds-begränsning),
+offline-stöd, SODSS-varumärkesanpassad design, Swish,
+Stripe Invoicing/fakturering, automatisk schemalagd SIE-export (manuell
+nedladdning i v1).
+(Denna lista är historisk och inte fullt uppdaterad - inloggning,
+Stripe Connect/eget underkonto per arrangör och självregistrering av
+arrangörer har alla byggts sedan dess, se respektive avsnitt.)
 
 ---
 
@@ -444,6 +445,45 @@ ordern går ut alltid stämmer överens.
   `release-expired-orders`-jobbet). `cancelled` finns i schemat för en
   eventuell framtida admin-avbokningsfunktion men sätts inte av något
   flöde i denna PoC.
+
+## 8b. Stripe Connect - eget underkonto per arrangör (Tilläggsordern 2026-08-06)
+
+Varje arrangör har ett eget Stripe **Standard**-Connect-konto (inte
+Express/Custom - arrangören sköter sin egen KYC-onboarding direkt mot
+Stripe och Stripe bär supportbördan för deras konto). Pengar för deras
+köp går direkt dit, plattformens avgift dras automatiskt som en
+`application_fee_amount` (satt via secreten `PLATFORM_FEE_RATE`, t.ex.
+`0.02` för 2%) - ingen manuell utbetalning från er sida.
+
+**Flöde:** admin-anropar `admin-connect-stripe` (POST) → Stripe skapar
+kontot + en Account Link → arrangören slutför KYC på Stripes hostade sida
+→ Stripe skickar `account.updated` till `stripe-webhook`, som sätter
+`organizers.stripe_onboarding_complete = true` när kontot faktiskt kan ta
+emot betalningar. `create-order` avvisar en order (`409`) om arrangören
+saknar ett slutfört Connect-konto - samma spärr finns även vid
+publicering (`admin-update-event`), så det upptäcks långt innan någon
+kund hinner fram till Checkout.
+
+**Krävs i Stripe Dashboard:** webhook-endpointen måste ha "Listen to
+events on Connected accounts" ikryssad, annars kommer `account.updated`
+aldrig fram och `stripe_onboarding_complete` fastnar på `false` även efter
+en lyckad onboarding.
+
+> ⚠️ **Plattformskontot är preliminärt, inte permanent.** Det Stripe-konto
+> som `STRIPE_SECRET_KEY` pekar på just nu är Moon Movements ABs konto.
+> Det separata bolaget som ska äga plattformen på sikt (Childproof AB) är
+> inte bildat än. Helt okej i Test mode - men **`STRIPE_SECRET_KEY` MÅSTE
+> bytas till Childproof ABs eget Stripe-konto innan Live mode aktiveras
+> för någon arrangör.** Se även kommentaren ovanför nyckel-läsningen i
+> `supabase/functions/_shared/stripe.ts`.
+
+**Explicit utanför omfattning i denna omgång:** Express/Custom-konton,
+differentierad avgiftsnivå per arrangör i UI (går via `PLATFORM_FEE_RATE`
+som secret, men alla arrangörer delar samma sats), automatisk fakturering
+av plattformsavgiften (Connects `application_fee` räcker), och refunds
+över Connect-gränsen (`reverse_transfer` - hanteras manuellt i respektive
+arrangörs eget Stripe-dashboard tills vidare).
+
 
 ## 9. Exportera försäljning (CSV och SIE4)
 

@@ -397,6 +397,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <Link to="/admin/organizers" className="text-sm link-accent">
             Arrangörer
           </Link>
+          <Link to="/admin/stripe-installning" className="text-sm link-accent">
+            Stripe
+          </Link>
           <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
             Logga ut
           </button>
@@ -436,7 +439,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <section className="order-1">
           <h2 className="font-semibold mb-4 text-[var(--text)]">Befintliga events</h2>
           {error && <p className="text-red-600">{error}</p>}
-          {rowError && <p className="text-red-600 mb-2">{rowError}</p>}
+          {rowError && (
+            <p className="text-red-600 mb-2">
+              {rowError}
+              {rowError.includes('Stripe') && (
+                <>
+                  {' '}
+                  <Link to="/admin/stripe-installning" className="underline">
+                    Gå till Stripe-inställningar →
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
           {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
           {events !== null && events.length === 0 && (
             <p className="text-[var(--text-muted)]">Inga events skapade ännu.</p>

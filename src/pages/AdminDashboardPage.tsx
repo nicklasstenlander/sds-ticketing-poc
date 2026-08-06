@@ -54,6 +54,9 @@ export function AdminDashboardPage() {
           <Link to="/admin/organizers" className="text-sm link-accent">
             Arrangörer
           </Link>
+          <Link to="/admin/stripe-installning" className="text-sm link-accent">
+            Stripe
+          </Link>
         </div>
       </div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Dashboard</h1>

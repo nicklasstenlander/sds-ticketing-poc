@@ -216,6 +216,38 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
+  // Stripe Connect-spärr (Tilläggsordern 2026-08-06, "Stripe Connect -
+  // eget underkonto per arrangör"), ordertextens avsnitt 4: ett sista
+  // skyddsnät utöver publiceringsspärren i admin-update-event, ifall
+  // något event av någon anledning ändå är publicerat utan en arrangör
+  // med slutfört Stripe-konto (t.ex. om onboardingen slutförts och sedan
+  // återkallats hos Stripe). Avvisar hellre ordern här än att skapa en
+  // Checkout Session som skulle misslyckas hos Stripe med ett mycket
+  // otydligare fel för köparen.
+  //
+  // Medveten avvikelse från ordertextens avsnitt 6 ("gör Connect-fälten
+  // valfria först, fallback till det delade kontot"): DoD-punkt 5 kräver
+  // uttryckligen att ett direkt API-anrop INTE ska kunna kringgå denna
+  // spärr, vilket en fallback till plattformens delade konto skulle göra.
+  // Migreringen hanteras istället operationellt - SDS och Testscenen
+  // Stripe-anslöts aktivt i samma veva som denna spärr driftsattes (se
+  // README avsnitt 8b), inte via en kodmässig fallback-väg.
+  const { data: organizer, error: organizerError } = await supabase
+    .from('organizers')
+    .select('id, stripe_account_id, stripe_onboarding_complete')
+    .eq('id', event.organizer_id)
+    .single()
+
+  if (organizerError || !organizer) {
+    return jsonResponse({ error: `Databasfel: ${organizerError?.message ?? 'okänt fel'}` }, 500)
+  }
+  if (!organizer.stripe_account_id || !organizer.stripe_onboarding_complete) {
+    return jsonResponse(
+      { error: 'Arrangören kan inte ta emot betalningar just nu. Försök igen senare.' },
+      409,
+    )
+  }
+
   const { data: ticketTypeRows, error: ticketTypesError } = await supabase
     .from('ticket_types')
     .select('id, event_id, name, price_ore, vat_rate')
@@ -346,32 +378,54 @@ Deno.serve(async (req: Request) => {
 
   // Skapa Stripe Checkout Session (Test mode - se _shared/stripe.ts) - ett
   // line_item per kundvagnsrad, med biljettypens namn i product_data.name.
+  // PLATFORM_FEE_RATE (t.ex. "0.02" för 2%) - Supabase secret, ingen
+  // adminvy för att sätta olika sats per arrangör i denna omgång (se
+  // ordertextens avsnitt 7, explicit utanför omfattning). Ogiltig/saknad
+  // secret faller tillbaka på 0 hellre än att krascha ordern - en felaktigt
+  // konfigurerad avgift ska inte kunna blockera betalande kunder, men
+  // loggas ändå så det upptäcks.
+  const platformFeeRateRaw = Deno.env.get('PLATFORM_FEE_RATE')
+  const platformFeeRate = Number(platformFeeRateRaw)
+  if (platformFeeRateRaw !== undefined && (!Number.isFinite(platformFeeRate) || platformFeeRate < 0)) {
+    console.error('Ogiltig PLATFORM_FEE_RATE:', platformFeeRateRaw, '- använder 0 istället.')
+  }
+  const effectiveFeeRate = Number.isFinite(platformFeeRate) && platformFeeRate >= 0 ? platformFeeRate : 0
+  const applicationFeeAmount = Math.round(totalOre * effectiveFeeRate)
+
   let session
   try {
     const stripe = createStripeClient()
-    session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: buyerEmail,
-      client_reference_id: order.id,
-      line_items: lines.map((l) => ({
-        quantity: l.qty,
-        price_data: {
-          currency: 'sek',
-          unit_amount: l.unitPriceAfterOre,
-          product_data: {
-            name: `${event.title} — ${l.name}`,
-            description: event.venue ? `${event.venue}` : undefined,
+    session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer_email: buyerEmail,
+        client_reference_id: order.id,
+        line_items: lines.map((l) => ({
+          quantity: l.qty,
+          price_data: {
+            currency: 'sek',
+            unit_amount: l.unitPriceAfterOre,
+            product_data: {
+              name: `${event.title} — ${l.name}`,
+              description: event.venue ? `${event.venue}` : undefined,
+            },
           },
+        })),
+        expires_at: Math.floor(expiresAt.getTime() / 1000),
+        success_url: `${frontendBaseUrl}/#/kop/${event.slug}/klar?order=${order.id}`,
+        cancel_url: `${frontendBaseUrl}/#/kop/${event.slug}`,
+        metadata: {
+          order_id: order.id,
+          event_id: event.id,
         },
-      })),
-      expires_at: Math.floor(expiresAt.getTime() / 1000),
-      success_url: `${frontendBaseUrl}/#/kop/${event.slug}/klar?order=${order.id}`,
-      cancel_url: `${frontendBaseUrl}/#/kop/${event.slug}`,
-      metadata: {
-        order_id: order.id,
-        event_id: event.id,
+        payment_intent_data: {
+          application_fee_amount: applicationFeeAmount,
+        },
       },
-    })
+      {
+        stripeAccount: organizer.stripe_account_id,
+      },
+    )
   } catch (err) {
     await supabase.from('order_items').delete().eq('order_id', order.id)
     await supabase.from('orders').delete().eq('id', order.id)
