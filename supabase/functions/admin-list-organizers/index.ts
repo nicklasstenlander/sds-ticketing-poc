@@ -21,6 +21,7 @@
 // arrangörer är liten nog att N+1-uppslag inte är ett problem här).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
+import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -30,29 +31,12 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Metoden stöds inte.' }, 405)
   }
 
-  const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization')
-  const match = authHeader?.match(/^Bearer\s+(.+)$/i)
-  const jwt = match?.[1]
-  if (!jwt) {
-    return jsonResponse({ error: 'Ej behörig.' }, 401)
+  const auth = await requirePlatformAdmin(req)
+  if (!auth.ok) {
+    return jsonResponse({ error: 'Ej behörig.' }, auth.status)
   }
 
   const supabase = createAdminClient()
-
-  const { data: userData, error: userError } = await supabase.auth.getUser(jwt)
-  if (userError || !userData?.user) {
-    return jsonResponse({ error: 'Ej behörig.' }, 401)
-  }
-
-  const { data: platformAdmin } = await supabase
-    .from('platform_admins')
-    .select('user_id')
-    .eq('user_id', userData.user.id)
-    .maybeSingle()
-
-  if (!platformAdmin) {
-    return jsonResponse({ error: 'Ej behörig.' }, 403)
-  }
 
   const { data: organizers, error } = await supabase
     .from('organizers')

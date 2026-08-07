@@ -8,6 +8,12 @@
 #     query-param; public-events är avsiktligt tokenfri - se dess egen
 #     filkommentar för motivering, den är tänkt att anropas direkt från en
 #     Squarespace Code Block där en hemlig token inte kan gömmas).
+#   - public-apply-organizer: samma resonemang som public-events - anropas
+#     direkt från en Squarespace Code Block. Ytan hålls smal genom att den
+#     bara kan skriva en rad i en ansökningskö (organizer_applications),
+#     aldrig skapa ett konto eller skicka mail till en tredje part - se
+#     _shared/createOrganizer.ts och admin-approve-application för var
+#     det faktiska organizer-skapandet sker (platform-admin-skyddat).
 #   - scan-ticket / list-events: statisk SCANNER_BEARER_TOKEN (iOS-appen).
 #   - stripe-webhook: Stripe skickar en stripe-signature-header, ingen
 #     Supabase-JWT och inget Authorization-Bearer alls (Stripe stöder inte
@@ -103,4 +109,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.export-sales]
+verify_jwt = true
+
+[functions.public-apply-organizer]
+verify_jwt = false
+
+[functions.admin-approve-application]
+verify_jwt = true
+
+[functions.admin-reject-application]
+verify_jwt = true
+
+[functions.admin-list-applications]
 verify_jwt = true

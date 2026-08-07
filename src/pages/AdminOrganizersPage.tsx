@@ -7,6 +7,7 @@ import { getActiveOrganizerId, setActiveOrganizerId } from '../lib/organizerCont
 import { APP_NAME } from '../lib/constants'
 import { OrganizersSection } from './admin/OrganizersSection'
 import { OrganizerMembersSection } from './admin/OrganizerMembersSection'
+import { ApplicationsSection } from './admin/ApplicationsSection'
 
 interface OrganizerSummary {
   id: string
@@ -122,7 +123,14 @@ export function AdminOrganizersPage() {
       <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Arrangörer</h1>
 
       {!orgCheckReady && <p className="text-[var(--text-muted)] text-sm">Laddar…</p>}
-      {orgCheckReady && (isPlatformAdmin && !activeOrgId ? <OrganizersSection /> : <OrganizerMembersSection />)}
+      {orgCheckReady && (isPlatformAdmin && !activeOrgId ? (
+        <>
+          <ApplicationsSection />
+          <OrganizersSection />
+        </>
+      ) : (
+        <OrganizerMembersSection />
+      ))}
     </Layout>
   )
 }
