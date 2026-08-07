@@ -125,7 +125,7 @@ export function AdminWelcomePage() {
         {(stage === 'need-password' || stage === 'setting-password') && (
           <form onSubmit={handleSetPassword} className="space-y-4">
             <p className="text-sm text-[var(--text-muted)]">
-              Sätt ett lösenord för att komma igång med ditt ScenPass-workspace.
+              Sätt ett lösenord för att komma igång med ditt {APP_NAME}-workspace.
             </p>
             <div>
               <label className="block text-sm font-medium mb-2 text-[var(--text)]">Lösenord</label>

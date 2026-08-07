@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { APP_NAME } from '../lib/constants'
 
 interface LayoutProps {
   children: ReactNode
@@ -17,7 +18,7 @@ export function Layout({ children, wide = false }: LayoutProps) {
       <header className="bg-[var(--surface)] shadow-[var(--shadow-card)]">
         <div className={`mx-auto ${widthClass} px-4 py-4 flex items-center justify-between`}>
           <Link to="/" className="font-bold text-[var(--text)]">
-            ScenPass
+            {APP_NAME}
           </Link>
           <Link to="/admin" className="text-sm link-accent">
             Admin

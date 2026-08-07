@@ -579,13 +579,21 @@ supabase functions deploy admin-delete-event
 
 ## 11. ScenPass-designmockupen (landningssida, /evenemang, riktig QR, admin-wizard, dashboard)
 
-Arbetsnamnet "ScenPass" (se `src/lib/constants.ts`, `APP_NAME`) är inte ett
-slutgiltigt produktnamn.
+Produktnamnet är "Rideau" (se `src/lib/constants.ts`, `APP_NAME`) - döpt om
+från det ursprungliga arbetsnamnet "ScenPass" i Tilläggsordern 2026-08-07,
+"Omdöpning: ScenPass -> Rideau". Rubriken på det här avsnittet behåller det
+gamla namnet eftersom den beskriver ordern som ursprungligen gav mockupen
+det namnet, inte den nuvarande produkten.
 
-Nya routes: `/` (statisk landningssida), `/evenemang` (ersätter gamla `/`
-- listar publicerade event), `/admin/dashboard` (sålt/kapacitet per event,
-byggt enbart från redan hämtad `admin-events`-data, ingen ny
-backend-aggregering).
+Nya routes (vid tillfället för denna order): `/` (statisk landningssida),
+`/evenemang` (ersätter gamla `/` - listar publicerade event),
+`/admin/dashboard` (sålt/kapacitet per event, byggt enbart från redan
+hämtad `admin-events`-data, ingen ny backend-aggregering).
+
+**Uppdatering (Tilläggsordern 2026-08-07, "Omdöpning: ScenPass -> Rideau"):**
+den statiska landningssidan på `/` togs bort igen - Squarespace har numera
+en egen sida som länkar direkt till `/evenemang`. `/` (och alla okända
+sökvägar) redirectar dit istället, se `src/App.tsx`.
 
 **`order-status` är ändrad** - returnerar nu `tickets: { ticket_code,
 qr_url }[]` när `status = 'paid'`, byggt från den befintliga publika

@@ -159,7 +159,7 @@ function buildSie(rows: RevenueRow[]): string {
 
   const header = [
     '#FLAGGA 0',
-    '#PROGRAM "ScenPass plattformsintakt" 1.0',
+    '#PROGRAM "Rideau plattformsintakt" 1.0',
     '#FORMAT PC8',
     `#GEN ${genDate}`,
     '#SIETYP 4',
