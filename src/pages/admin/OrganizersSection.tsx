@@ -8,6 +8,7 @@ interface OrganizerListItem {
   slug: string
   contact_email: string | null
   status: 'invited' | 'active'
+  event_count: number
 }
 
 interface ListOrganizersResponse {
@@ -45,6 +46,7 @@ export function OrganizersSection() {
   const [organizers, setOrganizers] = useState<OrganizerListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -105,6 +107,30 @@ export function OrganizersSection() {
       await loadOrganizers()
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Radering av en hel arrangör (Tilläggsordern 2026-08-07, "Radera
+  // arrangör i UI"). Medvetet strängare bekräftelse än eventradering -
+  // en arrangör med event kan inte raderas alls, knappen är inaktiverad
+  // redan innan klick (se render nedan) så den här grenen når bara
+  // arrangörer utan event.
+  async function handleDelete(org: OrganizerListItem) {
+    if (!window.confirm(`Radera arrangören ${org.name} permanent?`)) return
+
+    setDeletingId(org.id)
+    setError(null)
+    try {
+      await callFunction('admin-delete-organizer', {
+        auth: true,
+        method: 'POST',
+        body: { organizer_id: org.id },
+      })
+      await loadOrganizers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kunde inte radera arrangören.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -193,7 +219,7 @@ export function OrganizersSection() {
       {organizers !== null && (
         <ul className="space-y-2">
           {organizers.map((org) => (
-            <li key={org.id} className="flex items-center justify-between text-sm py-1">
+            <li key={org.id} className="flex items-center justify-between text-sm py-1 gap-3">
               <div className="min-w-0">
                 <div className="text-[var(--text)] font-medium">{org.name}</div>
                 <div className="text-[var(--text-muted)] text-xs truncate">
@@ -201,13 +227,32 @@ export function OrganizersSection() {
                   {org.contact_email ? ` · ${org.contact_email}` : ''}
                 </div>
               </div>
-              <span
-                className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${
-                  org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                }`}
-              >
-                {org.status === 'active' ? 'Aktiv' : 'Inbjuden'}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {org.status === 'active' ? 'Aktiv' : 'Inbjuden'}
+                </span>
+                {org.event_count > 0 ? (
+                  <span
+                    className="text-xs text-[var(--text-muted)]"
+                    title={`Kan inte raderas — har ${org.event_count} event`}
+                  >
+                    Radera
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(org)}
+                    disabled={deletingId === org.id}
+                    className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                  >
+                    {deletingId === org.id ? 'Raderar…' : 'Radera'}
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

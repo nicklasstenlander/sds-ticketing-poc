@@ -55,6 +55,23 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Databasfel: ${membersError.message}` }, 500)
   }
 
+  // event_count (Tilläggsordern 2026-08-07, "Radera arrangör i UI") -
+  // hämtas här, i samma svar som resten av listan, så att UI:t kan
+  // gråtona "Radera"-knappen för arrangörer med event UTAN ett extra
+  // anrop innan bekräftelsedialogen visas - samma "räkna innan man
+  // frågar"-princip som admin-delete-event redan följer för sold_count.
+  const { data: eventRows, error: eventsError } = await supabase.from('events').select('organizer_id')
+
+  if (eventsError) {
+    return jsonResponse({ error: `Databasfel: ${eventsError.message}` }, 500)
+  }
+
+  const eventCountByOrganizer = new Map<string, number>()
+  for (const row of eventRows ?? []) {
+    if (!row.organizer_id) continue
+    eventCountByOrganizer.set(row.organizer_id, (eventCountByOrganizer.get(row.organizer_id) ?? 0) + 1)
+  }
+
   // Slå upp last_sign_in_at för varje unik användare som är kopplad till
   // någon arrangör. getUserById() är Auth Admin API, inte PostgREST -
   // auth.users exponeras avsiktligt inte som en vanlig tabell.
@@ -81,6 +98,7 @@ Deno.serve(async (req: Request) => {
       slug: org.slug,
       contact_email: org.contact_email,
       status: hasSignedIn ? 'active' : 'invited',
+      event_count: eventCountByOrganizer.get(org.id) ?? 0,
     }
   })
 
