@@ -21,6 +21,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.ts'
+import { calculatePlatformFee, readPlatformFeeFlatOre } from '../_shared/platformFee.ts'
 
 interface CartItemInput {
   ticket_type_id?: string
@@ -309,6 +310,15 @@ Deno.serve(async (req: Request) => {
     0,
   )
 
+  // Plattformsavgift (Tilläggsordern 2026-08-07) - beräknas HÄR, före
+  // ordern skapas, så att beloppet kan SNAPSHOTAS på orders-raden precis
+  // som total_ore/discount_amount_ore. Rabattkoder påverkar aldrig detta
+  // belopp - räknas alltid från totalQty/totalOre (post-rabatt biljett-
+  // summa i percent-läget, men själva antalet i flat-läget), aldrig från
+  // rabattbeloppet. Gäller BÅDA lägena (regressionstest, ordertextens
+  // punkt 6) - inte bara den nya flat-modellen.
+  const platformFee = calculatePlatformFee({ totalQty, ticketSubtotalOre: totalOre })
+
   // Atomisk kapacitetsreservation för HELA kundvagnen i en enda kontroll
   // mot eventets delade pool - nekas hela ordern om totalen inte får
   // plats, även om en enskild rad för sig hade fått plats.
@@ -343,6 +353,8 @@ Deno.serve(async (req: Request) => {
       expires_at: expiresAt.toISOString(),
       discount_code_id: discountCode?.id ?? null,
       discount_amount_ore: discountAmountOre,
+      platform_fee_ore: platformFee.feeOre,
+      platform_fee_vat_ore: platformFee.feeVatOre,
     })
     .select()
     .single()
@@ -378,20 +390,9 @@ Deno.serve(async (req: Request) => {
 
   // Skapa Stripe Checkout Session (Test mode - se _shared/stripe.ts) - ett
   // line_item per kundvagnsrad, med biljettypens namn i product_data.name.
-  // PLATFORM_FEE_RATE (t.ex. "0.02" för 2%) - Supabase secret, ingen
-  // adminvy för att sätta olika sats per arrangör i denna omgång (se
-  // ordertextens avsnitt 7, explicit utanför omfattning). Ogiltig/saknad
-  // secret faller tillbaka på 0 hellre än att krascha ordern - en felaktigt
-  // konfigurerad avgift ska inte kunna blockera betalande kunder, men
-  // loggas ändå så det upptäcks.
-  const platformFeeRateRaw = Deno.env.get('PLATFORM_FEE_RATE')
-  const platformFeeRate = Number(platformFeeRateRaw)
-  if (platformFeeRateRaw !== undefined && (!Number.isFinite(platformFeeRate) || platformFeeRate < 0)) {
-    console.error('Ogiltig PLATFORM_FEE_RATE:', platformFeeRateRaw, '- använder 0 istället.')
-  }
-  const effectiveFeeRate = Number.isFinite(platformFeeRate) && platformFeeRate >= 0 ? platformFeeRate : 0
-  const applicationFeeAmount = Math.round(totalOre * effectiveFeeRate)
-
+  // application_fee_amount = platformFee.feeOre, beräknat ovan - EXAKT
+  // samma belopp som togs ut innan denna order (uträkningen är oförändrad,
+  // bara hur den sparas/bokförs efteråt är nytt).
   let session
   try {
     const stripe = createStripeClient()
@@ -400,17 +401,37 @@ Deno.serve(async (req: Request) => {
         mode: 'payment',
         customer_email: buyerEmail,
         client_reference_id: order.id,
-        line_items: lines.map((l) => ({
-          quantity: l.qty,
-          price_data: {
-            currency: 'sek',
-            unit_amount: l.unitPriceAfterOre,
-            product_data: {
-              name: `${event.title} — ${l.name}`,
-              description: event.venue ? `${event.venue}` : undefined,
+        line_items: [
+          ...lines.map((l) => ({
+            quantity: l.qty,
+            price_data: {
+              currency: 'sek',
+              unit_amount: l.unitPriceAfterOre,
+              product_data: {
+                name: `${event.title} — ${l.name}`,
+                description: event.venue ? `${event.venue}` : undefined,
+              },
             },
-          },
-        })),
+          })),
+          // Serviceavgift som egen synlig rad - ENDAST i flat_per_ticket-
+          // läget (ordertextens avsnitt 2). I percent-läget syns ingen
+          // egen rad - avgiften ligger kvar inbakad i biljettpriset, precis
+          // som tidigare.
+          ...(platformFee.mode === 'flat_per_ticket'
+            ? [
+                {
+                  quantity: totalQty,
+                  price_data: {
+                    currency: 'sek',
+                    unit_amount: readPlatformFeeFlatOre(),
+                    product_data: {
+                      name: 'Serviceavgift',
+                    },
+                  },
+                },
+              ]
+            : []),
+        ],
         expires_at: Math.floor(expiresAt.getTime() / 1000),
         success_url: `${frontendBaseUrl}/#/kop/${event.slug}/klar?order=${order.id}`,
         cancel_url: `${frontendBaseUrl}/#/kop/${event.slug}`,
@@ -419,7 +440,7 @@ Deno.serve(async (req: Request) => {
           event_id: event.id,
         },
         payment_intent_data: {
-          application_fee_amount: applicationFeeAmount,
+          application_fee_amount: platformFee.feeOre,
         },
       },
       {

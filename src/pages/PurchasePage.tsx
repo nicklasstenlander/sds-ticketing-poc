@@ -11,6 +11,16 @@ interface CreateOrderResponse {
   checkout_url: string
 }
 
+// Serviceavgift-konfiguration (Tilläggsordern 2026-08-07): köpsidan är
+// publik/oautentiserad och kan inte läsa Supabase secrets direkt - hämtas
+// via public-fee-config så att avgiften kan visas INNAN köparen skickas
+// till Stripe (DoD-punkt 1). Ingen egen rad visas i percent-läget - då
+// ligger avgiften kvar inbakad i biljettpriset, precis som idag.
+interface FeeConfig {
+  mode: 'percent' | 'flat_per_ticket'
+  flat_ore: number
+}
+
 const MAX_TOTAL_QTY = 6
 
 // Kundvagn (Tilläggsordern 2026-08-05, "Flera biljettyper i samma köp"):
@@ -38,6 +48,7 @@ export function PurchasePage() {
   const [discountCode, setDiscountCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [feeConfig, setFeeConfig] = useState<FeeConfig | null>(null)
 
   useEffect(() => {
     if (!slug) return
@@ -77,6 +88,23 @@ export function PurchasePage() {
     }
   }, [slug])
 
+  useEffect(() => {
+    let cancelled = false
+    callFunction<FeeConfig>('public-fee-config')
+      .then((cfg) => {
+        if (!cancelled) setFeeConfig(cfg)
+      })
+      .catch(() => {
+        // Fee config-hämtning är inte kritisk för sidans huvudfunktion -
+        // vid fel visas bara ingen serviceavgiftsrad (avgiften tas ändå
+        // ut korrekt av create-order/Stripe oavsett vad frontenden vet).
+        if (!cancelled) setFeeConfig(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const remaining = event ? event.capacity - event.sold_count : 0
   const soldOut = event ? event.capacity > 0 && remaining <= 0 : false
   const totalQty = Object.values(quantities).reduce((sum, q) => sum + q, 0)
@@ -85,6 +113,9 @@ export function PurchasePage() {
     0,
   )
   const maxSelectable = Math.min(MAX_TOTAL_QTY, remaining)
+  const platformFeeOre =
+    feeConfig?.mode === 'flat_per_ticket' ? totalQty * feeConfig.flat_ore : 0
+  const grandTotalOre = totalOre + platformFeeOre
 
   function setQty(ticketTypeId: string, qty: number) {
     setQuantities((q) => ({ ...q, [ticketTypeId]: Math.max(0, qty) }))
@@ -273,14 +304,37 @@ export function PurchasePage() {
               />
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
-              <span className="text-sm text-[var(--text-muted)]">
-                Totalt ({totalQty} {totalQty === 1 ? 'biljett' : 'biljetter'})
-                {discountCode.trim() && ' (innan ev. rabatt)'}
-              </span>
-              <span className="text-xl font-extrabold text-[var(--text)]">
-                {(totalOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
-              </span>
+            <div className="pt-3 border-t border-[var(--border)] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-[var(--text-muted)]">
+                  Biljetter ({totalQty} {totalQty === 1 ? 'st' : 'st'})
+                  {discountCode.trim() && ' (innan ev. rabatt)'}
+                </span>
+                <span className="text-sm text-[var(--text)]">
+                  {(totalOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+                </span>
+              </div>
+              {/* Serviceavgift som egen synlig rad - ENDAST i
+                  flat_per_ticket-läget (ordertextens avsnitt 3). Visas
+                  aldrig i percent-läget, där avgiften redan ligger inbakad
+                  i biljettpriset ovan. Rabattkoder påverkar aldrig detta
+                  belopp. */}
+              {feeConfig?.mode === 'flat_per_ticket' && totalQty > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[var(--text-muted)]">Serviceavgift ({totalQty} st)</span>
+                  <span className="text-sm text-[var(--text)]">
+                    {(platformFeeOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-sm text-[var(--text-muted)]">
+                  Totalt{discountCode.trim() && ' (innan ev. rabatt på biljettpriset)'}
+                </span>
+                <span className="text-xl font-extrabold text-[var(--text)]">
+                  {(grandTotalOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+                </span>
+              </div>
             </div>
 
             {formError && <p className="text-red-600 text-sm">{formError}</p>}

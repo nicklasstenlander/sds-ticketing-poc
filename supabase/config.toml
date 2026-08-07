@@ -54,6 +54,9 @@ verify_jwt = false
 [functions.public-events]
 verify_jwt = false
 
+[functions.public-fee-config]
+verify_jwt = false
+
 [functions.admin-create-event]
 verify_jwt = true
 
@@ -79,6 +82,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.admin-list-organizers]
+verify_jwt = true
+
+[functions.platform-export-revenue]
 verify_jwt = true
 
 [functions.admin-duplicate-event]
