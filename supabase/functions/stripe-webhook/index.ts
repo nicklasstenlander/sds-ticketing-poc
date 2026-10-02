@@ -72,6 +72,26 @@ async function loadCartItems(
   }
 }
 
+function single<T>(rel: T | T[] | null): T | null {
+  if (Array.isArray(rel)) return rel[0] ?? null
+  return rel
+}
+
+interface ReceiptLine {
+  name: string
+  qty: number
+  unitPriceOre: number
+  vatRate: number
+}
+
+/** Moms beräknas ur bruttobeloppet, samma princip som export-sales
+ * (calcAmounts): netto = brutto / (1 + vat/100). */
+function calcVatOre(bruttoOre: number, vatRate: number): number {
+  if (vatRate === 0) return 0
+  const nettoOre = Math.round(bruttoOre / (1 + vatRate / 100))
+  return bruttoOre - nettoOre
+}
+
 async function sendConfirmationEmail(params: {
   buyerName: string
   buyerEmail: string
@@ -79,7 +99,15 @@ async function sendConfirmationEmail(params: {
   eventVenue: string | null
   eventStartsAt: string
   orderId: string
+  paidAt: string
   tickets: { ticket_code: string; qrUrl: string }[]
+  receipt: {
+    sellerLegalName: string | null
+    sellerOrgNumber: string | null
+    totalOre: number
+    paymentMethod: string | null
+    lines: ReceiptLine[]
+  }
 }) {
   const resendApiKey = Deno.env.get('RESEND_API_KEY')
   const resendFrom = Deno.env.get('RESEND_FROM') ?? 'biljett@resend.dev'
@@ -109,6 +137,49 @@ async function sendConfirmationEmail(params: {
     )
     .join('')
 
+  // Kvittodel (ordern 2026-10-01, A5) - under QR-koderna. Saknas
+  // sellerLegalName för arrangören (inte satt via SQL ännu): hoppa över
+  // HELA kvittodelen, kraschar inte - mailet är fortfarande giltigt utan
+  // den, precis som innan denna order.
+  const r = params.receipt
+  const purchaseDate = new Date(params.paidAt).toLocaleString('sv-SE', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+    timeZone: 'Europe/Stockholm',
+  })
+  const vatRates = new Set(r.lines.map((l) => l.vatRate))
+  const totalVatOre = r.lines.reduce((sum, l) => sum + calcVatOre(l.unitPriceOre * l.qty, l.vatRate), 0)
+  const vatLabel = vatRates.size === 1 ? `moms ${[...vatRates][0]} %` : 'moms'
+  const paymentMethodLabel =
+    r.paymentMethod === 'card' ? 'Kort' : r.paymentMethod === 'swish' ? 'Swish' : r.paymentMethod
+  const receiptHtml = r.sellerLegalName
+    ? `
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#333;">
+        <p style="margin:0 0 8px;">
+          Säljare: ${r.sellerLegalName}${r.sellerOrgNumber ? ` (org.nr ${r.sellerOrgNumber})` : ''}<br/>
+          Ordernummer: ${params.orderId}<br/>
+          Köpdatum: ${purchaseDate}${paymentMethodLabel ? `<br/>Betalsätt: ${paymentMethodLabel}` : ''}
+        </p>
+        <table style="width:100%;border-collapse:collapse;">
+          ${r.lines
+            .map(
+              (l) => `
+            <tr>
+              <td style="padding:2px 0;">${l.qty} × ${l.name}</td>
+              <td style="padding:2px 0;text-align:right;">${((l.unitPriceOre * l.qty) / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr</td>
+            </tr>
+          `,
+            )
+            .join('')}
+        </table>
+        <p style="margin:8px 0 0;font-weight:bold;">
+          Totalt: ${(r.totalOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+          <span style="font-weight:normal;color:#666;"> (varav ${vatLabel}: ${(totalVatOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr)</span>
+        </p>
+      </div>
+    `
+    : ''
+
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
       <h1 style="font-size:20px;">Din biljett till ${params.eventTitle}</h1>
@@ -117,6 +188,7 @@ async function sendConfirmationEmail(params: {
       <p>Visa QR-koden vid entrén, eller uppge koden i klartext om bilden inte laddas.</p>
       ${ticketsHtml}
       <p style="color:#666;font-size:13px;">Ordernummer: ${params.orderId}</p>
+      ${receiptHtml}
     </div>
   `
 
@@ -140,6 +212,27 @@ async function sendConfirmationEmail(params: {
   }
 }
 
+/** Hämtar det faktiska betalsättet (kort/Swish) för kvittot (A5) - en
+ * Checkout Session med dynamiska betalmetoder avslöjar inte vilken
+ * som faktiskt användes, bara vilka som erbjöds, så den riktiga typen
+ * måste hämtas från PaymentIntentens senaste charge. Icke-kritiskt för
+ * ordern att lyckas - ett fel här loggas bara, kvittot visar då ingen
+ * betalsättsrad istället för att krascha hela mailutskicket. */
+async function fetchPaymentMethodType(session: Stripe.Checkout.Session): Promise<string | null> {
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id
+  if (!paymentIntentId) return null
+  try {
+    const stripe = createStripeClient()
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] })
+    const charge = pi.latest_charge
+    return charge && typeof charge !== 'string' ? (charge.payment_method_details?.type ?? null) : null
+  } catch (err) {
+    console.error('Kunde inte hämta betalsätt för kvitto', paymentIntentId, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const supabase = createAdminClient()
   const orderId = session.client_reference_id ?? session.metadata?.order_id
@@ -150,7 +243,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, event_id, buyer_name, buyer_email, status, discount_code_id')
+    .select('id, event_id, buyer_name, buyer_email, status, discount_code_id, total_ore')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -165,7 +258,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at')
+    .select('id, slug, title, venue, starts_at, organizer_id')
     .eq('id', order.event_id)
     .maybeSingle()
 
@@ -176,12 +269,25 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const { data: orderItems, error: orderItemsError } = await supabase
     .from('order_items')
-    .select('id, ticket_type_id, qty')
+    .select('id, ticket_type_id, qty, unit_price_ore, vat_rate, ticket_types(name)')
     .eq('order_id', order.id)
 
   if (orderItemsError || !orderItems || orderItems.length === 0) {
     console.error('Hittade inga order_items för betald order', order.id, orderItemsError?.message)
     return
+  }
+
+  // Kvittodel i biljettmailet (ordern 2026-10-01, A5) - säljarens
+  // legal_name/org_number. Saknas legal_name för arrangören: hoppa över
+  // säljarraden helt, kraschar inte - se filkommentaren vid
+  // sendConfirmationEmail.
+  const { data: organizerRow, error: organizerRowError } = await supabase
+    .from('organizers')
+    .select('legal_name, org_number')
+    .eq('id', event.organizer_id)
+    .maybeSingle()
+  if (organizerRowError) {
+    console.error('Kunde inte hämta arrangör för kvitto', order.id, organizerRowError.message)
   }
 
   const paidAt = new Date().toISOString()
@@ -261,6 +367,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // inte få fördröja det svaret. EdgeRuntime är en global som bara finns i
   // Supabase Edge Functions-runtimen (inte i lokal `deno test` etc), därför
   // det defensiva fallbacket till en vanlig (fire-and-forget) await.
+  const paymentMethod = await fetchPaymentMethodType(session)
   const emailPromise = sendConfirmationEmail({
     buyerName: order.buyer_name,
     buyerEmail: order.buyer_email,
@@ -268,7 +375,20 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     eventVenue: event.venue,
     eventStartsAt: event.starts_at,
     orderId: order.id,
+    paidAt,
     tickets: ticketsWithQr,
+    receipt: {
+      sellerLegalName: organizerRow?.legal_name ?? null,
+      sellerOrgNumber: organizerRow?.org_number ?? null,
+      totalOre: order.total_ore ?? 0,
+      paymentMethod,
+      lines: orderItems.map((item) => ({
+        name: single(item.ticket_types)?.name ?? 'Biljett',
+        qty: item.qty,
+        unitPriceOre: item.unit_price_ore,
+        vatRate: item.vat_rate,
+      })),
+    },
   })
 
   const edgeRuntime = (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } })

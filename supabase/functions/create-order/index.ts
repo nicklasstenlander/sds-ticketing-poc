@@ -235,14 +235,19 @@ Deno.serve(async (req: Request) => {
   // README avsnitt 8b), inte via en kodmässig fallback-väg.
   const { data: organizer, error: organizerError } = await supabase
     .from('organizers')
-    .select('id, stripe_account_id, stripe_onboarding_complete')
+    .select('id, stripe_account_id, stripe_onboarding_complete, payment_mode')
     .eq('id', event.organizer_id)
     .single()
 
   if (organizerError || !organizer) {
     return jsonResponse({ error: `Databasfel: ${organizerError?.message ?? 'okänt fel'}` }, 500)
   }
-  if (!organizer.stripe_account_id || !organizer.stripe_onboarding_complete) {
+  const isDirectPayment = organizer.payment_mode === 'direct'
+  // Connect-spärren gäller bara payment_mode='connect' (ordern "Rideau
+  // skarpt för SDS vinterföreställning" 2026-10-01, A1) - en 'direct'-
+  // arrangör tar betalt på plattformens eget konto och behöver aldrig ett
+  // eget Connect-konto.
+  if (!isDirectPayment && (!organizer.stripe_account_id || !organizer.stripe_onboarding_complete)) {
     return jsonResponse(
       { error: 'Arrangören kan inte ta emot betalningar just nu. Försök igen senare.' },
       409,
@@ -317,7 +322,14 @@ Deno.serve(async (req: Request) => {
   // summa i percent-läget, men själva antalet i flat-läget), aldrig från
   // rabattbeloppet. Gäller BÅDA lägena (regressionstest, ordertextens
   // punkt 6) - inte bara den nya flat-modellen.
-  const platformFee = calculatePlatformFee({ totalQty, ticketSubtotalOre: totalOre })
+  //
+  // 'direct'-läget (ordern 2026-10-01, A1) tar aldrig ut någon
+  // plattformsavgift - explicit noll, inte null, så snapshoten är
+  // entydig och platform-export-revenue kan filtrera bort den precis som
+  // en vanlig nollbeloppsorder.
+  const platformFee = isDirectPayment
+    ? { mode: 'percent' as const, feeOre: 0, feeVatOre: 0, feeNetOre: 0 }
+    : calculatePlatformFee({ totalQty, ticketSubtotalOre: totalOre })
 
   // Atomisk kapacitetsreservation för HELA kundvagnen i en enda kontroll
   // mot eventets delade pool - nekas hela ordern om totalen inte får
@@ -439,13 +451,21 @@ Deno.serve(async (req: Request) => {
           order_id: order.id,
           event_id: event.id,
         },
-        payment_intent_data: {
-          application_fee_amount: platformFee.feeOre,
-        },
+        // 'direct'-läget (A1) skickar ALDRIG payment_intent_data hit - ingen
+        // application_fee_amount finns att dra, betalningen tas redan på
+        // plattformens eget konto.
+        ...(isDirectPayment
+          ? {}
+          : {
+              payment_intent_data: {
+                application_fee_amount: platformFee.feeOre,
+              },
+            }),
       },
-      {
-        stripeAccount: organizer.stripe_account_id,
-      },
+      // 'direct'-läget skapar sessionen på plattformens eget Stripe-konto
+      // (ingen stripeAccount-option) - 'connect' oförändrat, på arrangörens
+      // eget underkonto.
+      isDirectPayment ? undefined : { stripeAccount: organizer.stripe_account_id },
     )
   } catch (err) {
     await supabase.from('order_items').delete().eq('order_id', order.id)

@@ -145,11 +145,11 @@ export function PurchasePage() {
       // Checkout är en hostad sida, ingen komponent i denna app.
       window.location.href = result.checkout_url
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setFormError('Tyvärr, det räcker inte längre platser för den kombinationen.')
-      } else {
-        setFormError(err instanceof Error ? err.message : 'Något gick fel.')
-      }
+      // Visa API:ets faktiska feltext (ordern 2026-10-01, A7) - ett 409-
+      // svar kan betyda slutsålt ELLER t.ex. att arrangören saknar ett
+      // klart betalningskonto, och de ska inte visas som samma fel. Den
+      // generella fallbacken används bara när svaret saknar läsbar text.
+      setFormError(err instanceof ApiError ? err.message : 'Något gick fel. Försök igen om en stund.')
     } finally {
       setSubmitting(false)
     }

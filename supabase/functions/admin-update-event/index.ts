@@ -160,13 +160,16 @@ Deno.serve(async (req: Request) => {
       // att upptäcka problemet på än redan vid publiceringsförsöket.
       const { data: organizerRow, error: organizerError } = await supabase
         .from('organizers')
-        .select('stripe_onboarding_complete')
+        .select('stripe_onboarding_complete, payment_mode')
         .eq('id', auth.organizerId)
         .single()
       if (organizerError || !organizerRow) {
         return jsonResponse({ error: `Databasfel: ${organizerError?.message ?? 'okänt fel'}` }, 500)
       }
-      if (!organizerRow.stripe_onboarding_complete) {
+      // Gäller bara payment_mode='connect' (ordern 2026-10-01, A1) - en
+      // 'direct'-arrangör tar betalt på plattformens eget konto och behöver
+      // aldrig ett eget Connect-konto för att publicera.
+      if (organizerRow.payment_mode !== 'direct' && !organizerRow.stripe_onboarding_complete) {
         return jsonResponse(
           {
             error:
