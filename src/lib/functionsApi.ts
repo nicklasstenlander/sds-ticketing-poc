@@ -3,9 +3,15 @@ import { getActiveOrganizerId } from './organizerContext'
 
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  // Hela JSON-svarskroppen, t.ex. { error, code, sales_open_at } från
+  // create-orders SALES_NOT_OPEN-svar (ordern 2026-10-03, 1.3) - generiskt
+  // istället för ett eget namngivet fält per specialfall, så fler framtida
+  // felkoder inte kräver en ändring här.
+  body: unknown
+  constructor(message: string, status: number, body: unknown = null) {
     super(message)
     this.status = status
+    this.body = body
   }
 }
 
@@ -62,7 +68,7 @@ export async function callFunction<T>(name: string, opts: CallOptions = {}): Pro
   if (!res.ok) {
     const message =
       (data as { error?: string } | null)?.error ?? `Anropet misslyckades (${res.status}).`
-    throw new ApiError(message, res.status)
+    throw new ApiError(message, res.status, data)
   }
 
   return data as T

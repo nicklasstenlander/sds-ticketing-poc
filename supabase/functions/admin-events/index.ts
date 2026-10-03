@@ -40,7 +40,7 @@ Deno.serve(async (req: Request) => {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url')
+    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, sales_open_at')
     .eq('organizer_id', auth.organizerId)
     .order('starts_at', { ascending: true })
 

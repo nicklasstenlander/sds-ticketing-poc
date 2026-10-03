@@ -27,6 +27,9 @@ interface CreateEventBody {
   starts_at?: string
   slug?: string
   capacity?: number
+  // Schemalagt biljettsläpp (ordern 2026-10-03) - ISO-sträng eller
+  // undefined/null (= släpp direkt, dagens beteende).
+  sales_open_at?: string | null
 }
 
 function slugify(input: string): string {
@@ -73,6 +76,27 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Platsantal måste vara ett heltal >= 0.' }, 400)
   }
 
+  // Schemalagt biljettsläpp (ordern 2026-10-03, 1.3) - klientens UI går
+  // att kringgå, så valideras här igen oavsett vad som redan kontrollerats
+  // i admin-wizarden.
+  const salesOpenAtInput = body.sales_open_at === null ? '' : (body.sales_open_at ?? '').trim()
+  let salesOpenAt: string | null = null
+  if (salesOpenAtInput) {
+    if (Number.isNaN(Date.parse(salesOpenAtInput))) {
+      return jsonResponse({ error: 'Ogiltigt släppdatum/-tid.' }, 400)
+    }
+    if (new Date(salesOpenAtInput) <= new Date()) {
+      return jsonResponse(
+        { error: 'Släppet måste ligga i framtiden. Välj Direkt för att öppna försäljningen nu.' },
+        400,
+      )
+    }
+    if (new Date(salesOpenAtInput) >= new Date(startsAt)) {
+      return jsonResponse({ error: 'Släppet måste ligga före föreställningens start.' }, 400)
+    }
+    salesOpenAt = new Date(salesOpenAtInput).toISOString()
+  }
+
   const baseSlug = body.slug?.trim() ? slugify(body.slug) : slugify(title)
   if (!baseSlug) return jsonResponse({ error: 'Kunde inte generera slug från titeln.' }, 400)
 
@@ -105,6 +129,7 @@ Deno.serve(async (req: Request) => {
       status: 'draft',
       capacity,
       organizer_id: auth.organizerId,
+      sales_open_at: salesOpenAt,
     })
     .select()
     .single()

@@ -14,6 +14,10 @@ export interface EventRow {
   starts_at: string | null
   status: EventStatus
   created_at: string
+  // Schemalagt biljettsläpp (ordern 2026-10-03) - satt och i framtiden
+  // betyder eventet syns men går inte att köpa än, se src/lib/salesState.ts.
+  // null = dagens beteende, köp möjligt direkt.
+  sales_open_at: string | null
   // Delad kapacitetspool (rättelseordern 2026-08-05) - eventet har ETT
   // totalt platsantal som alla biljettyper delar, inte en egen kapacitet
   // per typ.

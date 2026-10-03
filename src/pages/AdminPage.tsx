@@ -9,6 +9,8 @@ import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
+import { stockholmWallClockToUtcIso, utcIsoToStockholmWallClock, formatStockholmDateTime } from '../lib/stockholmTime'
+import { computeSalesState } from '../lib/salesState'
 
 interface AdminEventsResponse {
   events: AdminEventRow[]
@@ -165,6 +167,12 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
 
+  // Schemalagt biljettsläpp (ordern 2026-10-03) - samma fält/mönster som
+  // CreateEventWizard.tsx, men för redigeringsformuläret.
+  const [releaseMode, setReleaseMode] = useState<'direct' | 'scheduled'>('direct')
+  const [salesOpenDate, setSalesOpenDate] = useState('')
+  const [salesOpenTime, setSalesOpenTime] = useState('')
+
   // Ett event-id = redigerar det eventet - det direkta enstegsformuläret
   // för titel/plats/datum/kapacitet, förifyllt, se startEdit(). Kapacitet
   // är en delad pott som alla biljettyper tar från (rättelseordern
@@ -244,6 +252,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setVenue('')
     setStartsAt('')
     setCapacity(150)
+    setReleaseMode('direct')
+    setSalesOpenDate('')
+    setSalesOpenTime('')
     setCreateError(null)
   }
 
@@ -257,6 +268,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     // skulle tyst tolkas som 1970-01-01, ett förvirrande fel-värde).
     setStartsAt(event.starts_at ? toDatetimeLocalValue(event.starts_at) : '')
     setCapacity(event.capacity)
+    if (event.sales_open_at) {
+      const wallClock = utcIsoToStockholmWallClock(event.sales_open_at)
+      setReleaseMode('scheduled')
+      setSalesOpenDate(wallClock.date)
+      setSalesOpenTime(wallClock.time)
+    } else {
+      setReleaseMode('direct')
+      setSalesOpenDate('')
+      setSalesOpenTime('')
+    }
     setCreateError(null)
     scrollToFormOnNarrowScreen()
   }
@@ -276,6 +297,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   async function handleSubmitForm(e: FormEvent) {
     e.preventDefault()
     if (!editingEventId || capacityTooLow) return
+
+    const salesOpenAt = releaseMode === 'scheduled' ? stockholmWallClockToUtcIso(salesOpenDate, salesOpenTime) : null
+
+    // Bekräftelse (ordern 2026-10-03, 1.4) - bara när det faktiskt är en
+    // NY/ändrad framtida släpptid på ett event som redan sålt biljetter.
+    // Att bara spara om en oförändrad släpptid (t.ex. redan passerad)
+    // ska inte trigga en varning i onödan.
+    const isNewSalesOpenAt = salesOpenAt !== null && salesOpenAt !== editingEvent?.sales_open_at
+    if (isNewSalesOpenAt && (editingEvent?.sold_count ?? 0) > 0 && salesOpenAt) {
+      const confirmed = window.confirm(
+        `Försäljningen stängs tillfälligt fram till ${formatStockholmDateTime(salesOpenAt)}. Redan sålda biljetter påverkas inte.`,
+      )
+      if (!confirmed) return
+    }
+
     setCreating(true)
     setCreateError(null)
     try {
@@ -288,6 +324,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           venue,
           starts_at: startsAt,
           capacity,
+          sales_open_at: salesOpenAt,
         },
       })
       resetForm()
@@ -461,6 +498,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               const cancelled = event.status === 'cancelled'
               const isEditing = event.id === editingEventId
               const summary = event.ticket_types_summary
+              // Schemalagt biljettsläpp (ordern 2026-10-03) - markering i
+              // listan, samma stil som status-chipen.
+              const isUpcoming =
+                computeSalesState({
+                  salesOpenAt: event.sales_open_at,
+                  soldCount: event.sold_count,
+                  capacity: event.capacity,
+                }) === 'upcoming'
               return (
                 <li
                   key={event.id}
@@ -504,6 +549,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       >
                         {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
                       </span>
+                      {isUpcoming && event.sales_open_at && (
+                        <div className="mt-1">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)]">
+                            Släpps {formatStockholmDateTime(event.sales_open_at)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -603,6 +655,60 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     )}
                   </div>
                 </div>
+
+                {/* Schemalagt biljettsläpp (ordern 2026-10-03). */}
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Släpp biljetter</label>
+                  <div className="flex gap-4 mb-3">
+                    <label className="flex items-center gap-2 text-sm text-[var(--text)]">
+                      <input
+                        type="radio"
+                        name="edit-release-mode"
+                        checked={releaseMode === 'direct'}
+                        onChange={() => setReleaseMode('direct')}
+                      />
+                      Direkt när eventet publiceras
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-[var(--text)]">
+                      <input
+                        type="radio"
+                        name="edit-release-mode"
+                        checked={releaseMode === 'scheduled'}
+                        onChange={() => setReleaseMode('scheduled')}
+                      />
+                      Vid ett senare tillfälle
+                    </label>
+                  </div>
+                  {releaseMode === 'scheduled' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Datum</label>
+                        <input
+                          type="date"
+                          required
+                          value={salesOpenDate}
+                          onChange={(e) => setSalesOpenDate(e.target.value)}
+                          className="field"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Tid</label>
+                        <input
+                          type="time"
+                          required
+                          value={salesOpenTime}
+                          onChange={(e) => setSalesOpenTime(e.target.value)}
+                          className="field"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-[var(--text-muted)] mt-2">
+                    Eventet syns på sajten och i inbäddningar före släppet, men går inte att köpa. Redan
+                    sålda biljetter påverkas inte.
+                  </p>
+                </div>
+
                 <p className="text-sm text-[var(--text-muted)]">
                   Pris, moms och platsantal hanteras per biljettyp på eventets egen sida.{' '}
                   <Link to={`/admin/event/${editingEventId}`} className="link-accent">

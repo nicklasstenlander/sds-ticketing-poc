@@ -14,8 +14,15 @@
 // in i biljettpriset som idag) och sparar en anledning att läsa en secret
 // i onödan.
 //
+// server_time (ordern "Schemalagt biljettsläpp" 2026-10-03, 1.5): PurchasePage
+// anropar redan den här funktionen vid sidladdning - enklaste återanvändning
+// för klockskillnaden countdown-nedräkningen mot sales_open_at behöver,
+// istället för ett nytt separat anrop bara för tiden (ordertexten lämnar
+// valet öppet: "återanvänd public-events/public-embed, eller en liten RPC,
+// välj det enklaste").
+//
 // GET public-fee-config (inga query-params, inga headers)
-// -> { mode: 'percent' | 'flat_per_ticket', flat_ore: number }
+// -> { mode: 'percent' | 'flat_per_ticket', flat_ore: number, server_time: string }
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { readPlatformFeeMode, readPlatformFeeFlatOre } from '../_shared/platformFee.ts'
 
@@ -30,5 +37,5 @@ Deno.serve((req: Request) => {
   const mode = readPlatformFeeMode()
   const flatOre = mode === 'flat_per_ticket' ? readPlatformFeeFlatOre() : 0
 
-  return jsonResponse({ mode, flat_ore: flatOre }, 200)
+  return jsonResponse({ mode, flat_ore: flatOre, server_time: new Date().toISOString() }, 200)
 })

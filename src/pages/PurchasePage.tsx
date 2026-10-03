@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
@@ -6,6 +6,8 @@ import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
+import { computeSalesState, computeCountdown } from '../lib/salesState'
+import { formatStockholmDateTime } from '../lib/stockholmTime'
 
 interface CreateOrderResponse {
   checkout_url: string
@@ -16,9 +18,23 @@ interface CreateOrderResponse {
 // via public-fee-config så att avgiften kan visas INNAN köparen skickas
 // till Stripe (DoD-punkt 1). Ingen egen rad visas i percent-läget - då
 // ligger avgiften kvar inbakad i biljettpriset, precis som idag.
+//
+// server_time (ordern 2026-10-03, 1.5) - återanvänder detta anrop (som
+// redan görs vid sidladdning ändå) för klockskillnaden countdown-
+// nedräkningen mot sales_open_at behöver, se public-fee-config/index.ts.
 interface FeeConfig {
   mode: 'percent' | 'flat_per_ticket'
   flat_ore: number
+  server_time: string
+}
+
+function CountdownUnit({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <span>{String(value).padStart(2, '0')}</span>
+      <span className="text-xs font-normal text-[var(--text-muted)]">{label}</span>
+    </div>
+  )
 }
 
 const MAX_TOTAL_QTY = 6
@@ -46,6 +62,11 @@ export function PurchasePage() {
   const [ticketTypes, setTicketTypes] = useState<TicketTypeRow[] | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Schemalagt biljettsläpp (ordern 2026-10-03) - förhindrar att release-
+  // pollningen (nedan) startar om flera gånger medan nedräkningen redan
+  // visar "nådd" (t.ex. vid varje sekundtick).
+  const releaseTriggeredRef = useRef(false)
+  const [now, setNow] = useState(() => new Date())
 
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [name, setName] = useState('')
@@ -56,44 +77,57 @@ export function PurchasePage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [feeConfig, setFeeConfig] = useState<FeeConfig | null>(null)
 
+  // Extraherad (inte bara en inline-funktion i useEffect) - returnerar det
+  // färska eventet direkt istället för att gå via React-state, så att
+  // release-pollningen nedan kan inspektera svaret omedelbart utan att
+  // racea mot Reacts asynkrona setState (ordern 2026-10-03, 1.5:
+  // "sidan ska hämta status på nytt från servern och visa formuläret utan
+  // omladdning"). cancelledRef skyddar mot setState efter unmount/slug-byte.
+  async function fetchEventAndTickets(cancelledRef?: { current: boolean }): Promise<EventWithOrganizer | null> {
+    const { data: eventData, error: eventError } = await supabase
+      .from('events')
+      // terms_url (A6) och sales_open_at (ordern 2026-10-03) - bara dessa
+      // nya fält läggs till i select():en, inget annat från organizers
+      // exponeras (se ordertexten avsnitt 4). sales_open_at kommer redan
+      // med automatiskt via "*".
+      .select('*, organizers(name, terms_url)')
+      .eq('slug', slug)
+      .maybeSingle()
+    if (cancelledRef?.current) return null
+    if (eventError) {
+      setLoadError(eventError.message)
+      return null
+    }
+    if (!eventData) {
+      setNotFound(true)
+      return null
+    }
+    const ev = eventData as EventWithOrganizer
+    setEvent(ev)
+
+    const { data: ticketTypeData, error: ticketTypeError } = await supabase
+      .from('ticket_types')
+      .select('*')
+      .eq('event_id', ev.id)
+      .order('sort_order', { ascending: true })
+    if (cancelledRef?.current) return null
+    if (ticketTypeError) {
+      setLoadError(ticketTypeError.message)
+      return null
+    }
+    setTicketTypes((ticketTypeData ?? []) as TicketTypeRow[])
+    return ev
+  }
+
   useEffect(() => {
     if (!slug) return
-    let cancelled = false
-    async function load() {
-      const { data: eventData, error: eventError } = await supabase
-        .from('events')
-        // terms_url (A6) - bara det nya fältet läggs till här, inget annat
-        // från organizers exponeras (se ordertexten avsnitt 4).
-        .select('*, organizers(name, terms_url)')
-        .eq('slug', slug)
-        .maybeSingle()
-      if (cancelled) return
-      if (eventError) {
-        setLoadError(eventError.message)
-        return
-      }
-      if (!eventData) {
-        setNotFound(true)
-        return
-      }
-      setEvent(eventData as EventWithOrganizer)
-
-      const { data: ticketTypeData, error: ticketTypeError } = await supabase
-        .from('ticket_types')
-        .select('*')
-        .eq('event_id', (eventData as EventRow).id)
-        .order('sort_order', { ascending: true })
-      if (cancelled) return
-      if (ticketTypeError) {
-        setLoadError(ticketTypeError.message)
-        return
-      }
-      setTicketTypes((ticketTypeData ?? []) as TicketTypeRow[])
-    }
-    load()
+    releaseTriggeredRef.current = false
+    const cancelledRef = { current: false }
+    fetchEventAndTickets(cancelledRef)
     return () => {
-      cancelled = true
+      cancelledRef.current = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
   useEffect(() => {
@@ -112,6 +146,65 @@ export function PurchasePage() {
       cancelled = true
     }
   }, [])
+
+  // Schemalagt biljettsläpp (ordern 2026-10-03, 1.1/1.5). Prioritetsordning
+  // (upcoming > sold_out > open) i src/lib/salesState.ts - samma logik som
+  // servern (create-order/public-events), se den filens kommentar.
+  const salesState = event
+    ? computeSalesState({ salesOpenAt: event.sales_open_at, soldCount: event.sold_count, capacity: event.capacity })
+    : null
+  const upcoming = salesState === 'upcoming'
+
+  // Tickande klocka - bara medan nedräkningen faktiskt visas, för att inte
+  // rendera om sidan i onödan när köpformuläret redan visas.
+  useEffect(() => {
+    if (!upcoming) return
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [upcoming])
+
+  const countdown =
+    upcoming && event?.sales_open_at
+      ? computeCountdown(event.sales_open_at, feeConfig?.server_time ?? new Date().toISOString(), now)
+      : null
+
+  // Vid släppet: hämta status på nytt från servern och visa formuläret UTAN
+  // omladdning (ordern 1.5). 0-3 sekunders slumpad fördröjning så att inte
+  // alla besökare slår på samtidigt, därefter nytt försök var 5:e sekund
+  // tills servern faktiskt säger "open" (max en minut - klockskillnaden
+  // mellan klienter kan annars skapa en tunn ström av för tidiga försök).
+  // Widgeten/sidan får ALDRIG gissa att det är öppet - bara ett färskt
+  // serversvar byter bort nedräkningen.
+  useEffect(() => {
+    if (!countdown?.reached) return
+    if (releaseTriggeredRef.current) return
+    releaseTriggeredRef.current = true
+
+    const cancelledRef = { current: false }
+    async function pollUntilOpen() {
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 3000))
+      const deadline = Date.now() + 60_000
+      while (!cancelledRef.current) {
+        const fresh = await fetchEventAndTickets(cancelledRef)
+        if (cancelledRef.current) return
+        if (fresh) {
+          const freshState = computeSalesState({
+            salesOpenAt: fresh.sales_open_at,
+            soldCount: fresh.sold_count,
+            capacity: fresh.capacity,
+          })
+          if (freshState !== 'upcoming') return
+        }
+        if (Date.now() >= deadline) return
+        await new Promise((resolve) => setTimeout(resolve, 5000))
+      }
+    }
+    pollUntilOpen()
+    return () => {
+      cancelledRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown?.reached])
 
   const organizer = event
     ? Array.isArray(event.organizers)
@@ -163,11 +256,23 @@ export function PurchasePage() {
       // Checkout är en hostad sida, ingen komponent i denna app.
       window.location.href = result.checkout_url
     } catch (err) {
-      // Visa API:ets faktiska feltext (ordern 2026-10-01, A7) - ett 409-
-      // svar kan betyda slutsålt ELLER t.ex. att arrangören saknar ett
-      // klart betalningskonto, och de ska inte visas som samma fel. Den
-      // generella fallbacken används bara när svaret saknar läsbar text.
-      setFormError(err instanceof ApiError ? err.message : 'Något gick fel. Försök igen om en stund.')
+      // SALES_NOT_OPEN (ordern 2026-10-03, 1.3/1.5): klockskillnad mellan
+      // köparens klocka och servern - servern säger fortfarande inte
+      // öppet trots att nedräkningen nådde noll hos köparen. Hämta om
+      // eventet så nedräkningen visas igen istället för ett skrämmande
+      // felmeddelande - "ett fel" hade sett ut som att något gått
+      // sönder, när det bara är några sekunders väntan kvar.
+      const code = err instanceof ApiError ? (err.body as { code?: string } | null)?.code : undefined
+      if (code === 'SALES_NOT_OPEN') {
+        releaseTriggeredRef.current = false
+        await fetchEventAndTickets()
+      } else {
+        // Visa API:ets faktiska feltext (ordern 2026-10-01, A7) - ett 409-
+        // svar kan betyda slutsålt ELLER t.ex. att arrangören saknar ett
+        // klart betalningskonto, och de ska inte visas som samma fel. Den
+        // generella fallbacken används bara när svaret saknar läsbar text.
+        setFormError(err instanceof ApiError ? err.message : 'Något gick fel. Försök igen om en stund.')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -236,7 +341,37 @@ export function PurchasePage() {
         {soldOut ? 'Slutsålt' : `${remaining} platser kvar av ${event.capacity}`}
       </p>
 
-      {soldOut ? (
+      {upcoming && event.sales_open_at ? (
+        <div className="card text-center">
+          <span className="inline-block text-sm px-3 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] mb-5">
+            Biljetterna släpps {formatStockholmDateTime(event.sales_open_at)}
+          </span>
+          {/* aria-hidden - siffrorna uppdateras sekund för sekund och ska
+              inte läsas upp av en skärmläsare varje tick (ordern 2.1,
+              tillgänglighet). Chip-texten ovan är den statiska,
+              skärmläsarvänliga motsvarigheten. */}
+          {countdown && (
+            <div
+              className="flex items-center justify-center gap-5 text-3xl font-extrabold text-[var(--text)]"
+              aria-hidden="true"
+            >
+              {countdown.underAnHour ? (
+                <>
+                  <CountdownUnit value={countdown.hours} label="tim" />
+                  <CountdownUnit value={countdown.minutes} label="min" />
+                  <CountdownUnit value={countdown.seconds} label="sek" />
+                </>
+              ) : (
+                <>
+                  <CountdownUnit value={countdown.days} label="dagar" />
+                  <CountdownUnit value={countdown.hours} label="tim" />
+                  <CountdownUnit value={countdown.minutes} label="min" />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : soldOut ? (
         <div className="card text-center">
           <p className="font-semibold mb-2 text-[var(--text)]">Tyvärr, det här eventet är slutsålt.</p>
           <p className="text-[var(--text-muted)] text-sm">Håll utkik efter fler tillfällen.</p>

@@ -19,6 +19,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+import { computeSalesState } from '../_shared/salesState.ts'
 
 interface PublicEvent {
   slug: string
@@ -29,6 +30,11 @@ interface PublicEvent {
   poster_landscape_url: string | null
   poster_portrait_url: string | null
   organizer_name: string | null
+  // Schemalagt biljettsläpp (ordern 2026-10-03, 1.3) - additiva fält,
+  // befintliga fält ovan ändras eller tas INTE bort (Squarespace-snutten
+  // "Kommande evenemang" använder dem redan).
+  sales_open_at: string | null
+  sales_state: 'upcoming' | 'sold_out' | 'open'
 }
 
 Deno.serve(async (req: Request) => {
@@ -43,7 +49,12 @@ Deno.serve(async (req: Request) => {
 
   const { data: events, error: eventsError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url, organizers(name)')
+    // capacity/sold_count/sales_open_at hämtas bara för att BERÄKNA
+    // sales_state internt - capacity/sold_count exponeras aldrig i svaret
+    // (se filkommentaren), bara det färdiga tillståndet.
+    .select(
+      'id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url, organizers(name), sales_open_at, capacity, sold_count',
+    )
     .eq('status', 'published')
     .order('starts_at', { ascending: true })
 
@@ -75,6 +86,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  const now = new Date()
   const result: PublicEvent[] = publishedEvents.map((ev) => {
     const organizer = Array.isArray(ev.organizers) ? ev.organizers[0] : ev.organizers
     return {
@@ -86,6 +98,13 @@ Deno.serve(async (req: Request) => {
       poster_landscape_url: ev.poster_landscape_url,
       poster_portrait_url: ev.poster_portrait_url,
       organizer_name: organizer?.name ?? null,
+      sales_open_at: toIso8601Seconds(ev.sales_open_at),
+      sales_state: computeSalesState({
+        salesOpenAt: ev.sales_open_at,
+        soldCount: ev.sold_count,
+        capacity: ev.capacity,
+        now,
+      }),
     }
   })
 

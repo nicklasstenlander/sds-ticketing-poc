@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { callFunction } from '../../lib/functionsApi'
 import type { EventRow } from '../../lib/types'
+import { stockholmWallClockToUtcIso, formatStockholmDateTime } from '../../lib/stockholmTime'
 
 interface CreateEventResponse {
   event: EventRow
@@ -54,6 +55,15 @@ export function CreateEventWizard({
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [capacity, setCapacity] = useState(150)
+  // Schemalagt biljettsläpp (ordern 2026-10-03). 'direct' = dagens
+  // beteende (sales_open_at null). Datum/tid tolkas ALLTID som
+  // Europe/Stockholm, oavsett webbläsarens egen tidszon (se
+  // stockholmTime.ts) - till skillnad från starts_at ovan, som skickas
+  // naivt (en redan existerande avvikelse den här ordern inte bad om att
+  // fixa, se rapporten).
+  const [releaseMode, setReleaseMode] = useState<'direct' | 'scheduled'>('direct')
+  const [salesOpenDate, setSalesOpenDate] = useState('')
+  const [salesOpenTime, setSalesOpenTime] = useState('')
   const [ticketTypes, setTicketTypes] = useState<DraftTicketType[]>([newTicketType({ name: 'Ordinarie' })])
 
   const steps = [
@@ -69,6 +79,9 @@ export function CreateEventWizard({
     setTime('')
     setCapacity(150)
     setTicketTypes([newTicketType({ name: 'Ordinarie' })])
+    setReleaseMode('direct')
+    setSalesOpenDate('')
+    setSalesOpenTime('')
     setError(null)
   }
 
@@ -78,7 +91,12 @@ export function CreateEventWizard({
     setPublished(false)
   }
 
-  const step1Valid = title.trim().length > 0 && date.length > 0 && time.length > 0 && capacity >= 1
+  const step1Valid =
+    title.trim().length > 0 &&
+    date.length > 0 &&
+    time.length > 0 &&
+    capacity >= 1 &&
+    (releaseMode === 'direct' || (salesOpenDate.length > 0 && salesOpenTime.length > 0))
   const step2Valid =
     ticketTypes.length > 0 && ticketTypes.every((t) => t.name.trim().length > 0 && t.priceKr >= 0)
 
@@ -105,10 +123,12 @@ export function CreateEventWizard({
     setError(null)
     try {
       const startsAt = new Date(`${date}T${time}`).toISOString()
+      const salesOpenAt =
+        releaseMode === 'scheduled' ? stockholmWallClockToUtcIso(salesOpenDate, salesOpenTime) : null
       const { event } = await callFunction<CreateEventResponse>('admin-create-event', {
         auth: true,
         method: 'POST',
-        body: { title, venue, starts_at: startsAt, capacity },
+        body: { title, venue, starts_at: startsAt, capacity, sales_open_at: salesOpenAt },
       })
 
       for (const t of ticketTypes) {
@@ -222,6 +242,60 @@ export function CreateEventWizard({
               Lokalens totala platser - en delad pott som alla biljettyper i steg 2 tar från.
             </p>
           </div>
+
+          {/* Schemalagt biljettsläpp (ordern 2026-10-03). */}
+          <div>
+            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Släpp biljetter</label>
+            <div className="flex gap-4 mb-3">
+              <label className="flex items-center gap-2 text-sm text-[var(--text)]">
+                <input
+                  type="radio"
+                  name="release-mode"
+                  checked={releaseMode === 'direct'}
+                  onChange={() => setReleaseMode('direct')}
+                />
+                Direkt när eventet publiceras
+              </label>
+              <label className="flex items-center gap-2 text-sm text-[var(--text)]">
+                <input
+                  type="radio"
+                  name="release-mode"
+                  checked={releaseMode === 'scheduled'}
+                  onChange={() => setReleaseMode('scheduled')}
+                />
+                Vid ett senare tillfälle
+              </label>
+            </div>
+            {releaseMode === 'scheduled' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Datum</label>
+                  <input
+                    type="date"
+                    required
+                    value={salesOpenDate}
+                    onChange={(e) => setSalesOpenDate(e.target.value)}
+                    className="field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Tid</label>
+                  <input
+                    type="time"
+                    required
+                    value={salesOpenTime}
+                    onChange={(e) => setSalesOpenTime(e.target.value)}
+                    className="field"
+                  />
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-[var(--text-muted)] mt-2">
+              Eventet syns på sajten och i inbäddningar före släppet, men går inte att köpa. Redan sålda
+              biljetter påverkas inte.
+            </p>
+          </div>
+
           <button type="submit" disabled={!step1Valid} className="btn-primary w-full">
             Fortsätt
           </button>
@@ -305,6 +379,17 @@ export function CreateEventWizard({
               ['Plats', venue || '–'],
               ['Datum', `${date} ${time}`],
               ['Platsantal', String(capacity)],
+              [
+                'Släpp biljetter',
+                releaseMode === 'direct'
+                  ? 'Direkt'
+                  : salesOpenDate && salesOpenTime
+                    ? (() => {
+                        const iso = stockholmWallClockToUtcIso(salesOpenDate, salesOpenTime)
+                        return iso ? formatStockholmDateTime(iso) : '–'
+                      })()
+                    : '–',
+              ],
             ].map(([label, value]) => (
               <div
                 key={label}

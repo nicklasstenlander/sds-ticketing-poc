@@ -22,6 +22,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.ts'
 import { calculatePlatformFee, readPlatformFeeFlatOre } from '../_shared/platformFee.ts'
+import { formatStockholmDateTimeSv } from '../_shared/salesState.ts'
 
 interface CartItemInput {
   ticket_type_id?: string
@@ -208,7 +209,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, organizer_id')
+    .select('id, slug, title, venue, starts_at, status, organizer_id, sales_open_at')
     .eq('slug', slug)
     .maybeSingle()
 
@@ -217,6 +218,22 @@ Deno.serve(async (req: Request) => {
   }
   if (!event || event.status !== 'published') {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
+  }
+
+  // Schemalagt biljettsläpp (ordern 2026-10-03, 1.3) - den RIKTIGA spärren.
+  // Klientens nedräkning/UI går att kringgå (direktanrop mot funktionen),
+  // så detta MÅSTE kontrolleras här, FÖRE kapacitetsreservationen och
+  // före alla Stripe-anrop - annars skulle ett nekat anrop ändå hinna
+  // reservera platser eller skapa en order/session innan avslaget.
+  if (event.sales_open_at && new Date(event.sales_open_at) > new Date()) {
+    return jsonResponse(
+      {
+        error: `Biljetterna släpps ${formatStockholmDateTimeSv(event.sales_open_at)}.`,
+        code: 'SALES_NOT_OPEN',
+        sales_open_at: event.sales_open_at,
+      },
+      409,
+    )
   }
 
   // Stripe Connect-spärr (Tilläggsordern 2026-08-06, "Stripe Connect -

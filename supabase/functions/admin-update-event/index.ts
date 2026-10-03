@@ -30,6 +30,9 @@ interface UpdateEventBody {
   starts_at?: string
   capacity?: number
   status?: 'draft' | 'published'
+  // Schemalagt biljettsläpp (ordern 2026-10-03) - ISO-sträng, eller null
+  // för att rensa (släpp direkt). undefined = fältet rörs inte alls.
+  sales_open_at?: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -61,7 +64,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: current, error: currentError } = await supabase
     .from('events')
-    .select('id, status, sold_count, organizer_id, starts_at')
+    .select('id, status, sold_count, organizer_id, starts_at, sales_open_at')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -111,6 +114,36 @@ Deno.serve(async (req: Request) => {
       )
     }
     update.capacity = capacity
+  }
+
+  // Schemalagt biljettsläpp (ordern 2026-10-03, 1.3). Klientens UI går att
+  // kringgå, så valideras här - MEN ett oförändrat värde (t.ex. en redan
+  // passerad släpptid som skickas med rakt av från formuläret utan att
+  // admin ändrat något) får finnas kvar som det är, se ordertexten.
+  if (body.sales_open_at !== undefined) {
+    if (body.sales_open_at === null) {
+      update.sales_open_at = null
+    } else {
+      if (Number.isNaN(Date.parse(body.sales_open_at))) {
+        return jsonResponse({ error: 'Ogiltigt släppdatum/-tid.' }, 400)
+      }
+      const normalized = new Date(body.sales_open_at).toISOString()
+      const unchanged =
+        current.sales_open_at !== null && new Date(current.sales_open_at).toISOString() === normalized
+      if (!unchanged) {
+        if (new Date(normalized) <= new Date()) {
+          return jsonResponse(
+            { error: 'Släppet måste ligga i framtiden. Välj Direkt för att öppna försäljningen nu.' },
+            400,
+          )
+        }
+        const effectiveStartsAt = body.starts_at !== undefined ? (update.starts_at as string) : current.starts_at
+        if (effectiveStartsAt && new Date(normalized) >= new Date(effectiveStartsAt)) {
+          return jsonResponse({ error: 'Släppet måste ligga före föreställningens start.' }, 400)
+        }
+      }
+      update.sales_open_at = normalized
+    }
   }
 
   if (body.status !== undefined) {

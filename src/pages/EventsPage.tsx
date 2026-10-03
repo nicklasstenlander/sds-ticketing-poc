@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabaseClient'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
+import { computeSalesState } from '../lib/salesState'
+import { formatStockholmDateTime } from '../lib/stockholmTime'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
@@ -56,7 +58,13 @@ export function EventsPage() {
       <ul className="space-y-4">
         {events?.map((event) => {
           const types = event.ticket_types ?? []
-          const soldOut = event.capacity > 0 && event.sold_count >= event.capacity
+          const salesState = computeSalesState({
+            salesOpenAt: event.sales_open_at,
+            soldCount: event.sold_count,
+            capacity: event.capacity,
+          })
+          const soldOut = salesState === 'sold_out'
+          const upcoming = salesState === 'upcoming'
           const pct = event.capacity > 0 ? Math.min(100, Math.round((event.sold_count / event.capacity) * 100)) : 0
           const prices = types.map((t) => t.price_ore)
           const minPrice = prices.length > 0 ? Math.min(...prices) : null
@@ -120,7 +128,11 @@ export function EventsPage() {
                       ? '–'
                       : `${hasMultiplePrices ? 'Från ' : ''}${(minPrice / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
                   </div>
-                  {types.length === 0 || soldOut ? (
+                  {upcoming && event.sales_open_at ? (
+                    <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] whitespace-nowrap">
+                      Släpps {formatStockholmDateTime(event.sales_open_at)}
+                    </span>
+                  ) : types.length === 0 || soldOut ? (
                     <span className="text-sm text-[var(--text-muted)]">
                       {types.length === 0 ? 'Ej till salu ännu' : 'Slutsålt'}
                     </span>
