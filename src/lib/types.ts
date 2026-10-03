@@ -33,6 +33,9 @@ export interface EventRow {
 // namnet inte hämtas alls).
 export interface EventOrganizerRelation {
   name: string
+  // Köpvillkor (ordern 2026-10-03, A6) - bara satt för arrangörer som
+  // kräver godkännande på köpsidan. null/tom = ingen kryssruta visas.
+  terms_url: string | null
 }
 
 export interface TicketTypeSummary {

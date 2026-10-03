@@ -23,6 +23,11 @@ interface FeeConfig {
 
 const MAX_TOTAL_QTY = 6
 
+// Ordern 2026-10-03 (A6), avsnitt 1: texten ska gå att ändra lätt, och
+// SKA granskas av revisor/jurist innan Live-försäljning - ändra bara
+// denna konstant, den återanvänds ingenstans annars.
+const TERMS_WITHDRAWAL_NOTE = 'Biljetter till evenemang på ett bestämt datum har ingen ångerrätt.'
+
 // Kundvagn (Tilläggsordern 2026-08-05, "Flera biljettyper i samma köp"):
 // alla biljettyper listas samtidigt med var sin +/- kvantitetsväljare
 // (start 0), istället för att köparen först väljer EN typ. Det totala
@@ -46,6 +51,7 @@ export function PurchasePage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [discountCode, setDiscountCode] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [feeConfig, setFeeConfig] = useState<FeeConfig | null>(null)
@@ -56,7 +62,9 @@ export function PurchasePage() {
     async function load() {
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('*, organizers(name)')
+        // terms_url (A6) - bara det nya fältet läggs till här, inget annat
+        // från organizers exponeras (se ordertexten avsnitt 4).
+        .select('*, organizers(name, terms_url)')
         .eq('slug', slug)
         .maybeSingle()
       if (cancelled) return
@@ -105,6 +113,14 @@ export function PurchasePage() {
     }
   }, [])
 
+  const organizer = event
+    ? Array.isArray(event.organizers)
+      ? event.organizers[0]
+      : event.organizers
+    : null
+  // Köpvillkor (A6) - bara satt för arrangörer som kräver godkännande.
+  const termsUrl = organizer?.terms_url ?? null
+
   const remaining = event ? event.capacity - event.sold_count : 0
   const soldOut = event ? event.capacity > 0 && remaining <= 0 : false
   const totalQty = Object.values(quantities).reduce((sum, q) => sum + q, 0)
@@ -124,6 +140,7 @@ export function PurchasePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!event || totalQty < 1) return
+    if (termsUrl && !acceptedTerms) return
     setSubmitting(true)
     setFormError(null)
     try {
@@ -139,6 +156,7 @@ export function PurchasePage() {
           name,
           email,
           discount_code: discountCode.trim() || undefined,
+          accepted_terms: acceptedTerms,
         },
       })
       // Fullständig sidomdirigering (inte en klientroutning) - Stripe
@@ -212,10 +230,7 @@ export function PurchasePage() {
             })
           : ''}
         {event.venue ? ` · ${event.venue}` : ''}
-        {(() => {
-          const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
-          return organizer?.name ? ` · Arrangör: ${organizer.name}` : ''
-        })()}
+        {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
       </p>
       <p className="text-[var(--text-muted)] mb-8">
         {soldOut ? 'Slutsålt' : `${remaining} platser kvar av ${event.capacity}`}
@@ -337,15 +352,57 @@ export function PurchasePage() {
               </div>
             </div>
 
+            {/* Köpvillkor (A6) - bara för arrangörer med satt terms_url.
+                Obligatorisk kryssruta ovanför betalknappen, serverkontrollen
+                i create-order är den som faktiskt gäller (se filkommentaren
+                där) - detta är bara UI:t. */}
+            {termsUrl && (
+              <div className="pt-3 border-t border-[var(--border)]">
+                <label htmlFor="accept-terms" className="flex items-start gap-2 text-sm text-[var(--text)]">
+                  <input
+                    id="accept-terms"
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--border)] text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                  />
+                  <span>
+                    Jag har läst och godkänner{' '}
+                    <a
+                      href={termsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link-accent"
+                    >
+                      köpvillkoren
+                    </a>
+                  </span>
+                </label>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">{TERMS_WITHDRAWAL_NOTE}</p>
+              </div>
+            )}
+
             {formError && <p className="text-red-600 text-sm">{formError}</p>}
 
-            <button type="submit" disabled={submitting || totalQty < 1} className="btn-primary w-full py-2">
+            <button
+              type="submit"
+              disabled={submitting || totalQty < 1 || (Boolean(termsUrl) && !acceptedTerms)}
+              className="btn-primary w-full py-2"
+            >
               {submitting
                 ? 'Skickar dig till Stripe…'
                 : totalQty < 1
                   ? 'Välj minst en biljett'
                   : 'Fortsätt till betalning'}
             </button>
+            {/* Förklaring NÄR knappen är inaktiv på grund av villkoren
+                specifikt (inte bara en grå knapp utan anledning, ordertextens
+                avsnitt 1) - visas bara när det faktiskt är orsaken. */}
+            {termsUrl && !acceptedTerms && totalQty >= 1 && (
+              <p className="text-xs text-[var(--text-muted)] text-center -mt-2">
+                Godkänn villkoren för att fortsätta
+              </p>
+            )}
           </div>
         </form>
       )}

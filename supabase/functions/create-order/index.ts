@@ -34,6 +34,7 @@ interface CreateOrderBody {
   name?: string
   email?: string
   discount_code?: string
+  accepted_terms?: boolean
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -165,6 +166,7 @@ Deno.serve(async (req: Request) => {
   const buyerName = (body.name ?? '').trim()
   const buyerEmail = (body.email ?? '').trim().toLowerCase()
   const discountCodeInput = (body.discount_code ?? '').trim()
+  const acceptedTerms = body.accepted_terms === true
   const rawItems = Array.isArray(body.items) ? body.items : []
 
   if (!slug) return jsonResponse({ error: 'Event saknas.' }, 400)
@@ -235,13 +237,24 @@ Deno.serve(async (req: Request) => {
   // README avsnitt 8b), inte via en kodmässig fallback-väg.
   const { data: organizer, error: organizerError } = await supabase
     .from('organizers')
-    .select('id, stripe_account_id, stripe_onboarding_complete, payment_mode')
+    .select('id, stripe_account_id, stripe_onboarding_complete, payment_mode, terms_url')
     .eq('id', event.organizer_id)
     .single()
 
   if (organizerError || !organizer) {
     return jsonResponse({ error: `Databasfel: ${organizerError?.message ?? 'okänt fel'}` }, 500)
   }
+
+  // Köpvillkor (ordern 2026-10-03, A6) - gäller bara arrangörer med satt
+  // terms_url. Klientens kryssruta går att kringgå, så detta MÅSTE
+  // kontrolleras här, före allt annat som skulle reservera platser, skapa
+  // en order eller anropa Stripe. Saknar arrangören terms_url: fältet
+  // ignoreras helt, oförändrat beteende.
+  const requiresTerms = Boolean(organizer.terms_url)
+  if (requiresTerms && !acceptedTerms) {
+    return jsonResponse({ error: 'Du måste godkänna köpvillkoren för att fortsätta.' }, 400)
+  }
+
   const isDirectPayment = organizer.payment_mode === 'direct'
   // Connect-spärren gäller bara payment_mode='connect' (ordern "Rideau
   // skarpt för SDS vinterföreställning" 2026-10-01, A1) - en 'direct'-
@@ -367,6 +380,11 @@ Deno.serve(async (req: Request) => {
       discount_amount_ore: discountAmountOre,
       platform_fee_ore: platformFee.feeOre,
       platform_fee_vat_ore: platformFee.feeVatOre,
+      // Snapshot av villkorsgodkännandet (A6) - samma princip som pris/moms:
+      // vad som gällde VID KÖPET, inte en referens som kan ändras i
+      // efterhand. Null för ordrar där arrangören saknade terms_url.
+      terms_accepted_at: requiresTerms ? new Date().toISOString() : null,
+      terms_url: requiresTerms ? organizer.terms_url : null,
     })
     .select()
     .single()
