@@ -27,6 +27,16 @@
   --accent: #243b53;
   --accent-text: #ffffff;
   --accent-soft: #eaeef2;
+
+  /* Grafisk profil förslag 1 (2026-10): Rampljus och Skymning - gnistor/
+   * markeringar respektive ridåer/illustrationer. --spotlight har svag
+   * kontrast mot ljus bakgrund (1,7:1) - ANVÄND ALDRIG som textfärg på
+   * --bg/--surface, bara som yta/ikonfärg med --spotlight-ink ovanpå. */
+  --spotlight: #f6b93b;
+  --spotlight-ink: #171717;
+  --dusk: #5a3e9b;
+  --dusk-ink: #ffffff;
+
   --success: #2f8f5b;
   --success-soft: #e7f3ec;
   --radius: 14px;
@@ -135,7 +145,7 @@ body {
   .progress-fill {
     height: 100%;
     border-radius: 999px;
-    background-color: var(--accent);
+    background-color: var(--spotlight);
   }
 
   /* Rund stegrings-/minskningsknapp för antal-väljare. */
@@ -157,11 +167,13 @@ body {
     cursor: not-allowed;
   }
 
-  /* Mörk biljett-liknande kortyta för bekräftad biljett. */
+  /* Mörk biljett-liknande kortyta för bekräftad biljett - Midnatt till
+   * Skymning, samma ridå-/scenkänsla som appikonen (grafisk profil
+   * förslag 1, 2026-10: "Skymning: ridåer och illustrationer"). */
   .ticket-card {
-    background: linear-gradient(155deg, var(--accent) 0%, #16283a 100%);
+    background: linear-gradient(155deg, var(--accent) 0%, var(--dusk) 100%);
     border-radius: 20px;
-    color: #fff;
+    color: var(--dusk-ink);
     box-shadow: 0 20px 60px -20px rgba(36, 59, 83, 0.5);
   }
 
