@@ -198,7 +198,13 @@
   var STYLE = [
     ':host{all:initial;display:block;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}',
     '*{box-sizing:border-box}',
-    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4}',
+    // overflow-wrap/word-break ärvs av alla barn - svenska sammansatta
+    // ord ("Vinterföreställningen") saknar ofta naturlig brytpunkt, och
+    // utan detta kunde ett sånt ord svämma över sin flex-ruta i en smal
+    // rad (Agenda/Speltider) och hamna visuellt UNDER knappen bredvid
+    // istället för att brytas. Nicklas rapporterade detta i ett smalt
+    // fönster 2026-10-04.
+    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4;overflow-wrap:break-word;word-break:break-word}',
     '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3;--hover-shadow:rgba(255,255,255,.14)}',
     // :not(.rw-btn) - annars vinner denna över .rw-btn{color:var(--accent-text)}
     // pga högre specificitet (klass+tagg > enkel klass), och knappen
