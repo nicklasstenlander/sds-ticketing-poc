@@ -421,7 +421,14 @@
     buildMetaRows(ev, config).forEach(function (r) {
       card.appendChild(r)
     })
-    card.appendChild(buildBuyBlock(ev, config, countdownState))
+    // margin-top:auto på köp-blockets wrapper - i Rutnät (grid) sträcks
+    // alla kort till samma höjd som det högsta kortet i raden, och utan
+    // detta blir mellanrummet en tom vit yta UNDER knappen istället för
+    // att knapparna radar upp sig i höjd mot kortets botten (Nicklas
+    // rapporterade detta 2026-10-04).
+    var buyWrap = el('div', { style: 'margin-top:auto;display:flex;flex-direction:column;gap:10px' })
+    buyWrap.appendChild(buildBuyBlock(ev, config, countdownState))
+    card.appendChild(buyWrap)
     container.appendChild(card)
   }
 
