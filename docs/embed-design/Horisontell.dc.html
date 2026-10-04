@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Horisontell widget</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 800px; height: 420px; box-sizing: border-box; padding: 40px; background: #EAEEF2; font-family: Manrope, system-ui, sans-serif; color: #171717; display: flex; align-items: center">
+<div style="width: 100%; box-sizing: border-box; display: flex; gap: 28px; padding: 20px; background: #FFFFFF; border: 1px solid #E5E5E1; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06)">
+<div style="width: 200px; height: 300px; flex: none; box-sizing: border-box; background: #243B53; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px">
+<svg width="44" height="44" viewBox="0 0 100 100" aria-hidden="true"><path d="M50,6 Q55,45 94,50 Q55,55 50,94 Q45,55 6,50 Q45,45 50,6Z" fill="#F6B93B"/></svg>
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #C9D3DF">Affisch</span>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 14px">
+<div style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Sollentuna Dans &amp; Scenskola</div>
+<h2 style="margin: 0; font-size: 30px; line-height: 1.15; font-weight: 800; color: #243B53">Vinterföreställningen</h2>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 16px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#243B53" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+<span>Lördag 12 december 2026</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 16px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#243B53" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+<span>Kl. 15:00 · Dörrarna öppnar 14:30</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 16px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#243B53" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+<span>Dansscenen</span>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; margin-top: 8px">
+<button type="button" style="min-height: 48px; padding: 0 28px; border: 0; border-radius: 999px; background: #243B53; color: #FFFFFF; font: 700 16px Manrope, system-ui, sans-serif; cursor: pointer">Köp biljetter</button>
+<span style="font-size: 15px; color: #5A5A5A">Från 150 kr</span>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":800,"height":420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -18,6 +18,8 @@ import {
 import { computeSalesState as computeSalesStateFrontend, computeCountdown, computeClockSkewMs } from '../src/lib/salesState.ts'
 import { computeSalesState as computeSalesStateBackend } from '../supabase/functions/_shared/salesState.ts'
 import { parseAdminDateTimeInput } from '../supabase/functions/_shared/stockholmTime.ts'
+import { formatStockholmDateTime } from '../src/lib/stockholmTime.ts'
+import { formatStockholmDateTimeSv } from '../supabase/functions/_shared/salesState.ts'
 
 let failures = 0
 function assertEqual(actual: unknown, expected: unknown, label: string) {
@@ -301,6 +303,29 @@ console.log()
   })
   assertEqual(salesStateAfterHidden, 'open', 'sales_state efter dold flik förbi släppet: open direkt')
 }
+
+// Steg 2 (widget/embed), detaljen om datumformat: mockarna skriver
+// "14 okt kl. 10:00" - UTAN punkt efter månadsförkortningen. Intl:s
+// 'sv-SE'-korta månader har en punkt ("okt.") som standard - en
+// regression här skulle tysta trasa chip-texten i både köpsidan/admin
+// (frontend) och SALES_NOT_OPEN-felmeddelandet/embed-widgeten (backend).
+assertEqual(
+  formatStockholmDateTime('2026-10-14T08:00:00.000Z'),
+  '14 okt kl. 10:00',
+  'formatStockholmDateTime: inget punkt efter månaden (frontend)',
+)
+assertEqual(
+  formatStockholmDateTimeSv('2026-10-14T08:00:00.000Z'),
+  '14 okt kl. 10:00',
+  'formatStockholmDateTimeSv: inget punkt efter månaden (backend)',
+)
+// Maj har ingen punkt även i Intl:s original ("14 maj") - kontrollerar
+// att strippningen inte råkar äta en bokstav på månader utan punkt.
+assertEqual(
+  formatStockholmDateTime('2026-05-14T08:00:00.000Z'),
+  '14 maj kl. 10:00',
+  'formatStockholmDateTime: månader utan punkt (t.ex. maj) oförändrade',
+)
 
 console.log(`\n${failures === 0 ? 'Alla kontroller gick igenom.' : `${failures} kontroll(er) misslyckades.`}`)
 if (failures > 0) Deno.exit(1)

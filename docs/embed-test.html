@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<title>Rideau embed.js - lokal testsida</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #EAEEF2; margin: 0; padding: 24px; color: #171717; }
+  h2 { margin: 36px 0 10px; font-size: 16px; }
+  .host-page-css { font-size: 48px; color: red; } /* ska INTE läcka in i widgeten (Shadow DOM) */
+  section { margin-bottom: 24px; }
+  .narrow { max-width: 280px; }
+  .side-by-side { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<!--
+  Lokal testsida mot scripts/embed-mock-server.ts (ordern "Schemalagt
+  biljettsläpp och inbäddningsbar widget", steg 2.6). Kör:
+    deno run --allow-net --allow-read scripts/embed-mock-server.ts
+  och öppna http://localhost:8787/docs/embed-test.html
+
+  data-api="" (tomt) pekar mock-servern mot SIN EGEN origin, dvs
+  http://localhost:8787 - produktionskoden (utan data-api) pekar istället
+  mot den riktiga Supabase-funktionen (DEFAULT_API_BASE i embed.js).
+  "test-upcoming" har ett sales_open_at 20 sekunder fram i tiden VID VARJE
+  sidladdning - vänta ~20s för att se nedräkningen slå om till
+  "Köp biljetter" utan att sidan laddas om.
+-->
+<h1>Rideau embed.js - alla layouter och tillstånd</h1>
+<p class="host-page-css">Denna stora röda text ska INTE synas inuti widgetarna nedan (Shadow DOM-isolering).</p>
+
+<h2>A. Horisontell (ett event, öppet köp)</h2>
+<section>
+  <div class="rideau-widget" data-layout="horizontal" data-events="test-open" data-show="poster,date,place,price,organizer" data-api="" style="max-width:600px"></div>
+</section>
+
+<h2>B. Stående (ett event, släpps snart - nedräkning)</h2>
+<section>
+  <div class="rideau-widget" data-layout="portrait" data-events="test-upcoming" data-show="poster,date,place,price,countdown" data-api="" class="narrow"></div>
+</section>
+
+<h2>C. Liggande (ett event, slutsålt)</h2>
+<section>
+  <div class="rideau-widget" data-layout="landscape" data-events="test-soldout" data-show="poster,date,place" data-api="" style="max-width:700px"></div>
+</section>
+
+<h2>D. Bara en knapp (mörkt tema, Skymning)</h2>
+<section>
+  <div class="rideau-widget" data-layout="button" data-events="test-open" data-theme="dark" data-accent="skymning" data-api="" style="max-width:300px"></div>
+</section>
+
+<h2>E. Speltider (flera tillfällen, en rubrik)</h2>
+<section>
+  <div class="rideau-widget" data-layout="showtimes" data-events="test-open,test-upcoming,test-soldout" data-show="countdown" data-title="Vinterföreställningen - alla speltider" data-api=""></div>
+</section>
+
+<h2>F. Rutnät (flera event, Rampljus-knapp)</h2>
+<section>
+  <div class="rideau-widget" data-layout="grid" data-events="test-open,test-upcoming,test-soldout,test-upcoming-long" data-show="poster,date,place,price,countdown" data-accent="rampljus" data-api=""></div>
+</section>
+
+<h2>G. Agenda (rader, flera event)</h2>
+<section>
+  <div class="rideau-widget" data-layout="agenda" data-events="test-open,test-upcoming,test-soldout" data-show="countdown" data-api=""></div>
+</section>
+
+<h2>H. Banner (nästa föreställning, nedräkning)</h2>
+<section>
+  <div class="rideau-widget" data-layout="banner" data-events="test-upcoming,test-open" data-show="countdown" data-api=""></div>
+</section>
+
+<h2>I. data-organizer (alla arrangörens publicerade event)</h2>
+<section>
+  <div class="rideau-widget" data-layout="grid" data-organizer="testarrangor" data-show="poster,date,price,countdown" data-api=""></div>
+</section>
+
+<h2>J. Två widgetar på samma sida + 280px (minsta bredd)</h2>
+<section class="side-by-side">
+  <div class="rideau-widget" data-layout="portrait" data-events="test-soldout" data-api="" style="width:280px"></div>
+  <div class="rideau-widget" data-layout="portrait" data-events="test-open" data-api="" style="width:280px"></div>
+</section>
+
+<h2>K. Okänd/ej publicerad slug (ska visa "Inga kommande föreställningar just nu.")</h2>
+<section>
+  <div class="rideau-widget" data-layout="grid" data-events="finns-inte-alls" data-api=""></div>
+</section>
+
+<!-- Skriptet inkluderat TVÅ GÅNGER (ordern 2.1: "Flera widgetar på en
+     sida, och att skriptet inkluderas två gånger" måste fungera) - den
+     andra körningen ska inte dubbelmontera eller krascha. -->
+<script async src="/embed.js"></script>
+<script async src="/embed.js"></script>
+</body>
+</html>

@@ -3,11 +3,12 @@
 # verify_jwt = false på de flesta funktionerna nedan, av samma anledning
 # för alla: de tar inte emot en Supabase-utfärdad JWT i
 # Authorization-headern, utan ett eget statiskt/HMAC-baserat schema.
-#   - create-order / order-status / public-events: publika, ingen
-#     Authorization-header alls (order-status tar emot order_id som
-#     query-param; public-events är avsiktligt tokenfri - se dess egen
-#     filkommentar för motivering, den är tänkt att anropas direkt från en
-#     Squarespace Code Block där en hemlig token inte kan gömmas).
+#   - create-order / order-status / public-events / public-embed: publika,
+#     ingen Authorization-header alls (order-status tar emot order_id som
+#     query-param; public-events och public-embed är avsiktligt tokenfria
+#     - se deras egna filkommentarer för motivering, de är tänkta att
+#     anropas direkt från en Squarespace Code Block där en hemlig token
+#     inte kan gömmas).
 #   - public-apply-organizer: samma resonemang som public-events - anropas
 #     direkt från en Squarespace Code Block. Ytan hålls smal genom att den
 #     bara kan skriva en rad i en ansökningskö (organizer_applications),
@@ -55,6 +56,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.public-fee-config]
+verify_jwt = false
+
+[functions.public-embed]
 verify_jwt = false
 
 [functions.admin-create-event]

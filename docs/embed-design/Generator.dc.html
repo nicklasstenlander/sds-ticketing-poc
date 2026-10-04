@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Embed-generator</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 860px; box-sizing: border-box; padding: 40px; background: #FAFAF8; font-family: Manrope, system-ui, sans-serif; color: #171717; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-size: 30px; line-height: 1.15; font-weight: 800; color: #243B53">Bädda in på din webbplats</h1>
+<p style="margin: 0; font-size: 16px; color: #5A5A5A">Välj evenemang och layout, kopiera koden och klistra in den där biljetterna ska synas.</p>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 32px">
+<div style="width: 460px; flex: none; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px; padding: 24px; background: #FFFFFF; border: 1px solid #E5E5E1; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06)">
+<div>
+<div style="margin-bottom: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Evenemang</div>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Vinterföreställningen<span style="margin-left: auto; font-size: 13px; color: #5A5A5A">Lör 12 dec</span></label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Julföreställning<span style="margin-left: auto; font-size: 13px; color: #5A5A5A">Lör 19 dec</span></label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" style="width: 18px; height: 18px; accent-color: #243B53">Vårshow<span style="margin-left: auto; font-size: 13px; color: #5A5A5A">Lör 17 apr</span></label>
+</div>
+<div>
+<div style="margin-bottom: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Layout</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Horisontell</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Stående</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Liggande</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Knapp</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Speltider</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 2px solid #243B53; border-radius: 10px; background: #EAEEF2; font-size: 13px; font-weight: 700"><input type="radio" name="layout" checked style="accent-color: #243B53">Rutnät</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Agenda</label>
+<label style="display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 44px; padding: 0 10px; border: 1px solid #E5E5E1; border-radius: 10px; font-size: 13px; font-weight: 700"><input type="radio" name="layout" style="accent-color: #243B53">Banner</label>
+</div>
+</div>
+<div>
+<div style="margin-bottom: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Visa</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px">
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Affisch</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Datum och tid</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Plats</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Från-pris</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" style="width: 18px; height: 18px; accent-color: #243B53">Arrangör</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" style="width: 18px; height: 18px; accent-color: #243B53">Beskrivning</label>
+<label style="grid-column: span 2; display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 15px"><input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #243B53">Nedräkning före biljettsläpp</label>
+</div>
+</div>
+<div>
+<div style="margin-bottom: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Utseende</div>
+<div style="display: flex; align-items: center; gap: 20px">
+<label style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 15px"><input type="radio" name="tema" checked style="accent-color: #243B53">Ljus</label>
+<label style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 15px"><input type="radio" name="tema" style="accent-color: #243B53">Mörk</label>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+<span style="font-size: 13px; color: #5A5A5A">Knappfärg</span>
+<button type="button" aria-label="Midnatt" style="width: 28px; height: 28px; border: 3px solid #FFFFFF; border-radius: 999px; background: #243B53; box-shadow: 0 0 0 2px #243B53; cursor: pointer"></button>
+<button type="button" aria-label="Skymning" style="width: 28px; height: 28px; border: 3px solid #FFFFFF; border-radius: 999px; background: #5A3E9B; box-shadow: 0 0 0 1px #CBD2DA; cursor: pointer"></button>
+<button type="button" aria-label="Rampljus" style="width: 28px; height: 28px; border: 3px solid #FFFFFF; border-radius: 999px; background: #F6B93B; box-shadow: 0 0 0 1px #CBD2DA; cursor: pointer"></button>
+</div>
+</div>
+</div>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+<div style="box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #FFFFFF; border: 1px solid #E5E5E1; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06)">
+<div style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Förhandsvisning</div>
+<div style="box-sizing: border-box; display: flex; gap: 16px; padding: 20px; background: #EAEEF2; border-radius: 12px">
+<div style="flex: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #FFFFFF; border: 1px solid #E5E5E1; border-radius: 14px">
+<div style="width: 100%; height: 100px; box-sizing: border-box; background: #243B53; border-radius: 8px; display: flex; align-items: center; justify-content: center">
+<svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><path d="M50,6 Q55,45 94,50 Q55,55 50,94 Q45,55 6,50 Q45,45 50,6Z" fill="#F6B93B"/></svg>
+</div>
+<div style="font-size: 16px; font-weight: 800; color: #243B53">Vinterföreställningen</div>
+<div style="font-size: 13px; color: #5A5A5A">Lör 12 dec · 15:00 · Dansscenen</div>
+<button type="button" style="width: 100%; min-height: 44px; border: 0; border-radius: 999px; background: #243B53; color: #FFFFFF; font: 700 14px Manrope, system-ui, sans-serif; cursor: pointer">Köp biljetter</button>
+</div>
+<div style="flex: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #FFFFFF; border: 1px solid #E5E5E1; border-radius: 14px">
+<div style="width: 100%; height: 100px; box-sizing: border-box; background: #243B53; border-radius: 8px; display: flex; align-items: center; justify-content: center">
+<svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><path d="M50,6 Q55,45 94,50 Q55,55 50,94 Q45,55 6,50 Q45,45 50,6Z" fill="#F6B93B"/></svg>
+</div>
+<div style="font-size: 16px; font-weight: 800; color: #243B53">Julföreställning</div>
+<div style="font-size: 13px; color: #5A5A5A">Lör 19 dec · 15:00 · Dansscenen</div>
+<span style="display: block; box-sizing: border-box; width: 100%; padding: 12px 10px; border-radius: 999px; background: #F6B93B; color: #171717; text-align: center; font-size: 13px; font-weight: 700">Släpps 20 okt kl. 10:00</span>
+</div>
+</div>
+</div>
+<div style="box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #FFFFFF; border: 1px solid #E5E5E1; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06)">
+<div style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5A5A5A">Kod att klistra in</div>
+<pre style="margin: 0; padding: 16px; border-radius: 12px; background: #16263A; color: #E7EDF4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap">&lt;div class="rideau-widget"
+  data-layout="grid"
+  data-events="vinterforestallningen,julforestallning"
+  data-show="poster,date,place,price,countdown"
+  data-theme="light"&gt;&lt;/div&gt;
+&lt;script async src="https://biljetter.sollentunadansochscenskola.se/embed.js"&gt;&lt;/script&gt;</pre>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px">
+<span style="font-size: 13px; line-height: 1.5; color: #5A5A5A">Före släppet visas nedräkningen. Vid släpp byts den mot Köp biljetter, utan att du ändrar koden.</span>
+<button type="button" style="flex: none; min-height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: #F6B93B; color: #171717; font: 700 15px Manrope, system-ui, sans-serif; cursor: pointer">Kopiera kod</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

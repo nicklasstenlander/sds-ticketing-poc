@@ -58,6 +58,9 @@ export function AdminDashboardPage() {
           <Link to="/admin/stripe-installning" className="text-sm link-accent">
             Stripe
           </Link>
+          <Link to="/admin/embed" className="text-sm link-accent">
+            Bädda in
+          </Link>
         </div>
       </div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Dashboard</h1>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>Banner med nedräkning</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1100px; height: 200px; box-sizing: border-box; padding: 32px; background: #FAFAF8; font-family: Manrope, system-ui, sans-serif; color: #171717; display: flex; align-items: center">
+<div style="width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 28px; padding: 22px 28px; background: #243B53; border-radius: 16px">
+<svg width="36" height="36" viewBox="0 0 100 100" aria-hidden="true" style="flex: none"><path d="M50,6 Q55,45 94,50 Q55,55 50,94 Q45,55 6,50 Q45,45 50,6Z" fill="#F6B93B"/></svg>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<div style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #F6B93B">Nästa föreställning</div>
+<div style="font-size: 24px; line-height: 1.15; font-weight: 800; color: #FFFFFF">Vinterföreställningen</div>
+<div style="font-size: 14px; color: #C9D3DF">Lör 12 dec · Dansscenen</div>
+</div>
+<div style="margin-left: auto; display: flex; gap: 10px">
+<div style="width: 64px; height: 64px; box-sizing: border-box; background: #2F4A66; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center">
+<span style="font-size: 24px; line-height: 1.1; font-weight: 800; color: #FFFFFF">3</span>
+<span style="font-size: 11px; color: #C9D3DF">dagar</span>
+</div>
+<div style="width: 64px; height: 64px; box-sizing: border-box; background: #2F4A66; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center">
+<span style="font-size: 24px; line-height: 1.1; font-weight: 800; color: #FFFFFF">04</span>
+<span style="font-size: 11px; color: #C9D3DF">tim</span>
+</div>
+<div style="width: 64px; height: 64px; box-sizing: border-box; background: #2F4A66; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center">
+<span style="font-size: 24px; line-height: 1.1; font-weight: 800; color: #FFFFFF">12</span>
+<span style="font-size: 11px; color: #C9D3DF">min</span>
+</div>
+</div>
+<span style="flex: none; padding: 12px 18px; border-radius: 999px; background: #F6B93B; color: #171717; font-size: 14px; font-weight: 700">Biljetter släpps 14 okt kl. 10:00</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":200}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

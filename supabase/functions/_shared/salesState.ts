@@ -26,13 +26,18 @@ export function computeSalesState(params: {
 
 /** "14 okt kl. 10:00", alltid Europe/Stockholm oavsett serverns egen
  * tidszon (Deno Deploy kör UTC) - för SALES_NOT_OPEN-felmeddelandet i
- * create-order (ordern 1.3) och public-embeds chip-text (steg 2). */
+ * create-order (ordern 1.3) och public-embeds chip-text (steg 2). Intl:s
+ * 'sv-SE'-korta månadsförkortningar har en punkt ("okt.") som mockarna
+ * inte har - strippas här. Samma fix finns i frontendens
+ * formatStockholmDateTime (src/lib/stockholmTime.ts). */
 export function formatStockholmDateTimeSv(iso: string): string {
   const datePart = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Stockholm',
     day: 'numeric',
     month: 'short',
-  }).format(new Date(iso))
+  })
+    .format(new Date(iso))
+    .replace(/\.$/, '')
   const timePart = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Stockholm',
     hour: '2-digit',

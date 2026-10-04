@@ -48,6 +48,19 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte hämta events: ${error.message}` }, 500)
   }
 
+  // Additivt fält (steg 2, embed-generatorn) - arrangörens egen slug,
+  // för "data-organizer"-läget. Läcker ingen ny data (samma slug är
+  // redan publik via varje events egen köplänk).
+  const { data: organizerRow, error: organizerError } = await supabase
+    .from('organizers')
+    .select('slug')
+    .eq('id', auth.organizerId)
+    .single()
+
+  if (organizerError) {
+    return jsonResponse({ error: `Kunde inte hämta arrangören: ${organizerError.message}` }, 500)
+  }
+
   const eventRows = data ?? []
   const eventIds = eventRows.map((e) => e.id)
 
@@ -89,5 +102,5 @@ Deno.serve(async (req: Request) => {
     },
   }))
 
-  return jsonResponse({ events })
+  return jsonResponse({ events, organizer_slug: organizerRow.slug })
 })

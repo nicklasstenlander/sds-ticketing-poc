@@ -8,6 +8,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage'
 import { AdminWelcomePage } from './pages/AdminWelcomePage'
 import { AdminOrganizersPage } from './pages/AdminOrganizersPage'
 import { AdminStripeSettingsPage } from './pages/AdminStripeSettingsPage'
+import { AdminEmbedPage } from './pages/AdminEmbedPage'
 
 // HashRouter (URL:er som /#/admin), inte BrowserRouter: GitHub Pages har
 // ingen serverkonfiguration som kan skicka godtyckliga sökvägar till
@@ -34,6 +35,7 @@ export function App() {
         <Route path="/admin/valkommen" element={<AdminWelcomePage />} />
         <Route path="/admin/organizers" element={<AdminOrganizersPage />} />
         <Route path="/admin/stripe-installning" element={<AdminStripeSettingsPage />} />
+        <Route path="/admin/embed" element={<AdminEmbedPage />} />
         <Route path="*" element={<Navigate to="/evenemang" replace />} />
       </Routes>
     </HashRouter>

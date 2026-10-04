@@ -103,13 +103,17 @@ export function stockholmDatetimeLocalToUtcIso(value: string): string | null {
 }
 
 /** "14 okt kl. 10:00", alltid i Europe/Stockholm oavsett besökarens egen
- * tidszon - för chip/badge-texter ("Biljetterna släpps ..."). */
+ * tidszon - för chip/badge-texter ("Biljetterna släpps ..."). Intl:s
+ * 'sv-SE'-korta månadsförkortningar har en punkt ("okt.") som mockarna
+ * inte har - strippas här. */
 export function formatStockholmDateTime(iso: string): string {
   const datePart = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Stockholm',
     day: 'numeric',
     month: 'short',
-  }).format(new Date(iso))
+  })
+    .format(new Date(iso))
+    .replace(/\.$/, '')
   const timePart = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Stockholm',
     hour: '2-digit',
