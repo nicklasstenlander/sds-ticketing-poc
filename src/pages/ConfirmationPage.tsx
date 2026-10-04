@@ -3,16 +3,24 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { callFunction } from '../lib/functionsApi'
 import { APP_NAME } from '../lib/constants'
+import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface OrderStatusTicket {
   ticket_code: string
   qr_url: string
 }
 
+interface OrderStatusEvent {
+  title: string
+  venue: string | null
+  starts_at: string | null
+}
+
 interface OrderStatusResponse {
   status: 'pending' | 'paid' | 'expired' | 'cancelled'
   ticket_count: number | null
   tickets: OrderStatusTicket[] | null
+  event: OrderStatusEvent | null
 }
 
 const POLL_INTERVAL_MS = 2000
@@ -32,6 +40,7 @@ export function ConfirmationPage() {
   const [status, setStatus] = useState<OrderStatusResponse['status'] | 'timeout' | null>(null)
   const [ticketCount, setTicketCount] = useState<number | null>(null)
   const [tickets, setTickets] = useState<OrderStatusTicket[] | null>(null)
+  const [event, setEvent] = useState<OrderStatusEvent | null>(null)
   const [pollError, setPollError] = useState<string | null>(null)
   const startedAtRef = useRef<number>(Date.now())
 
@@ -47,6 +56,7 @@ export function ConfirmationPage() {
         setPollError(null)
         setTicketCount(res.ticket_count)
         setTickets(res.tickets)
+        setEvent(res.event)
         if (res.status === 'paid' || res.status === 'expired' || res.status === 'cancelled') {
           setStatus(res.status)
           return // sluta polla, ett slutgiltigt tillstånd är nått
@@ -141,6 +151,18 @@ export function ConfirmationPage() {
                 <div className="font-bold text-lg">
                   {tickets.length > 1 ? `Biljett ${i + 1} av ${tickets.length}` : '1 biljett'}
                 </div>
+                {/* Event-info ovanför QR-koden (ordern 2026-10-04) - samma
+                    uppgifter som redan finns i biljettmailet (stripe-webhook,
+                    formatStockholmDateTime i Europe/Stockholm). */}
+                {event && (
+                  <div className="mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                    <div className="font-semibold">{event.title}</div>
+                    {event.starts_at && (
+                      <div>{formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })}</div>
+                    )}
+                    {event.venue && <div>{event.venue}</div>}
+                  </div>
+                )}
                 <div
                   className="border-t border-dashed mt-5 pt-5 flex flex-col items-center"
                   style={{ borderColor: 'rgba(255,255,255,0.25)' }}

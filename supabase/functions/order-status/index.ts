@@ -16,7 +16,13 @@
 //
 // GET order-status?order_id=<uuid>
 // -> { status: "pending" | "paid" | "expired" | "cancelled", ticket_count: number | null,
-//      tickets: { ticket_code: string, qr_url: string }[] | null }
+//      tickets: { ticket_code: string, qr_url: string }[] | null,
+//      event: { title: string, venue: string | null, starts_at: string | null } | null }
+//
+// "event" (ordern 2026-10-04: biljettkortet på bekräftelsesidan ska visa
+// titel/datum/plats ovanför QR-koden, precis som mailet redan gör) - bara
+// de tre fält som redan är publika via events SELECT-policyn, inget nytt
+// läcker.
 //
 // `tickets` exponeras bara när status === 'paid', och innehåller ENDAST
 // biljettkod + QR-bild-URL - inget annat från tickets-raden (t.ex.
@@ -28,6 +34,7 @@
 // den publika URL:en här.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
+import { toIso8601Seconds } from '../_shared/time.ts'
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -47,7 +54,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, status')
+    .select('id, status, events(title, venue, starts_at)')
     .eq('id', orderId)
     .maybeSingle()
 
@@ -57,6 +64,11 @@ Deno.serve(async (req: Request) => {
   if (!order) {
     return jsonResponse({ error: 'Ordern hittades inte.' }, 404)
   }
+
+  // Samma försvarsmönster som public-events/public-embed för en embeddad
+  // to-one-relation - PostgREST/klienttyperna kan ge antingen ett objekt
+  // eller en array beroende på sammanhang.
+  const event = Array.isArray(order.events) ? order.events[0] : order.events
 
   let tickets: { ticket_code: string; qr_url: string }[] | null = null
 
@@ -87,5 +99,8 @@ Deno.serve(async (req: Request) => {
     status: order.status,
     ticket_count: order.status === 'paid' ? (tickets?.length ?? 0) : null,
     tickets,
+    event: event
+      ? { title: event.title, venue: event.venue, starts_at: toIso8601Seconds(event.starts_at) }
+      : null,
   })
 })

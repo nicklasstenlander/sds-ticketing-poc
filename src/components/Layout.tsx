@@ -17,9 +17,9 @@ export function Layout({ children, wide = false }: LayoutProps) {
     <div className="min-h-screen flex flex-col bg-[var(--bg)]">
       {/* Mörk topbar med negativ logotyp (grafisk profil förslag 1,
           2026-10: "Logotyp på mörk bakgrund" - vit text + Rampljus-gnistor/
-          svep). --accent-text ger rätt kontrast för Admin-länken ovanpå
-          Midnatt, till skillnad från .link-accent (Midnatt-på-Midnatt hade
-          varit osynligt här). */}
+          svep). Admin-länken flyttad till sidfoten (ordern 2026-10-04) -
+          diskret för en vanlig besökare, inte en framträdande huvudmeny-
+          punkt. */}
       <header className="bg-[var(--accent)] shadow-[var(--shadow-card)]">
         <div className={`mx-auto ${widthClass} px-4 py-4 flex items-center justify-between`}>
           <Link to="/" aria-label={APP_NAME}>
@@ -32,12 +32,17 @@ export function Layout({ children, wide = false }: LayoutProps) {
               className="h-8 w-auto"
             />
           </Link>
-          <Link to="/admin" className="text-sm text-[var(--accent-text)] underline underline-offset-2">
-            Admin
-          </Link>
         </div>
       </header>
       <main className={`flex-1 mx-auto w-full ${widthClass} px-4 py-8`}>{children}</main>
+      <footer className={`mx-auto w-full ${widthClass} px-4 py-6 text-center`}>
+        <Link
+          to="/admin"
+          className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline underline-offset-2"
+        >
+          Admin
+        </Link>
+      </footer>
     </div>
   )
 }
