@@ -65,7 +65,11 @@ export function EventsPage() {
           })
           const soldOut = salesState === 'sold_out'
           const upcoming = salesState === 'upcoming'
-          const pct = event.capacity > 0 ? Math.min(100, Math.round((event.sold_count / event.capacity) * 100)) : 0
+          // Exakt antal/andel sålda visas INTE längre för besökare (önskemål
+          // 2026-10-04, samma princip som köpsidan) - bara "Få biljetter
+          // kvar" under 10% kvar. "Slutsålt" hanteras redan separat nedan
+          // (höger badge), oberoende av detta.
+          const lowStock = !soldOut && event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
           const prices = types.map((t) => t.price_ore)
           const minPrice = prices.length > 0 ? Math.min(...prices) : null
           const hasMultiplePrices = new Set(prices).size > 1
@@ -109,16 +113,7 @@ export function EventsPage() {
                     {event.venue ? ` · ${event.venue}` : ''}
                     {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
                   </div>
-                  {event.capacity > 0 && (
-                    <>
-                      <div className="progress-track max-w-[220px] mb-2">
-                        <div className="progress-fill" style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="text-sm text-[var(--text-muted)]">
-                        {event.sold_count} / {event.capacity} sålda
-                      </div>
-                    </>
-                  )}
+                  {lowStock && <div className="text-sm text-[var(--text-muted)]">Få biljetter kvar</div>}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-semibold text-[var(--text)] mb-2">

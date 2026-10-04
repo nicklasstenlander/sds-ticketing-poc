@@ -266,6 +266,11 @@ export function PurchasePage() {
 
   const remaining = event ? event.capacity - event.sold_count : 0
   const soldOut = event ? event.capacity > 0 && remaining <= 0 : false
+  // Exakt antal kvarvarande platser visas inte längre för köparen (önskemål
+  // 2026-10-04) - bara ett löst "få kvar"-läge under 10%. remaining/
+  // maxSelectable nedan styr fortfarande den FAKTISKA köpspärren oförändrat,
+  // det är bara den visade TEXTEN som ändras.
+  const lowStock = event ? !soldOut && event.capacity > 0 && remaining / event.capacity < 0.1 : false
   const totalQty = Object.values(quantities).reduce((sum, q) => sum + q, 0)
   const totalOre = (ticketTypes ?? []).reduce(
     (sum, t) => sum + (quantities[t.id] ?? 0) * t.price_ore,
@@ -373,7 +378,7 @@ export function PurchasePage() {
       )}
       <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
-      <p className="text-[var(--text-muted)] mb-1">
+      <p className={`text-[var(--text-muted)] ${soldOut || lowStock ? 'mb-1' : 'mb-8'}`}>
         {/* starts_at är null bara för ett ännu opublicerat dublicerat
             event (Tilläggsordern 2026-08-05) - RLS gör att den här sidan
             i praktiken aldrig når hit för ett sådant event, men typen
@@ -385,9 +390,13 @@ export function PurchasePage() {
         {event.venue ? ` · ${event.venue}` : ''}
         {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
       </p>
-      <p className="text-[var(--text-muted)] mb-8">
-        {soldOut ? 'Slutsålt' : `${remaining} platser kvar av ${event.capacity}`}
-      </p>
+      {/* Exakt antal platser visas INTE längre (önskemål 2026-10-04) - bara
+          "Slutsålt" eller "Få biljetter kvar" under 10% kvar. Inget extra
+          visas alls vid normal tillgång, samma princip som public-embed/
+          public-events redan följer (aldrig sold_count/capacity i klartext). */}
+      {(soldOut || lowStock) && (
+        <p className="text-[var(--text-muted)] mb-8">{soldOut ? 'Slutsålt' : 'Få biljetter kvar'}</p>
+      )}
 
       {upcoming && event.sales_open_at ? (
         <div className="card text-center">
