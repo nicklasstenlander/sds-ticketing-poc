@@ -59,11 +59,19 @@ const ACCENTS: { value: string; label: string; color: string }[] = [
 // Samma stabila, ohashade sökväg som den verkliga sidan serverar embed.js
 // från (public/embed.js, kopierat rakt av till dist-roten av Vite) -
 // ALDRIG en hårdkodad adress, så koden/förhandsvisningen automatiskt blir
-// rätt oavsett om detta körs lokalt, på GitHub Pages eller en framtida
-// egen domän (samma princip som embed.js självt använder för sina
-// köplänkar).
+// rätt oavsett om detta körs lokalt, på GitHub Pages eller en egen domän
+// (samma princip som embed.js självt använder för sina köplänkar, via
+// document.currentScript).
+//
+// new URL('embed.js', window.location.href) - INTE origin+BASE_URL
+// sammanslaget som en sträng. Sedan vite.config.ts bas blev './' (en
+// relativ sträng, inte en rotrelativ sökväg som '/sds-ticketing-poc/')
+// skulle origin+BASE_URL ge en trasig URL ("https://exempel.se./embed.js").
+// new URL löser upp relativt den FAKTISKA sidadressen precis som
+// webbläsaren redan gör för <img src>/<script src> - fungerar oförändrat
+// oavsett undermapp, rot eller hash-route i adressfältet.
 function embedScriptUrl(): string {
-  return `${window.location.origin}${import.meta.env.BASE_URL}embed.js`
+  return new URL('embed.js', window.location.href).href
 }
 
 export function AdminEmbedPage() {

@@ -345,15 +345,17 @@ npm run build
    `RESEND_FROM`, service role-nyckeln) ska någonsin läggas som
    GitHub-secret här - de rör bara Edge Functions och är redan satta som
    Supabase secrets (avsnitt 3).
-4. Sajten publiceras på
-   `https://<användarnamn>.github.io/sds-ticketing-poc/`.
+4. Sajten publiceras på `https://<användarnamn>.github.io/sds-ticketing-poc/`
+   som standard, eller på en egen domän - se `docs/domain.md` för den
+   aktuella produktionsadressen och hur den är satt upp.
 
 Routing körs via `HashRouter` (URL:er som `/#/admin`, `/#/kop/test-event`)
 eftersom GitHub Pages inte har någon serverkonfiguration som kan skicka
 godtyckliga sökvägar till `index.html` - en direktnavigering till `/admin`
-skulle annars ge 404 från GitHub, inte appen. Se `src/App.tsx` och
-`vite.config.ts` (`base: '/sds-ticketing-poc/'` - byt ut repo-namnet där om
-det faktiska GitHub-repot heter något annat).
+skulle annars ge 404 från GitHub, inte appen. Se `src/App.tsx`.
+`vite.config.ts` använder `base: './'` (relativ, inte ett hårdkodat
+repo-namn) - samma bygge fungerar oförändrat både under
+`/sds-ticketing-poc/` och i roten av en egen domän, se `docs/domain.md`.
 
 ## 8. Stripe Checkout (Test mode), moms och det utgångna-jobbet
 
@@ -382,11 +384,15 @@ med händelserna `checkout.session.completed` och `checkout.session.expired`.
    Stripe-/moms-/utgångsfälten på `orders`, tabellen `webhook_events` samt
    databasfunktionen `release_expired_orders()`.
 
-2. **Sätt `FRONTEND_BASE_URL`** (används av `create-order` för att bygga
-   Stripe Checkouts `success_url`/`cancel_url`, och är INTE hemlig - det är
-   bara webbplatsens publika adress):
+2. **Sätt `FRONTEND_BASE_URL`** (används av `create-order`, `admin-invite-
+   member`, `admin-connect-stripe`, `public-apply-organizer` och
+   `_shared/createOrganizer.ts` för att bygga Stripe Checkouts `success_url`/
+   `cancel_url` samt diverse `/#/...`-länkar - INTE hemlig, bara webbplatsens
+   publika adress. Alla ställen stripper redan ett eventuellt avslutande
+   snedstreck själva, så värdet funkar med eller utan - se `docs/domain.md`
+   för den aktuella adressen):
    ```bash
-   supabase secrets set FRONTEND_BASE_URL=https://<användarnamn>.github.io/sds-ticketing-poc
+   supabase secrets set FRONTEND_BASE_URL=https://biljetter.sollentunadansochscenskola.se --project-ref oyqgxnmwojjjpoubdlfa
    ```
 
 3. **Sätt `CRON_SECRET`** - en egen hemlighet (som `SCANNER_BEARER_TOKEN`)
@@ -793,14 +799,15 @@ via `organizer_members` precis som innan.
   arrangörsanvändares Supabase Auth-JWT i `Authorization`-headern.
 
 - **Deploy-mål frontend:** GitHub Pages, samma repo som koden. Bygget körs
-  av `.github/workflows/deploy.yml` vid varje push till `main`. Kräver
-  `base: '/sds-ticketing-poc/'` i `vite.config.ts` (Pages utan egen domän
-  serverar inte från roten) och `HashRouter` istället för `BrowserRouter`
-  (Pages har ingen serverkonfiguration som kan skicka godtyckliga
-  sökvägar till `index.html` - en direktnavigering till `/admin` skulle
-  annars ge 404 från GitHub). Planen är att, om detta fungerar väl, länka
-  in sidan från CORE som en iframe-embed på en admin-flik - ett separat,
-  senare beslut som inte påverkar något i denna PoC.
+  av `.github/workflows/deploy.yml` vid varje push till `main`. Använder
+  `base: './'` i `vite.config.ts` (relativ, så samma bygge fungerar både
+  under `/sds-ticketing-poc/` och i roten av en egen domän - se
+  `docs/domain.md`) och `HashRouter` istället för `BrowserRouter` (Pages
+  har ingen serverkonfiguration som kan skicka godtyckliga sökvägar till
+  `index.html` - en direktnavigering till `/admin` skulle annars ge 404
+  från GitHub). Planen är att, om detta fungerar väl, länka in sidan från
+  CORE som en iframe-embed på en admin-flik - ett separat, senare beslut
+  som inte påverkar något i denna PoC.
 
 - **`void`-status på biljetter:** finns i schemat (för framtida
   annullering/manuell administration) men sätts aldrig av något flöde i
