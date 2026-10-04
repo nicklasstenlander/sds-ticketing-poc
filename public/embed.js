@@ -198,8 +198,8 @@
   var STYLE = [
     ':host{all:initial;display:block;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}',
     '*{box-sizing:border-box}',
-    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;color:var(--text);font-size:15px;line-height:1.4}',
-    '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3}',
+    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4}',
+    '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3;--hover-shadow:rgba(255,255,255,.14)}',
     // :not(.rw-btn) - annars vinner denna över .rw-btn{color:var(--accent-text)}
     // pga högre specificitet (klass+tagg > enkel klass), och knappen
     // "Köp biljetter" (en <a>, till skillnad från de inaktiverade
@@ -208,11 +208,16 @@
     '.rw a:not(.rw-btn){color:inherit;text-decoration:none}',
     '.rw button,.rw a.rw-btn{font:inherit;cursor:pointer}',
     '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center;text-decoration:none;transition:transform .15s ease,box-shadow .15s ease}',
-    '.rw-btn:focus-visible,.rw a:focus-visible,.rw button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}',
+    // var(--text), inte var(--accent) - accenten (särskilt standardvärdet
+    // Midnatt) kan ligga mycket nära den mörka temats kortbakgrund i
+    // valör, vilket gjorde fokusringen nästan osynlig i mörkt läge.
+    // --text kontrasterar alltid mot --bg/--card-bg i båda temana, per
+    // konstruktion (all vanlig text använder redan samma parning).
+    '.rw-btn:focus-visible,.rw a:focus-visible,.rw button:focus-visible{outline:3px solid var(--text);outline-offset:2px}',
     '.rw-btn[disabled]{background:var(--disabled-bg);color:var(--disabled-text);cursor:default}',
     // Bara klickbara knappar reagerar på hover/aktivering - en inaktiverad
     // knapp ("Slutsålt", köp före släpp) ska inte se interaktiv ut.
-    '.rw-btn:not([disabled]):hover{transform:scale(1.045);box-shadow:0 4px 12px rgba(0,0,0,.18)}',
+    '.rw-btn:not([disabled]):hover{transform:scale(1.045);box-shadow:0 4px 12px var(--hover-shadow)}',
     '.rw-btn:not([disabled]):active{transform:scale(0.98)}',
     '@media (prefers-reduced-motion:reduce){.rw-btn{transition:none}.rw-btn:not([disabled]):hover{transform:none}}',
     '.rw-chip{display:block;box-sizing:border-box;width:100%;padding:12px 14px;border-radius:999px;background:var(--chip-bg);color:var(--chip-text);text-align:center;font-size:13px;font-weight:700}',
