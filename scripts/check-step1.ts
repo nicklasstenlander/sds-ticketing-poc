@@ -15,7 +15,7 @@ import {
   utcIsoToStockholmDatetimeLocal,
   stockholmDatetimeLocalToUtcIso,
 } from '../src/lib/stockholmTime.ts'
-import { computeSalesState as computeSalesStateFrontend } from '../src/lib/salesState.ts'
+import { computeSalesState as computeSalesStateFrontend, computeCountdown, computeClockSkewMs } from '../src/lib/salesState.ts'
 import { computeSalesState as computeSalesStateBackend } from '../supabase/functions/_shared/salesState.ts'
 import { parseAdminDateTimeInput } from '../supabase/functions/_shared/stockholmTime.ts'
 
@@ -215,6 +215,91 @@ for (const [label, computeSalesState] of [
     'upcoming',
     `[${label}] gränsfall - upcoming vinner över sold_out`,
   )
+}
+
+console.log()
+
+// === Skevhetskorrigering (uppföljning 2026-10-04) ===
+// Upptäckt medan detta skrevs: den ursprungliga computeCountdown räknade
+// om skevheten vid VARJE anrop med en NY Date.now(), vilket algebraiskt
+// alltid gav tillbaka server_time oavsett hur mycket tid som gått -
+// nedräkningen skulle aldrig röra sig. Fixat genom att skevheten beräknas
+// EN gång (computeClockSkewMs, vid API-svaret) och sparas som ett tal.
+
+// Servern säger T. Klienten är 10 minuter FÖRE servern (klientens klocka
+// går för fort) - utan korrigering skulle ett släpp 5 min efter T (dvs 5
+// min i FRAMTIDEN enligt servern) se ut att redan ha passerat för
+// klienten, 5 minuter för tidigt.
+{
+  const serverTimeIso = '2026-06-01T12:00:00.000Z'
+  const clientNowAtFetchMs = new Date('2026-06-01T12:10:00.000Z').getTime() // +10 min
+  const skewMs = computeClockSkewMs(serverTimeIso, clientNowAtFetchMs)
+  assertEqual(skewMs, -10 * 60_000, 'computeClockSkewMs - klienten 10 min FÖRE servern ger -10 min skevhet')
+
+  const salesOpenAt = '2026-06-01T12:05:00.000Z' // 5 min efter T (servertid)
+  const clientNow = new Date(clientNowAtFetchMs) // samma ögonblick, ingen ytterligare tid gått
+  const countdown = computeCountdown(salesOpenAt, skewMs, clientNow)
+  assertEqual(
+    countdown.reached,
+    false,
+    'Klient 10 min före server - korrigerat: INTE nått (sann tid är T, släpp är T+5min)',
+  )
+  assertEqual(countdown.minutes, 5, 'Klient 10 min före server - korrigerat: exakt 5 min kvar')
+
+  // Utan korrigering (samma scenario, bara med klockSkewMs=0) hade detta
+  // FELAKTIGT visat "nått" - exakt bakgrunden till ordern.
+  const uncorrected = computeCountdown(salesOpenAt, 0, clientNow)
+  assertEqual(
+    uncorrected.reached,
+    true,
+    '(kontrast) utan korrigering hade samma scenario FELAKTIGT visat nått - visar varför fixen behövs',
+  )
+}
+
+// Klienten är 10 minuter EFTER servern (klientens klocka går för
+// långsamt) - mindre farligt (visar bara för mycket tid kvar, öppnar
+// aldrig för tidigt), men ska ändå korrigeras rätt.
+{
+  const serverTimeIso = '2026-06-01T12:00:00.000Z'
+  const clientNowAtFetchMs = new Date('2026-06-01T11:50:00.000Z').getTime() // -10 min
+  const skewMs = computeClockSkewMs(serverTimeIso, clientNowAtFetchMs)
+  assertEqual(skewMs, 10 * 60_000, 'computeClockSkewMs - klienten 10 min EFTER servern ger +10 min skevhet')
+
+  const salesOpenAt = '2026-06-01T12:05:00.000Z'
+  const clientNow = new Date(clientNowAtFetchMs)
+  const countdown = computeCountdown(salesOpenAt, skewMs, clientNow)
+  assertEqual(countdown.reached, false, 'Klient 10 min efter server - korrigerat: INTE nått')
+  assertEqual(countdown.minutes, 5, 'Klient 10 min efter server - korrigerat: exakt 5 min kvar, inte 15')
+}
+
+// Släpptiden passerar medan fliken är dold: webbläsare bromsar/pausar
+// timers i bakgrundsflikar, så INGA sekundtick behöver ha skett alls
+// mellan "5 min kvar" och "2 timmar efter släppet" - fixen (visibility-
+// change: setNow(new Date()) + omhämtning) förlitar sig på att
+// computeCountdown/computeSalesState är RENA funktioner av en given `now`,
+// inte beroende av att ha "räknat ner" genom varje mellanliggande sekund.
+// Det här verifierar att det stämmer - ett enda hopp ger rätt svar direkt.
+{
+  const salesOpenAt = '2026-06-01T12:00:00.000Z'
+  const beforeHidden = computeCountdown(salesOpenAt, 0, new Date('2026-06-01T11:55:00.000Z'))
+  assertEqual(beforeHidden.reached, false, 'Före flik gömd: 5 min kvar, inte nått')
+
+  // Direkt hopp - ingen tickning alls genom mellantiden (simulerar en
+  // flik som legat dold i över två timmar, långt förbi släppet).
+  const afterHiddenPastRelease = computeCountdown(salesOpenAt, 0, new Date('2026-06-01T14:30:00.000Z'))
+  assertEqual(
+    afterHiddenPastRelease.reached,
+    true,
+    'Efter flik dold förbi släppet: nått direkt, utan mellanliggande tick',
+  )
+
+  const salesStateAfterHidden = computeSalesStateFrontend({
+    salesOpenAt,
+    soldCount: 0,
+    capacity: 100,
+    now: new Date('2026-06-01T14:30:00.000Z'),
+  })
+  assertEqual(salesStateAfterHidden, 'open', 'sales_state efter dold flik förbi släppet: open direkt')
 }
 
 console.log(`\n${failures === 0 ? 'Alla kontroller gick igenom.' : `${failures} kontroll(er) misslyckades.`}`)

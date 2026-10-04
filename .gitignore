@@ -29,6 +29,10 @@ dist-ssr
 # Supabase CLI lokal länkmetadata - projektspecifikt, inte källkod
 supabase/.temp
 
+# Genereras lokalt av `deno check`/`deno run` (t.ex. scripts/check-step1.ts)
+# - ett verktygsartefakt, inte en medveten beroendelåsning av projektet.
+deno.lock
+
 # Lokala build-testkörningar i sandboxen, aldrig avsedda för repot
 dist2
 dist3

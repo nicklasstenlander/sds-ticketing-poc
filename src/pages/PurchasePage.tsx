@@ -6,7 +6,7 @@ import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
-import { computeSalesState, computeCountdown } from '../lib/salesState'
+import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/salesState'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface CreateOrderResponse {
@@ -67,6 +67,19 @@ export function PurchasePage() {
   // visar "nådd" (t.ex. vid varje sekundtick).
   const releaseTriggeredRef = useRef(false)
   const [now, setNow] = useState(() => new Date())
+  // Klockskillnad mot servern (uppföljning 2026-10-04) - beräknas EN gång
+  // när public-fee-config svarar (se computeClockSkewMs), inte om vid
+  // varje tick. 0 tills svaret kommit, vilket bara betyder "oskevad
+  // klocka" - samma säkra default som tidigare.
+  const [clockSkewMs, setClockSkewMs] = useState(0)
+  // Speglar clockSkewMs - den asynkrona pollningsloopen nedan är en
+  // long-lived closure (startad när countdown.reached blir true) och ska
+  // läsa den SENASTE skevheten, inte en inaktuell variant inlåst i
+  // closure:n från den stund loopen startade.
+  const clockSkewMsRef = useRef(0)
+  useEffect(() => {
+    clockSkewMsRef.current = clockSkewMs
+  }, [clockSkewMs])
 
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [name, setName] = useState('')
@@ -134,7 +147,12 @@ export function PurchasePage() {
     let cancelled = false
     callFunction<FeeConfig>('public-fee-config')
       .then((cfg) => {
-        if (!cancelled) setFeeConfig(cfg)
+        if (!cancelled) {
+          setFeeConfig(cfg)
+          // Skevheten beräknas HÄR, i samma ögonblick svaret kommer in -
+          // inte senare vid varje tick (se computeClockSkewMs).
+          setClockSkewMs(computeClockSkewMs(cfg.server_time))
+        }
       })
       .catch(() => {
         // Fee config-hämtning är inte kritisk för sidans huvudfunktion -
@@ -150,8 +168,18 @@ export function PurchasePage() {
   // Schemalagt biljettsläpp (ordern 2026-10-03, 1.1/1.5). Prioritetsordning
   // (upcoming > sold_out > open) i src/lib/salesState.ts - samma logik som
   // servern (create-order/public-events), se den filens kommentar.
+  //
+  // Skevhetskorrigerad `now` (uppföljning 2026-10-04) - samma tidpunkt
+  // används här OCH i countdown nedan, så de alltid är konsekventa med
+  // varandra inom en och samma rendering.
+  const effectiveNow = new Date(now.getTime() + clockSkewMs)
   const salesState = event
-    ? computeSalesState({ salesOpenAt: event.sales_open_at, soldCount: event.sold_count, capacity: event.capacity })
+    ? computeSalesState({
+        salesOpenAt: event.sales_open_at,
+        soldCount: event.sold_count,
+        capacity: event.capacity,
+        now: effectiveNow,
+      })
     : null
   const upcoming = salesState === 'upcoming'
 
@@ -163,10 +191,25 @@ export function PurchasePage() {
     return () => clearInterval(id)
   }, [upcoming])
 
-  const countdown =
-    upcoming && event?.sales_open_at
-      ? computeCountdown(event.sales_open_at, feeConfig?.server_time ?? new Date().toISOString(), now)
-      : null
+  // Uppföljning 2026-10-04: resynka klockan OCH hämta status på nytt så
+  // snart fliken blir synlig igen - en bakgrundslagd flik kan ha missat
+  // flera sekundtick (webbläsare bromsar/pausar timers i dolda flikar),
+  // så släppet kan ha passerat utan att nedräkningen hunnit märka det.
+  // Körs bara medan upcoming faktiskt visas - annars inget att synka.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      setNow(new Date())
+      if (upcoming) {
+        fetchEventAndTickets()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upcoming])
+
+  const countdown = upcoming && event?.sales_open_at ? computeCountdown(event.sales_open_at, clockSkewMs, now) : null
 
   // Vid släppet: hämta status på nytt från servern och visa formuläret UTAN
   // omladdning (ordern 1.5). 0-3 sekunders slumpad fördröjning så att inte
@@ -188,10 +231,17 @@ export function PurchasePage() {
         const fresh = await fetchEventAndTickets(cancelledRef)
         if (cancelledRef.current) return
         if (fresh) {
+          // Skevhetskorrigerad även här (uppföljning 2026-10-04) - annars
+          // kunde en konsekvent klientklockskillnad få denna kontroll att
+          // (felaktigt) tro att släppet redan passerat, byta till
+          // formuläret, och låta köparen trilla rakt in i samma
+          // SALES_NOT_OPEN-avvisning igen vid nästa klick (se catch-
+          // blocket i handleSubmit) - samma orsak aldrig korrigerad.
           const freshState = computeSalesState({
             salesOpenAt: fresh.sales_open_at,
             soldCount: fresh.sold_count,
             capacity: fresh.capacity,
+            now: new Date(Date.now() + clockSkewMsRef.current),
           })
           if (freshState !== 'upcoming') return
         }

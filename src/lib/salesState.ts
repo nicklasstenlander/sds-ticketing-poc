@@ -25,20 +25,43 @@ export interface Countdown {
   /** Under en timme kvar - visa tim/min/sek istället för dag/tim/min
    * (ordern 1.5). */
   underAnHour: boolean
-  /** Släppet har redan passerat enligt klientens klocka - bara en signal
-   * för att trigga omhämtning, INTE något UI ska lita på för att visa
-   * köpformuläret (servern bestämmer, se ordertextens 1.5/2.3). */
+  /** Släppet har redan passerat enligt klientens (skevhetskorrigerade)
+   * klocka - bara en signal för att trigga omhämtning, INTE något UI ska
+   * lita på för att visa köpformuläret (servern bestämmer, se
+   * ordertextens 1.5/2.3). */
   reached: boolean
 }
 
+/**
+ * Beräknar klockskillnaden (millisekunder) mellan klienten och servern, ur
+ * ETT API-svars `server_time` plus klientens egen `Date.now()` TAGEN I
+ * SAMMA ÖGONBLICK som svaret kom tillbaka. Positivt värde = servern ligger
+ * före klienten, negativt = klienten ligger före servern.
+ *
+ * VIKTIGT: detta ska beräknas EN gång när svaret kommer in, och sparas
+ * (t.ex. i React-state) - INTE räknas om vid varje tick. Att räkna om det
+ * med en NY `Date.now()` vid varje anrop (det ursprungliga felet här -
+ * se steg 1b-uppföljningen 2026-10-04) gör uträkningen till en
+ * algebraisk identitet som alltid ger tillbaka server_time oavsett hur
+ * mycket tid som faktiskt gått: clientNow - (clientNow - serverTime) =
+ * serverTime, en konstant - nedräkningen skulle då aldrig röra sig.
+ * Nätverkets tur-och-returtid (svaret kommer inte fram momentant) ger ett
+ * litet, oundvikligt fel på någon bråkdel av en sekund till någon sekund -
+ * försumbart för en nedräkning med sekundupplösning, och utan betydelse
+ * för köpspärren (create-order är alltid den faktiska källan till sanning,
+ * detta är bara UI-polering).
+ */
+export function computeClockSkewMs(serverTime: string, clientNowAtFetch: number = Date.now()): number {
+  return new Date(serverTime).getTime() - clientNowAtFetch
+}
+
 /** Beräknar nedräkningen mot `salesOpenAt`, justerad för klockskillnaden
- * mellan klienten och servern (`serverTime`, från API-svaret) - klientens
- * egen klocka används bara för att ANIMERA nedräkningen mellan
- * hämtningar, aldrig för att avgöra om köp faktiskt är öppet. */
-export function computeCountdown(salesOpenAt: string, serverTime: string, clientNow: Date = new Date()): Countdown {
-  const serverFetchedAt = new Date(serverTime).getTime()
-  const clockSkewMs = clientNow.getTime() - serverFetchedAt
-  const effectiveNowMs = clientNow.getTime() - clockSkewMs
+ * (`clockSkewMs`, från computeClockSkewMs - EN gång per hämtning, inte per
+ * tick). `clientNow` är den löpande, tickande klockan (uppdateras varje
+ * sekund) - skillnaden adderas till den så att nedräkningen faktiskt
+ * rör sig i realtid, korrigerad för skevheten. */
+export function computeCountdown(salesOpenAt: string, clockSkewMs: number, clientNow: Date = new Date()): Countdown {
+  const effectiveNowMs = clientNow.getTime() + clockSkewMs
   const remainingMs = Math.max(0, new Date(salesOpenAt).getTime() - effectiveNowMs)
 
   const totalSeconds = Math.floor(remainingMs / 1000)
