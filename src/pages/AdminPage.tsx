@@ -579,29 +579,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
 
                   {!cancelled && (
-                    <div className="flex gap-4 mt-4 pt-4 border-t border-[var(--border)] text-sm">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(event)}
-                        className="text-slate-600 hover:text-slate-900 underline"
-                      >
+                    <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                      <button type="button" onClick={() => startEdit(event)} className="admin-action-btn">
                         Redigera
                       </button>
-                      <Link to={`/admin/event/${event.id}`} className="text-slate-600 hover:text-slate-900 underline">
+                      <Link to={`/admin/event/${event.id}`} className="admin-action-btn">
                         Biljettyper
                       </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePublish(event)}
-                        className="text-slate-600 hover:text-slate-900 underline"
-                      >
+                      <button type="button" onClick={() => handleTogglePublish(event)} className="admin-action-btn">
                         {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDuplicate(event)}
                         disabled={duplicatingId === event.id}
-                        className="text-slate-600 hover:text-slate-900 underline disabled:opacity-50"
+                        className="admin-action-btn disabled:opacity-50"
                       >
                         {duplicatingId === event.id ? 'Duplicerar…' : 'Duplicera'}
                       </button>
@@ -609,7 +601,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         type="button"
                         onClick={() => handleDelete(event)}
                         disabled={deletingId === event.id}
-                        className="text-red-600 hover:text-red-800 underline disabled:opacity-50"
+                        className="admin-action-btn admin-action-btn-danger disabled:opacity-50"
                       >
                         {deletingId === event.id ? 'Raderar…' : 'Radera'}
                       </button>

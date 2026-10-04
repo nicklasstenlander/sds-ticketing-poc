@@ -121,6 +121,38 @@ body {
     text-underline-offset: 2px;
   }
 
+  /* Kompakta, ljusa pill-knappar för eventlistans åtgärdsrad i admin
+   * (Redigera/Biljettyper/Sätt som utkast/Duplicera/Radera) - tidigare
+   * understruken text som dels var svår att se som klickbar, dels radbröt
+   * mitt i en fras ("Sätt som / utkast") i en smalare kolumn. white-space:
+   * nowrap håller varje knapps egen text på en rad; flex-wrap på
+   * föräldern (inte här) låter hela knappar radbryta istället om det
+   * inte får plats. */
+  .admin-action-btn {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    background-color: var(--bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .admin-action-btn:hover {
+    background-color: var(--accent-soft);
+    color: var(--text);
+  }
+  .admin-action-btn-danger {
+    color: #dc2626;
+  }
+  .admin-action-btn-danger:hover {
+    background-color: #fef2f2;
+    color: #b91c1c;
+  }
+
   /* Liten versal-etikett à la ScenPass-designförslaget, t.ex. "SODSS
    * BILJETT" ovanför sidrubriker. */
   .eyebrow {
