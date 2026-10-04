@@ -235,6 +235,7 @@
     '.rw-banner-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--chip-bg)}',
     '.rw-banner-title{margin:4px 0 0;font-size:20px;font-weight:800;color:#fff}',
     '.rw-banner-meta{font-size:13px;color:#C9D3DF;margin-top:4px}',
+    '.rw-banner-buy{background:#FFFFFF;color:#171717}',
     '.rw-countdown{display:flex;gap:8px}',
     '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:rgba(255,255,255,.14);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}',
     '.rw-countdown-box b{font-size:17px;line-height:1}',
@@ -543,7 +544,20 @@
       )
       var chip = el('span', { className: 'rw-chip', text: 'Biljetter släpps ' + formatStockholmDateTime(ev.sales_open_at) })
       right.appendChild(chip)
+    } else if (ev.sales_state === 'open') {
+      // Bannerns bakgrund ÄR accentfärgen - en vanlig .rw-btn (som också
+      // använder accentfärgen som bakgrund) skulle bli osynlig mot den.
+      // Vit knapp ger garanterad kontrast oavsett vilken av de tre
+      // accentfärgerna som är vald (Nicklas rapporterade detta 2026-10-04).
+      right.appendChild(
+        el('a', { className: 'rw-btn rw-banner-buy', href: APP_BASE + '/#/kop/' + encodeURIComponent(ev.slug), text: 'Köp biljetter' }),
+      )
+      if (config.show.indexOf('price') !== -1 && ev.from_price_ore != null) {
+        right.appendChild(el('div', { className: 'rw-banner-meta', text: formatPrice(ev.from_price_ore) }))
+      }
     } else {
+      // Slutsålt: den gråa inaktiverade standardknappen syns redan bra
+      // mot en mörk banner, ingen särskild styling behövs.
       right.appendChild(buildBuyBlock(ev, config, cd))
     }
     container.appendChild(el('div', { className: 'rw-banner' }, [left, right]))
