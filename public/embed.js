@@ -1,30 +1,14 @@
 /*!
- * Rideau embed.js - inbäddningsbar biljettwidget.
- *
- * Ordern "Schemalagt biljettsläpp och inbäddningsbar widget med
- * kodgenerator" (2026-10-03), steg 2. Fristående vanilla-JS, INGA
- * beroenden, tänkt att klistras in (via Generator-sidan i admin) på t.ex.
- * en Squarespace-sida:
+ * Rideau embed.js - inbäddningsbar biljettwidget (ordern 2026-10-03,
+ * steg 2). Fristående vanilla-JS, inga beroenden.
  *
  *   <div class="rideau-widget" data-layout="grid" data-events="slug1,slug2"
  *        data-show="poster,date,place,price,countdown" data-theme="light"
  *        data-accent="midnatt"></div>
  *   <script async src="https://din-sida.se/embed.js"></script>
  *
- * Bakåtkompatibilitet: detta skript klistras in på ANDRA MÄNNISKORS sidor.
- * Befintliga data-attribut byter ALDRIG betydelse i en senare version -
- * bara nya, valfria attribut/värden får läggas till. En gammal
- * inklistrad kodsnutt ska fortsätta fungera oförändrat för alltid.
- *
- * Designprinciper (se ordern 2.1 för fullständig motivering):
- *  - Shadow DOM, så värdsidans CSS aldrig läcker in och vice versa.
- *  - Basadressen för köplänkar härleds ur SKRIPTETS EGEN src
- *    (document.currentScript) - fungerar oförändrat den dagen appen
- *    flyttar till en egen subdomän, ingen hårdkodad adress här.
- *  - Inga cookies, ingen spårning, ingen localStorage. Enda externa
- *    anrop: public-embed och affischbilder.
- *  - XSS-säkert: all DOM byggs med createElement/textContent, aldrig
- *    innerHTML med data utifrån. Länkar pekar bara på appens egen adress.
+ * Bakåtkompatibilitet: klistras in på ANDRA MÄNNISKORS sidor - befintliga
+ * data-attribut byter ALDRIG betydelse i en senare version.
  */
 (function () {
   'use strict'
@@ -227,6 +211,7 @@
     '.rw-btn:not([disabled]):active{transform:scale(0.98)}',
     '@media (prefers-reduced-motion:reduce){.rw-btn{transition:none}.rw-btn:not([disabled]):hover{transform:none}}',
     '.rw-chip{display:block;box-sizing:border-box;width:100%;padding:12px 14px;border-radius:999px;background:var(--chip-bg);color:var(--chip-text);text-align:center;font-size:13px;font-weight:700}',
+    '.rw-countdown-line{text-align:center;font-weight:700;font-size:13px;color:var(--text);margin-top:6px}',
     '.rw-card{display:flex;flex-direction:column;gap:10px;padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
     '.rw-poster{width:100%;border-radius:10px;overflow:hidden;background:var(--disabled-bg)}',
     '.rw-poster img{display:block;width:100%;height:100%;object-fit:cover}',
@@ -265,7 +250,6 @@
     '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:var(--on-accent-overlay);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
     '.rw-countdown-box b{font-size:17px;line-height:1}',
     '.rw-countdown-box span{font-size:9px;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
-    '.rw-sr-static{font-size:13px}',
     '@media (max-width:420px){.rw-horizontal{flex-direction:column}.rw-horizontal .rw-poster{width:100%;aspect-ratio:3/2}.rw-banner{flex-direction:column;align-items:flex-start}}',
   ].join('')
 
@@ -343,18 +327,24 @@
     } else if (ev.sales_state === 'sold_out') {
       frag.appendChild(el('button', { className: 'rw-btn', disabled: true, type: 'button', text: 'Slutsålt' }))
     } else {
-      // upcoming
+      // upcoming - den statiska texten ("Biljetter släpps ...") är ALLTID
+      // synlig som chippet, nedräkningen en EGEN rad under/bredvid den,
+      // aria-hidden (annars skulle en skärmläsare läsa upp den varje
+      // sekund den tickar). Tidigare visades bara nedräkningen och den
+      // statiska texten fanns bara dold för skärmläsare - Nicklas bad om
+      // att båda ska synas 2026-10-04.
       var staticText = 'Biljetter släpps ' + formatStockholmDateTime(ev.sales_open_at)
-      var chip
+      frag.appendChild(el('span', { className: 'rw-chip', text: staticText }))
       if (config.show.indexOf('countdown') !== -1 && countdownState) {
-        chip = el('span', { className: 'rw-chip' }, [
-          el('span', { 'aria-hidden': 'true', 'data-cd-text': ev.slug, text: countdownText(countdownState) }),
-        ])
-        chip.appendChild(el('span', { className: 'rw-sr-only', text: staticText, style: 'position:absolute;left:-9999px' }))
-      } else {
-        chip = el('span', { className: 'rw-chip', text: staticText })
+        frag.appendChild(
+          el('div', {
+            className: 'rw-countdown-line',
+            'aria-hidden': 'true',
+            'data-cd-text': ev.slug,
+            text: countdownLineText(countdownState),
+          }),
+        )
       }
-      frag.appendChild(chip)
       if (ROW_LAYOUTS.indexOf(config.layout) === -1) {
         frag.appendChild(el('button', { className: 'rw-btn', disabled: true, type: 'button', text: 'Köp biljetter' }))
       }
@@ -366,6 +356,14 @@
     if (c.reached) return 'Släpps strax …'
     if (c.days > 0) return c.days + ' d ' + c.hours + ' tim ' + c.minutes + ' min'
     return pad2(c.hours) + ':' + pad2(c.minutes) + ':' + pad2(c.seconds)
+  }
+
+  // "om 00:05:11" - texten på den separata, synliga nedräkningsraden
+  // (skild från den statiska släpptexten ovanför). "reached" har redan
+  // en fullständig fras ("Släpps strax ...") som inte ska föregås av "om".
+  function countdownLineText(c) {
+    if (c.reached) return countdownText(c)
+    return 'om ' + countdownText(c)
   }
 
   function buildMetaRows(ev, config) {
@@ -473,14 +471,16 @@
       wrap.appendChild(el('button', { className: 'rw-btn', disabled: true, type: 'button', text: 'Slutsålt' }))
     } else {
       var staticText = 'Biljetter släpps ' + formatStockholmDateTime(ev.sales_open_at)
+      wrap.appendChild(el('span', { className: 'rw-chip', text: staticText }))
       if (config.show.indexOf('countdown') !== -1 && countdownState) {
-        var chip = el('span', { className: 'rw-chip' }, [
-          el('span', { 'aria-hidden': 'true', 'data-cd-text': ev.slug, text: countdownText(countdownState) }),
-        ])
-        chip.appendChild(el('span', { className: 'rw-sr-only', style: 'position:absolute;left:-9999px', text: staticText }))
-        wrap.appendChild(chip)
-      } else {
-        wrap.appendChild(el('span', { className: 'rw-chip', text: staticText }))
+        wrap.appendChild(
+          el('div', {
+            className: 'rw-countdown-line',
+            'aria-hidden': 'true',
+            'data-cd-text': ev.slug,
+            text: countdownLineText(countdownState),
+          }),
+        )
       }
     }
     container.appendChild(wrap)
@@ -575,13 +575,10 @@
         boxes.appendChild(el('div', { className: 'rw-countdown-box', 'aria-hidden': 'true' }, [numberEl, el('span', { text: u[1] })]))
       })
       right.appendChild(boxes)
-      right.appendChild(
-        el('span', {
-          className: 'rw-sr-only',
-          style: 'position:absolute;left:-9999px',
-          text: 'Biljetter släpps ' + formatStockholmDateTime(ev.sales_open_at),
-        }),
-      )
+      // Chippet nedan är INTE aria-hidden och bär redan den statiska
+      // släpptexten - ingen extra dold sr-only-kopia behövs (en sådan
+      // fanns tidigare här och gjorde att en skärmläsare läste upp
+      // samma text två gånger).
       var chip = el('span', { className: 'rw-chip', text: 'Biljetter släpps ' + formatStockholmDateTime(ev.sales_open_at) })
       right.appendChild(chip)
     } else if (ev.sales_state === 'open') {
@@ -697,7 +694,7 @@
         var cd = computeCountdown(ev.sales_open_at, state.clockSkewMs, Date.now())
         if (cd.reached) anyReached = true
         var textEl = root.querySelector('[data-cd-text="' + ev.slug + '"]')
-        if (textEl) textEl.textContent = countdownText(cd)
+        if (textEl) textEl.textContent = countdownLineText(cd)
         if (config.layout === 'banner') {
           var daysEl = root.querySelector('[data-cd-unit="days"]')
           var hoursEl = root.querySelector('[data-cd-unit="hours"]')
