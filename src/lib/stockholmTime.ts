@@ -1,11 +1,10 @@
-// Ordern "Schemalagt biljettsläpp" (2026-10-03), 1.4: datum/tid-väljaren
-// för sales_open_at ska alltid tolkas som Europe/Stockholm, oavsett vilken
-// tidszon webbläsaren själv står i (till skillnad från det ÄLDRE
-// starts_at-fältet i AdminPage.tsx, som skickar en naiv
-// datetime-local-sträng rakt av - den tolkas av `new Date()` på SERVERN,
-// dvs i Edge Function-runtimens egen tidszon, inte Stockholm. Se
-// rapporten för steg 1: detta är en redan existerande, orörd avvikelse,
-// inte något den här ordern bad om att fixa).
+// Ordern "Schemalagt biljettsläpp" (2026-10-03), 1.4, och steg 1b
+// (samma datum): all hantering av datum/tid - både sales_open_at OCH
+// starts_at - ska tolkas/visas som Europe/Stockholm, oavsett vilken
+// tidszon webbläsaren eller servern själv står i. steg 1b fixade den
+// äldre starts_at-avvikelsen som flaggades i steg 1-rapporten (AdminPage.tsx
+// skickade tidigare en naiv datetime-local-sträng rakt av, tolkad av
+// `new Date()` på SERVERN - dvs i Edge Function-runtimens egen tidszon).
 //
 // Tekniken: Sverige har bara två möjliga UTC-offset, +1 (CET) eller +2
 // (CEST). Vi provar båda kandidaterna och väljer den vars Stockholm-
@@ -85,6 +84,24 @@ export function utcIsoToStockholmWallClock(iso: string): { date: string; time: s
   }
 }
 
+/** Konverterar en UTC ISO-sträng till det format <input type="datetime-local">
+ * förväntar sig ("ÅÅÅÅ-MM-DDTTT:MM"), i Europe/Stockholm - inte webbläsarens
+ * egna tidszon (steg 1b, fixar den äldre starts_at-avvikelsen). Används för
+ * att förifylla redigeringsformulärets datum/tid-fält. */
+export function utcIsoToStockholmDatetimeLocal(iso: string): string {
+  const { date, time } = utcIsoToStockholmWallClock(iso)
+  return `${date}T${time}`
+}
+
+/** Omvänd riktning: ett <input type="datetime-local">-värde ("ÅÅÅÅ-MM-
+ * DDTTT:MM"), ANGIVET i Europe/Stockholm, till en UTC ISO-sträng. Returnerar
+ * null vid ogiltig indata. */
+export function stockholmDatetimeLocalToUtcIso(value: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value)
+  if (!match) return null
+  return stockholmWallClockToUtcIso(match[1], match[2])
+}
+
 /** "14 okt kl. 10:00", alltid i Europe/Stockholm oavsett besökarens egen
  * tidszon - för chip/badge-texter ("Biljetterna släpps ..."). */
 export function formatStockholmDateTime(iso: string): string {
@@ -100,4 +117,16 @@ export function formatStockholmDateTime(iso: string): string {
     hourCycle: 'h23',
   }).format(new Date(iso))
   return `${datePart} kl. ${timePart}`
+}
+
+/** Ersätter `new Date(iso).toLocaleString('sv-SE', options)` på alla
+ * ställen som visar starts_at (steg 1b) - UTAN explicit timeZone hade
+ * dessa visat admin-användarens/besökarens EGEN systemtidszon istället
+ * för Stockholm (samma klass av bugg som toDatetimeLocalValue hade, fast
+ * för visning i löptext snarare än ett formulärfält). */
+export function formatStockholmDateTimeLocale(
+  iso: string,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  return new Date(iso).toLocaleString('sv-SE', { ...options, timeZone: 'Europe/Stockholm' })
 }

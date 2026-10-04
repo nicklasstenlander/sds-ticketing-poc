@@ -5,7 +5,7 @@ import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/typ
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 import { computeSalesState } from '../lib/salesState'
-import { formatStockholmDateTime } from '../lib/stockholmTime'
+import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
@@ -103,10 +103,8 @@ export function EventsPage() {
                         praktiken aldrig innehåller ett sådant event, men
                         typen tillåter null så vi faller tillbaka defensivt. */}
                     {event.starts_at
-                      ? new Date(event.starts_at).toLocaleString('sv-SE', {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        })
+                      ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+                        formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
                       : ''}
                     {event.venue ? ` · ${event.venue}` : ''}
                     {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}

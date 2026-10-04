@@ -9,7 +9,14 @@ import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
-import { stockholmWallClockToUtcIso, utcIsoToStockholmWallClock, formatStockholmDateTime } from '../lib/stockholmTime'
+import {
+  stockholmWallClockToUtcIso,
+  utcIsoToStockholmWallClock,
+  utcIsoToStockholmDatetimeLocal,
+  stockholmDatetimeLocalToUtcIso,
+  formatStockholmDateTime,
+  formatStockholmDateTimeLocale,
+} from '../lib/stockholmTime'
 import { computeSalesState } from '../lib/salesState'
 
 interface AdminEventsResponse {
@@ -35,14 +42,13 @@ interface ListOrganizersResponse {
   organizers: OrganizerSummary[]
 }
 
-// Konverterar en UTC ISO-tidsstämpel (t.ex. "2026-05-10T17:58:03Z") till
-// det format <input type="datetime-local"> förväntar sig i sitt värde
-// ("2026-05-10T17:58") - i webbläsarens LOKALA tidszon, inte UTC.
-function toDatetimeLocalValue(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// steg 1b (2026-10-03): den gamla toDatetimeLocalValue() här visade
+// datetime-local-fältet i webbläsarens EGEN tidszon, inte Stockholm - en
+// admin som råkade ha en annan systemtidszon skulle se fel klockslag, och
+// ett OFÖRÄNDRAT värde skulle kunna flyttas vid nästa sparning (eftersom
+// skickandet nedan också tolkades fel, se handleSubmitForm). Ersatt med
+// utcIsoToStockholmDatetimeLocal/stockholmDatetimeLocalToUtcIso
+// (stockholmTime.ts), samma mönster som sales_open_at redan använder.
 
 export function AdminPage() {
   const [authed, setAuthed] = useState(false)
@@ -266,7 +272,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     // Ett dublicerat event har medvetet inget datum satt än - lämna
     // fältet tomt istället för att krascha eller gissa (new Date(null)
     // skulle tyst tolkas som 1970-01-01, ett förvirrande fel-värde).
-    setStartsAt(event.starts_at ? toDatetimeLocalValue(event.starts_at) : '')
+    setStartsAt(event.starts_at ? utcIsoToStockholmDatetimeLocal(event.starts_at) : '')
     setCapacity(event.capacity)
     if (event.sales_open_at) {
       const wallClock = utcIsoToStockholmWallClock(event.sales_open_at)
@@ -298,6 +304,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     e.preventDefault()
     if (!editingEventId || capacityTooLow) return
 
+    // steg 1b (2026-10-03): konvertera datetime-local-värdet (Stockholmstid,
+    // se utcIsoToStockholmDatetimeLocal ovan i startEdit()) till en riktig
+    // UTC ISO-sträng HÄR, på klienten - innan den skickas. Att skicka
+    // startsAt rakt av (som tidigare) lät servern tolka en tidszonslös
+    // sträng i sin egen körtidszon (UTC), vilket kunde flytta klockslaget
+    // både vid en avsiktlig ändring OCH vid en osparad, oförändrad tid.
+    const startsAtUtc = stockholmDatetimeLocalToUtcIso(startsAt)
+    if (!startsAtUtc) {
+      setCreateError('Ogiltigt datum/tid.')
+      return
+    }
+
     const salesOpenAt = releaseMode === 'scheduled' ? stockholmWallClockToUtcIso(salesOpenDate, salesOpenTime) : null
 
     // Bekräftelse (ordern 2026-10-03, 1.4) - bara när det faktiskt är en
@@ -322,7 +340,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           event_id: editingEventId,
           title,
           venue,
-          starts_at: startsAt,
+          starts_at: startsAtUtc,
           capacity,
           sales_open_at: salesOpenAt,
         },
@@ -522,10 +540,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       <div className="font-semibold text-[var(--text)]">{event.title}</div>
                       <div className="text-sm text-[var(--text-muted)]">
                         {event.starts_at
-                          ? new Date(event.starts_at).toLocaleString('sv-SE', {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })
+                          ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+                            formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
                           : 'Inget datum satt'}
                         {event.venue ? ` · ${event.venue}` : ''}
                         {' · '}

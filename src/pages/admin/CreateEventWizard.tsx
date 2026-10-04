@@ -122,7 +122,16 @@ export function CreateEventWizard({
     setSubmitting(true)
     setError(null)
     try {
-      const startsAt = new Date(`${date}T${time}`).toISOString()
+      // steg 1b (2026-10-03): date/time ANGES i Europe/Stockholm - samma
+      // konvertering som sales_open_at redan använder, inte en naiv
+      // `new Date(...)` (som tidigare tolkades i webbläsarens egen
+      // tidszon och sedan AV SERVERN i Edge Function-runtimens UTC).
+      const startsAt = stockholmWallClockToUtcIso(date, time)
+      if (!startsAt) {
+        setError('Ogiltigt datum/tid.')
+        setSubmitting(false)
+        return
+      }
       const salesOpenAt =
         releaseMode === 'scheduled' ? stockholmWallClockToUtcIso(salesOpenDate, salesOpenTime) : null
       const { event } = await callFunction<CreateEventResponse>('admin-create-event', {

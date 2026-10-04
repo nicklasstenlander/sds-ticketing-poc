@@ -22,6 +22,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+import { parseAdminDateTimeInput } from '../_shared/stockholmTime.ts'
 
 interface UpdateEventBody {
   event_id?: string
@@ -96,10 +97,16 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.starts_at !== undefined) {
-    if (!body.starts_at || Number.isNaN(Date.parse(body.starts_at))) {
+    // steg 1b (2026-10-03): en sträng UTAN tidszon tolkas som Europe/
+    // Stockholm, inte serverns egen körtidszon (UTC) - se
+    // _shared/stockholmTime.ts. Klienten SKA redan skicka en fullständig
+    // UTC-sträng (AdminPage.tsx konverterar via stockholmTime.ts innan
+    // den skickar); det här är försvar i djupet.
+    const parsedStartsAt = body.starts_at ? parseAdminDateTimeInput(body.starts_at) : null
+    if (!parsedStartsAt) {
       return jsonResponse({ error: 'Ogiltigt datum/tid.' }, 400)
     }
-    update.starts_at = new Date(body.starts_at).toISOString()
+    update.starts_at = parsedStartsAt
   }
 
   if (body.capacity !== undefined) {
@@ -124,10 +131,12 @@ Deno.serve(async (req: Request) => {
     if (body.sales_open_at === null) {
       update.sales_open_at = null
     } else {
-      if (Number.isNaN(Date.parse(body.sales_open_at))) {
+      // steg 1b: samma tolkningsregel som starts_at ovan (naiv sträng =
+      // Europe/Stockholm, Z/offset = som den är).
+      const normalized = parseAdminDateTimeInput(body.sales_open_at)
+      if (!normalized) {
         return jsonResponse({ error: 'Ogiltigt släppdatum/-tid.' }, 400)
       }
-      const normalized = new Date(body.sales_open_at).toISOString()
       const unchanged =
         current.sales_open_at !== null && new Date(current.sales_open_at).toISOString() === normalized
       if (!unchanged) {

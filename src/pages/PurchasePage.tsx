@@ -7,7 +7,7 @@ import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/typ
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 import { computeSalesState, computeCountdown } from '../lib/salesState'
-import { formatStockholmDateTime } from '../lib/stockholmTime'
+import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface CreateOrderResponse {
   checkout_url: string
@@ -329,10 +329,8 @@ export function PurchasePage() {
             i praktiken aldrig når hit för ett sådant event, men typen
             tillåter null så vi faller tillbaka defensivt. */}
         {event.starts_at
-          ? new Date(event.starts_at).toLocaleString('sv-SE', {
-              dateStyle: 'long',
-              timeStyle: 'short',
-            })
+          ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+            formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })
           : ''}
         {event.venue ? ` · ${event.venue}` : ''}
         {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}

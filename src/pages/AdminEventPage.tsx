@@ -5,6 +5,7 @@ import { Layout } from '../components/Layout'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import type { EventRow, TicketRow, TicketTypeRow } from '../lib/types'
+import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface AdminEventTicketsResponse {
   event: EventRow
@@ -75,10 +76,8 @@ export function AdminEventPage() {
           <h1 className="text-2xl font-bold">{data.event.title}</h1>
           <p className="text-slate-500 mb-1">
             {data.event.starts_at
-              ? new Date(data.event.starts_at).toLocaleString('sv-SE', {
-                  dateStyle: 'long',
-                  timeStyle: 'short',
-                })
+              ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+                formatStockholmDateTimeLocale(data.event.starts_at, { dateStyle: 'long', timeStyle: 'short' })
               : 'Inget datum satt ännu — sätt det på admin-huvudsidan innan publicering'}
             {data.event.venue ? ` · ${data.event.venue}` : ''}
           </p>

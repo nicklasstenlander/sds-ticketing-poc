@@ -5,6 +5,7 @@ import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import type { AdminEventRow } from '../lib/types'
 import { APP_NAME } from '../lib/constants'
+import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface AdminEventsResponse {
   events: AdminEventRow[]
@@ -91,7 +92,9 @@ export function AdminDashboardPage() {
               <div className="text-[var(--text-muted)] text-sm">
                 {event.sold_count} / {event.capacity} sålda
                 {event.starts_at
-                  ? ` · ${new Date(event.starts_at).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  ? // steg 1b: explicit Europe/Stockholm, inte webbläsarens egen
+                    // tidszon (se stockholmTime.ts).
+                    ` · ${formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })}`
                   : ''}
               </div>
             </div>

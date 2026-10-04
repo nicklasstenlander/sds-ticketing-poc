@@ -20,6 +20,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+import { parseAdminDateTimeInput } from '../_shared/stockholmTime.ts'
 
 interface CreateEventBody {
   title?: string
@@ -65,11 +66,16 @@ Deno.serve(async (req: Request) => {
 
   const title = (body.title ?? '').trim()
   const venue = (body.venue ?? '').trim()
-  const startsAt = (body.starts_at ?? '').trim()
+  const startsAtInput = (body.starts_at ?? '').trim()
   const capacity = body.capacity === undefined ? 0 : Number(body.capacity)
 
   if (!title) return jsonResponse({ error: 'Titel krävs.' }, 400)
-  if (!startsAt || Number.isNaN(Date.parse(startsAt))) {
+  // steg 1b (2026-10-03): en sträng UTAN tidszon tolkas som Europe/
+  // Stockholm, inte serverns egen körtidszon (UTC) - se stockholmTime.ts.
+  // Klienten SKA redan skicka en fullständig UTC-sträng, det här är
+  // försvar i djupet.
+  const startsAt = startsAtInput ? parseAdminDateTimeInput(startsAtInput) : null
+  if (!startsAt) {
     return jsonResponse({ error: 'Ogiltigt datum/tid.' }, 400)
   }
   if (!Number.isInteger(capacity) || capacity < 0) {
@@ -82,19 +88,20 @@ Deno.serve(async (req: Request) => {
   const salesOpenAtInput = body.sales_open_at === null ? '' : (body.sales_open_at ?? '').trim()
   let salesOpenAt: string | null = null
   if (salesOpenAtInput) {
-    if (Number.isNaN(Date.parse(salesOpenAtInput))) {
+    const parsedSalesOpenAt = parseAdminDateTimeInput(salesOpenAtInput)
+    if (!parsedSalesOpenAt) {
       return jsonResponse({ error: 'Ogiltigt släppdatum/-tid.' }, 400)
     }
-    if (new Date(salesOpenAtInput) <= new Date()) {
+    if (new Date(parsedSalesOpenAt) <= new Date()) {
       return jsonResponse(
         { error: 'Släppet måste ligga i framtiden. Välj Direkt för att öppna försäljningen nu.' },
         400,
       )
     }
-    if (new Date(salesOpenAtInput) >= new Date(startsAt)) {
+    if (new Date(parsedSalesOpenAt) >= new Date(startsAt)) {
       return jsonResponse({ error: 'Släppet måste ligga före föreställningens start.' }, 400)
     }
-    salesOpenAt = new Date(salesOpenAtInput).toISOString()
+    salesOpenAt = parsedSalesOpenAt
   }
 
   const baseSlug = body.slug?.trim() ? slugify(body.slug) : slugify(title)
@@ -125,7 +132,10 @@ Deno.serve(async (req: Request) => {
       slug,
       title,
       venue: venue || null,
-      starts_at: new Date(startsAt).toISOString(),
+      // startsAt är redan en fullständig, korrekt UTC ISO-sträng (parsad av
+      // parseAdminDateTimeInput ovan) - ingen ny new Date().toISOString()
+      // här (det skulle vara en no-op i bästa fall).
+      starts_at: startsAt,
       status: 'draft',
       capacity,
       organizer_id: auth.organizerId,

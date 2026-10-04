@@ -9,9 +9,15 @@
 // Importerar de RIKTIGA modulerna (inga kopior) - både frontend- och
 // backend-varianten av computeSalesState testas, för att även fånga om de
 // två skulle divergera från varandra.
-import { stockholmWallClockToUtcIso, utcIsoToStockholmWallClock } from '../src/lib/stockholmTime.ts'
+import {
+  stockholmWallClockToUtcIso,
+  utcIsoToStockholmWallClock,
+  utcIsoToStockholmDatetimeLocal,
+  stockholmDatetimeLocalToUtcIso,
+} from '../src/lib/stockholmTime.ts'
 import { computeSalesState as computeSalesStateFrontend } from '../src/lib/salesState.ts'
 import { computeSalesState as computeSalesStateBackend } from '../supabase/functions/_shared/salesState.ts'
+import { parseAdminDateTimeInput } from '../supabase/functions/_shared/stockholmTime.ts'
 
 let failures = 0
 function assertEqual(actual: unknown, expected: unknown, label: string) {
@@ -107,6 +113,62 @@ for (const [date, time] of [
   const back = utcIsoToStockholmWallClock(iso)
   assertEqual(back, { date, time }, `Round-trip ${date} ${time}`)
 }
+
+console.log()
+
+// === datetime-local (AdminPage.tsx, steg 1b) ===
+// Samma round-trip-princip som ovan men för det kombinerade
+// <input type="datetime-local">-formatet - kontrollerar specifikt att ett
+// OFÖRÄNDRAT värde inte flyttas vid sparning (ordertextens 1b, andra
+// punkten).
+for (const [iso, expectedLocal] of [
+  ['2026-05-10T17:58:00.000Z', '2026-05-10T19:58'], // sommartid, +2
+  ['2026-01-10T17:58:00.000Z', '2026-01-10T18:58'], // vintertid, +1
+] as const) {
+  const local = utcIsoToStockholmDatetimeLocal(iso)
+  assertEqual(local, expectedLocal, `utcIsoToStockholmDatetimeLocal(${iso})`)
+  const back = stockholmDatetimeLocalToUtcIso(local)
+  assertEqual(back, iso, `Round-trip datetime-local ${local}`)
+}
+
+console.log()
+
+// === parseAdminDateTimeInput (backend, steg 1b) ===
+// "Servern tolkar en sträng utan tidszon som Europe/Stockholm. Strängar
+// med Z eller offset gäller som de är."
+assertEqual(
+  parseAdminDateTimeInput('2026-05-10T17:58:00Z'),
+  '2026-05-10T17:58:00.000Z',
+  'Z-sträng används som den är',
+)
+assertEqual(
+  parseAdminDateTimeInput('2026-05-10T19:58:00+02:00'),
+  '2026-05-10T17:58:00.000Z',
+  'Sträng med explicit offset används som den är',
+)
+assertEqual(
+  parseAdminDateTimeInput('2026-05-10T19:58'),
+  stockholmWallClockToUtcIso('2026-05-10', '19:58'),
+  'Naiv sträng (sommartid) tolkas som Europe/Stockholm',
+)
+assertEqual(
+  parseAdminDateTimeInput('2026-01-10T19:58'),
+  stockholmWallClockToUtcIso('2026-01-10', '19:58'),
+  'Naiv sträng (vintertid) tolkas som Europe/Stockholm',
+)
+assertEqual(parseAdminDateTimeInput('inte ett datum'), null, 'Ogiltig indata ger null')
+// Runt vårskiftet, samma datum som hittades ovan - naiv tolkning ska
+// stämma exakt med stockholmWallClockToUtcIso på var sida om skiftet.
+assertEqual(
+  parseAdminDateTimeInput(`${dayBeforeSpring}T10:00`),
+  stockholmWallClockToUtcIso(dayBeforeSpring, '10:00'),
+  `parseAdminDateTimeInput runt vårskiftet (${dayBeforeSpring})`,
+)
+assertEqual(
+  parseAdminDateTimeInput(`${dayAfterSpring}T10:00`),
+  stockholmWallClockToUtcIso(dayAfterSpring, '10:00'),
+  `parseAdminDateTimeInput runt vårskiftet (${dayAfterSpring})`,
+)
 
 console.log()
 
