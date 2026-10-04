@@ -207,7 +207,7 @@
     // mörka brödtext istället för accentfärgens kontrastfärg.
     '.rw a:not(.rw-btn){color:inherit;text-decoration:none}',
     '.rw button,.rw a.rw-btn{font:inherit;cursor:pointer}',
-    '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center}',
+    '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center;text-decoration:none}',
     '.rw-btn:focus-visible,.rw a:focus-visible,.rw button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}',
     '.rw-btn[disabled]{background:var(--disabled-bg);color:var(--disabled-text);cursor:default}',
     '.rw-chip{display:block;box-sizing:border-box;width:100%;padding:12px 14px;border-radius:999px;background:var(--chip-bg);color:var(--chip-text);text-align:center;font-size:13px;font-weight:700}',
