@@ -328,7 +328,7 @@
       var chip
       if (config.show.indexOf('countdown') !== -1 && countdownState) {
         chip = el('span', { className: 'rw-chip' }, [
-          el('span', { 'aria-hidden': 'true', text: countdownText(countdownState) }),
+          el('span', { 'aria-hidden': 'true', 'data-cd-text': ev.slug, text: countdownText(countdownState) }),
         ])
         chip.appendChild(el('span', { className: 'rw-sr-only', text: staticText, style: 'position:absolute;left:-9999px' }))
       } else {
@@ -454,8 +454,11 @@
     } else {
       var staticText = 'Biljetter släpps ' + formatStockholmDateTime(ev.sales_open_at)
       if (config.show.indexOf('countdown') !== -1 && countdownState) {
-        wrap.appendChild(el('span', { className: 'rw-chip', text: countdownText(countdownState) }))
-        wrap.appendChild(el('span', { className: 'rw-sr-only', style: 'position:absolute;left:-9999px', text: staticText }))
+        var chip = el('span', { className: 'rw-chip' }, [
+          el('span', { 'aria-hidden': 'true', 'data-cd-text': ev.slug, text: countdownText(countdownState) }),
+        ])
+        chip.appendChild(el('span', { className: 'rw-sr-only', style: 'position:absolute;left:-9999px', text: staticText }))
+        wrap.appendChild(chip)
       } else {
         wrap.appendChild(el('span', { className: 'rw-chip', text: staticText }))
       }
@@ -539,12 +542,13 @@
     if (ev.sales_state === 'upcoming' && config.show.indexOf('countdown') !== -1 && cd) {
       var boxes = el('div', { className: 'rw-countdown' })
       var units = [
-        [cd.days, 'dagar'],
-        [cd.hours, 'tim'],
-        [cd.minutes, 'min'],
+        [cd.days, 'dagar', 'days'],
+        [cd.hours, 'tim', 'hours'],
+        [cd.minutes, 'min', 'minutes'],
       ]
       units.forEach(function (u) {
-        boxes.appendChild(el('div', { className: 'rw-countdown-box', 'aria-hidden': 'true' }, [el('b', { text: String(u[0]) }), el('span', { text: u[1] })]))
+        var numberEl = el('b', { 'data-cd-unit': u[2], text: String(u[0]) })
+        boxes.appendChild(el('div', { className: 'rw-countdown-box', 'aria-hidden': 'true' }, [numberEl, el('span', { text: u[1] })]))
       })
       right.appendChild(boxes)
       right.appendChild(
@@ -654,14 +658,38 @@
       })
     }
 
+    // Uppdaterar BARA nedräkningens text/siffror i det befintliga DOM-
+    // trädet, istället för att riva upp och bygga om hela widgeten varje
+    // sekund. En full render() varje tick nollställde CSS-övergångar mitt
+    // i (t.ex. hover-zoomen på en knapp "hoppade till" varje sekund) och
+    // kunde orsaka att affischbilder laddades om i onödan - rapporterat
+    // av Nicklas 2026-10-04. Returnerar true om något event just nu nått
+    // sin släpptid (då tar den dyrare release-pollningen vid).
+    function updateCountdownTexts() {
+      var anyReached = false
+      state.events.forEach(function (ev) {
+        if (ev.sales_state !== 'upcoming' || !ev.sales_open_at) return
+        var cd = computeCountdown(ev.sales_open_at, state.clockSkewMs, Date.now())
+        if (cd.reached) anyReached = true
+        var textEl = root.querySelector('[data-cd-text="' + ev.slug + '"]')
+        if (textEl) textEl.textContent = countdownText(cd)
+        if (config.layout === 'banner') {
+          var daysEl = root.querySelector('[data-cd-unit="days"]')
+          var hoursEl = root.querySelector('[data-cd-unit="hours"]')
+          var minsEl = root.querySelector('[data-cd-unit="minutes"]')
+          if (daysEl) daysEl.textContent = String(cd.days)
+          if (hoursEl) hoursEl.textContent = String(cd.hours)
+          if (minsEl) minsEl.textContent = String(cd.minutes)
+        }
+      })
+      return anyReached
+    }
+
     function scheduleCountdownTick() {
       clearTimers()
       if (!hasUpcoming() || config.show.indexOf('countdown') === -1) return
       state.countdownIntervalId = setInterval(function () {
-        var anyReached = state.events.some(function (ev) {
-          return ev.sales_state === 'upcoming' && computeCountdown(ev.sales_open_at, state.clockSkewMs, Date.now()).reached
-        })
-        render()
+        var anyReached = updateCountdownTexts()
         if (anyReached) {
           clearInterval(state.countdownIntervalId)
           state.countdownIntervalId = null
