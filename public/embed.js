@@ -198,7 +198,7 @@
   var STYLE = [
     ':host{all:initial;display:block;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}',
     '*{box-sizing:border-box}',
-    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;color:var(--text);font-size:15px;line-height:1.4}',
+    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;color:var(--text);font-size:15px;line-height:1.4}',
     '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3}',
     // :not(.rw-btn) - annars vinner denna över .rw-btn{color:var(--accent-text)}
     // pga högre specificitet (klass+tagg > enkel klass), och knappen
@@ -233,18 +233,27 @@
     '.rw-landscape-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}',
     '.rw-portrait .rw-poster{aspect-ratio:2/3}',
     '.rw-list-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:12px}',
-    '.rw-agenda-date{flex:none;width:52px;height:56px;border-radius:10px;background:var(--accent);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}',
-    '.rw-agenda-date .rw-agenda-month{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--chip-bg)}',
-    '.rw-agenda-date .rw-agenda-day{font-size:20px;font-weight:800;line-height:1}',
-    '.rw-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px;border-radius:16px;background:var(--accent);color:#fff}',
-    '.rw-banner-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--chip-bg)}',
-    '.rw-banner-title{margin:4px 0 0;font-size:20px;font-weight:800;color:#fff}',
-    '.rw-banner-meta{font-size:13px;color:#C9D3DF;margin-top:4px}',
+    // color:var(--accent-text) genomgående här (inte hårdkodat #fff/
+    // --chip-bg) - dessa ytor använder SJÄLVA accentfärgen som bakgrund,
+    // och accentfärgen kan vara Rampljus (ljusgul). Hårdkodad vit/gul text
+    // hade då blivit osynlig eller olässlig mot sin egen bakgrund av
+    // samma eller närliggande färg (Nicklas bad om en genomgång av alla
+    // layouter 2026-10-04, efter att Banner-knappen haft samma problem).
+    '.rw-agenda-date{flex:none;width:52px;height:56px;border-radius:10px;background:var(--accent);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
+    '.rw-agenda-date .rw-agenda-month{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
+    '.rw-agenda-date .rw-agenda-day{font-size:20px;font-weight:800;line-height:1;color:var(--accent-text)}',
+    '.rw-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px;border-radius:16px;background:var(--accent);color:var(--accent-text)}',
+    '.rw-banner-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
+    '.rw-banner-title{margin:4px 0 0;font-size:20px;font-weight:800;color:var(--accent-text)}',
+    '.rw-banner-meta{font-size:13px;color:var(--accent-text);opacity:.8;margin-top:4px}',
     '.rw-banner-buy{background:#FFFFFF;color:#171717}',
     '.rw-countdown{display:flex;gap:8px}',
-    '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:rgba(255,255,255,.14);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}',
+    // --on-accent-overlay sätts i JS (mountWidget) till en mörk eller ljus
+    // genomskinlig ton beroende på om --accent-text är vit eller mörk -
+    // en fast vit ton hade blivit osynlig mot en ljus (Rampljus) banner.
+    '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:var(--on-accent-overlay);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
     '.rw-countdown-box b{font-size:17px;line-height:1}',
-    '.rw-countdown-box span{font-size:9px;text-transform:uppercase;color:#C9D3DF}',
+    '.rw-countdown-box span{font-size:9px;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
     '.rw-sr-static{font-size:13px}',
     '@media (max-width:420px){.rw-horizontal{flex-direction:column}.rw-horizontal .rw-poster{width:100%;aspect-ratio:3/2}.rw-banner{flex-direction:column;align-items:flex-start}}',
   ].join('')
@@ -515,8 +524,12 @@
     if (heading) card.appendChild(el('h3', { className: 'rw-title', text: heading, style: 'font-size:22px' }))
     card.appendChild(el('p', { className: 'rw-muted', text: 'Välj tillfälle', style: 'margin:0' }))
     events.forEach(function (ev) {
+      // var(--text), inte var(--accent) - accentfärgen kan vara Rampljus
+      // (ljusgul), och som TEXT mot kortets ljusa/mörka yta (till skillnad
+      // från knappen, där accenten är BAKGRUNDEN och accent-text redan är
+      // beräknad för just den paringen) hade det blivit nästan oläsligt.
       var muted = ev.sales_state === 'sold_out'
-      var left = el('div', { className: 'rw-row', style: 'font-weight:700;font-size:16px;color:' + (muted ? 'var(--muted)' : 'var(--accent)') })
+      var left = el('div', { className: 'rw-row', style: 'font-weight:700;font-size:16px;color:' + (muted ? 'var(--muted)' : 'var(--text)') })
       left.appendChild(svgIcon(ICON_CALENDAR, 18))
       if (ev.starts_at) left.appendChild(el('span', { text: formatStockholmShortDate(ev.starts_at) }))
       var right = el('div', { style: 'flex:none' })
@@ -620,6 +633,7 @@
     var root = el('div', { className: 'rw', 'data-theme': config.theme })
     root.style.setProperty('--accent', config.accent)
     root.style.setProperty('--accent-text', config.accentText)
+    root.style.setProperty('--on-accent-overlay', config.accentText === '#171717' ? 'rgba(0,0,0,.12)' : 'rgba(255,255,255,.14)')
     shadow.appendChild(root)
     root.appendChild(el('div', { className: 'rw-muted', text: 'Laddar …' }))
 
