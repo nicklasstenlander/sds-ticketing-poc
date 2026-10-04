@@ -207,9 +207,14 @@
     // mörka brödtext istället för accentfärgens kontrastfärg.
     '.rw a:not(.rw-btn){color:inherit;text-decoration:none}',
     '.rw button,.rw a.rw-btn{font:inherit;cursor:pointer}',
-    '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center;text-decoration:none}',
+    '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center;text-decoration:none;transition:transform .15s ease,box-shadow .15s ease}',
     '.rw-btn:focus-visible,.rw a:focus-visible,.rw button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}',
     '.rw-btn[disabled]{background:var(--disabled-bg);color:var(--disabled-text);cursor:default}',
+    // Bara klickbara knappar reagerar på hover/aktivering - en inaktiverad
+    // knapp ("Slutsålt", köp före släpp) ska inte se interaktiv ut.
+    '.rw-btn:not([disabled]):hover{transform:scale(1.045);box-shadow:0 4px 12px rgba(0,0,0,.18)}',
+    '.rw-btn:not([disabled]):active{transform:scale(0.98)}',
+    '@media (prefers-reduced-motion:reduce){.rw-btn{transition:none}.rw-btn:not([disabled]):hover{transform:none}}',
     '.rw-chip{display:block;box-sizing:border-box;width:100%;padding:12px 14px;border-radius:999px;background:var(--chip-bg);color:var(--chip-text);text-align:center;font-size:13px;font-weight:700}',
     '.rw-card{display:flex;flex-direction:column;gap:10px;padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
     '.rw-poster{width:100%;border-radius:10px;overflow:hidden;background:var(--disabled-bg)}',
