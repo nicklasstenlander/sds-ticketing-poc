@@ -200,7 +200,12 @@
     '*{box-sizing:border-box}',
     '.rw{--accent:#243B53;--accent-text:#FFFFFF;--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;color:var(--text);font-size:15px;line-height:1.4}',
     '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3}',
-    '.rw a{color:inherit;text-decoration:none}',
+    // :not(.rw-btn) - annars vinner denna över .rw-btn{color:var(--accent-text)}
+    // pga högre specificitet (klass+tagg > enkel klass), och knappen
+    // "Köp biljetter" (en <a>, till skillnad från de inaktiverade
+    // knapparna som är <button>) ärver då fel textfärg från sidans
+    // mörka brödtext istället för accentfärgens kontrastfärg.
+    '.rw a:not(.rw-btn){color:inherit;text-decoration:none}',
     '.rw button,.rw a.rw-btn{font:inherit;cursor:pointer}',
     '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center}',
     '.rw-btn:focus-visible,.rw a:focus-visible,.rw button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}',
