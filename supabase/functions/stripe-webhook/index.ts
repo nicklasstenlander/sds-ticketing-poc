@@ -36,6 +36,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient } from '../_shared/stripe.ts'
 import { generateTicketCode } from '../_shared/base32.ts'
+import { buildTicketsPdf, bytesToBase64, MAX_TICKETS_PER_PDF, ticketsPdfFilename } from '../_shared/ticketPdf.ts'
 // @deno-types="npm:@types/qrcode@1"
 import QRCode from 'npm:qrcode@1.5.3'
 import type Stripe from 'npm:stripe@17'
@@ -77,6 +78,17 @@ function single<T>(rel: T | T[] | null): T | null {
   return rel
 }
 
+/** "Namn <adress@exempel.se>" -> "adress@exempel.se". Redan bara en
+ * adress (inget "<...>"): returneras oförändrad. Används för biljett-
+ * PDF:ens sidfot (ordern "Biljett-PDF" 2026-10-05, 2.0) - RESEND_FROM/
+ * SUPPORT_REPLY_TO_EMAIL kan vara i endera formatet (se README avsnitt
+ * 3, exemplet "Biljetter <biljetter@dindomän.se>"), men en PDF-sidfot
+ * ska bara visa den rena adressen, inte ett e-postheader-format. */
+function extractEmailAddress(value: string): string {
+  const match = value.match(/<([^<>]+)>/)
+  return (match ? match[1] : value).trim()
+}
+
 interface ReceiptLine {
   name: string
   qty: number
@@ -100,7 +112,7 @@ async function sendConfirmationEmail(params: {
   eventStartsAt: string
   orderId: string
   paidAt: string
-  tickets: { ticket_code: string; qrUrl: string }[]
+  tickets: { ticket_code: string; qrUrl: string; typeName: string | null }[]
   receipt: {
     sellerLegalName: string | null
     sellerOrgNumber: string | null
@@ -180,12 +192,59 @@ async function sendConfirmationEmail(params: {
     `
     : ''
 
+  // Biljett-PDF som bilaga (ordern "Biljett-PDF" 2026-10-05). Eget
+  // try/catch - en trasig PDF får ALDRIG stoppa mailet (ordern 2.2).
+  // Körs sist, strax före Resend-anropet. sendConfirmationEmail anropas
+  // bara EN gång per betald order - idempotensspärren i Deno.serve-
+  // handlern (webhook_events unique_violation) stoppar en Stripe-retry
+  // av samma event innan handleCheckoutCompleted ens nås, så PDF-bygget
+  // kan aldrig köras två gånger för samma order (ordern 2.5).
+  let pdfAttachment: { filename: string; content: string } | undefined
+  if (params.tickets.length > MAX_TICKETS_PER_PDF) {
+    console.log(`Biljett-PDF: hoppar över (${params.tickets.length} biljetter > max ${MAX_TICKETS_PER_PDF}).`)
+  } else {
+    try {
+      const pdfStart = performance.now()
+      const contactEmail = extractEmailAddress(Deno.env.get('SUPPORT_REPLY_TO_EMAIL') ?? resendFrom)
+      const pdfBytes = await buildTicketsPdf({
+        eventTitle: params.eventTitle,
+        startsAt: params.eventStartsAt,
+        venue: params.eventVenue,
+        buyerName: params.buyerName,
+        orderId: params.orderId,
+        seller: { legalName: r.sellerLegalName, orgNumber: r.sellerOrgNumber },
+        contactEmail,
+        tickets: params.tickets.map((t) => ({ code: t.ticket_code, typeName: t.typeName })),
+      })
+      const pdfMs = Math.round(performance.now() - pdfStart)
+      // Ingen personuppgift i loggraden - bara antal/byte/ms.
+      console.log(`Biljett-PDF: byggd på ${pdfMs} ms, ${params.tickets.length} biljetter, ${pdfBytes.length} byte.`)
+
+      const base64 = bytesToBase64(pdfBytes)
+      // Spärr (ordern 2.3) - långt under Resends egen 40 MB-gräns (efter
+      // kodning), men ingen anledning att komma nära den.
+      if (base64.length > 10_000_000) {
+        console.log(`Biljett-PDF: hoppar över bilagan, base64 för stor (${base64.length} tecken).`)
+      } else {
+        pdfAttachment = { filename: ticketsPdfFilename(params.eventTitle), content: base64 }
+      }
+    } catch (err) {
+      // Inga personuppgifter i loggraden (ordern 2.2) - bara feltyp/
+      // meddelande, aldrig köparens namn/e-post.
+      console.error(
+        'Biljett-PDF: kunde inte byggas, skickar mailet utan bilaga.',
+        err instanceof Error ? err.message : String(err),
+      )
+    }
+  }
+
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
       <h1 style="font-size:20px;">Din biljett till ${params.eventTitle}</h1>
       <p>Hej ${params.buyerName},</p>
       <p>Tack för ditt köp! Här är din/dina biljett(er) till <strong>${params.eventTitle}</strong>${params.eventVenue ? ` på ${params.eventVenue}` : ''}, ${eventDate}.</p>
       <p>Visa QR-koden vid entrén, eller uppge koden i klartext om bilden inte laddas.</p>
+      ${pdfAttachment ? '<p>Biljetterna finns också som en PDF i bilagan, som du kan skriva ut.</p>' : ''}
       ${ticketsHtml}
       <p style="color:#666;font-size:13px;">Ordernummer: ${params.orderId}</p>
       ${receiptHtml}
@@ -203,6 +262,7 @@ async function sendConfirmationEmail(params: {
       to: params.buyerEmail,
       subject: `Din biljett till ${params.eventTitle}`,
       html,
+      ...(pdfAttachment ? { attachments: [pdfAttachment] } : {}),
     }),
   })
 
@@ -338,7 +398,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     }
   }
 
-  const ticketsWithQr: { ticket_code: string; qrUrl: string }[] = []
+  // Biljettypens namn per ticket_type_id - för biljett-PDF:ens
+  // "BILJETTYP"-rad (ordern "Biljett-PDF" 2026-10-05). Samma namnkälla
+  // som kvittots lines nedan (orderItems.ticket_types(name)).
+  const ticketTypeNameById = new Map(orderItems.map((item) => [item.ticket_type_id, single(item.ticket_types)?.name ?? null]))
+
+  const ticketsWithQr: { ticket_code: string; qrUrl: string; typeName: string | null }[] = []
   for (const ticket of tickets) {
     const pngBuffer: Uint8Array = await QRCode.toBuffer(ticket.ticket_code, {
       type: 'png',
@@ -358,7 +423,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     }
 
     const { data: publicUrlData } = supabase.storage.from('qr').getPublicUrl(path)
-    ticketsWithQr.push({ ticket_code: ticket.ticket_code, qrUrl: publicUrlData.publicUrl })
+    ticketsWithQr.push({
+      ticket_code: ticket.ticket_code,
+      qrUrl: publicUrlData.publicUrl,
+      typeName: ticketTypeNameById.get(ticket.ticket_type_id) ?? null,
+    })
   }
 
   // Mailutskicket köas i bakgrunden via EdgeRuntime.waitUntil() istället för
