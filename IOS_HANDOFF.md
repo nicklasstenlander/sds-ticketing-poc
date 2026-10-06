@@ -86,8 +86,19 @@ POST https://<project-ref>.supabase.co/functions/v1/scan-ticket
 Authorization: Bearer <SCANNER_BEARER_TOKEN>
 Content-Type: application/json
 
-{ "ticket_code": "8QK2R7ZXNPB4W0VE1TS93CMHYA", "device": "iPhone - Entré 1" }
+{ "ticket_code": "8QK2R7ZXNPB4W0VE1TS93CMHYA", "device": "iPhone - Entré 1", "event_id": "550e8400-e29b-41d4-a716-446655440000" }
 ```
+
+**`event_id` är VALFRITT** (ordern "Skannern ska veta vilken
+föreställning den släpper in till", 2026-10-06, Del A/B) - id:t för den
+föreställning som för närvarande är vald i appen (från `list-events`
+nedan). Skickas det inte alls fungerar allt exakt som innan detta fält
+fanns - helt bakåtkompatibelt, en äldre appversion kräver ingen
+serverändring. Skickas det och inte ser ut som ett UUID: servern svarar
+`400`. Skickas det och är ett giltigt UUID men skiljer sig från
+biljettens EGNA event: biljetten avvisas (`"invalid"`) med ett
+förklarande `message`, UTAN att checkas in och UTAN att avslöja om den
+redan är incheckad på sitt rätta event (se `message` nedan).
 
 Svar:
 
@@ -97,22 +108,42 @@ Svar:
   "holder_name": "Anna Andersson",
   "event_title": "Vårshow 2026",
   "ticket_type": null,
-  "checked_in_at": "2026-05-10T17:58:03Z"
+  "checked_in_at": "2026-05-10T17:58:03Z",
+  "message": null
 }
 ```
 
 `result` är alltid en av: `"ok"` (giltig, nu incheckad), `"duplicate"`
-(redan incheckad tidigare - `checked_in_at` visar ORIGINALTIDEN, inte
-scan-tillfället), eller `"invalid"` (okänd eller annullerad kod).
+(redan incheckad tidigare, på RÄTT föreställning - `checked_in_at` visar
+ORIGINALTIDEN, inte scan-tillfället), eller `"invalid"` (okänd/
+annullerad kod, inställd föreställning, eller fel föreställning).
 
 `ticket_type` är alltid `null` i denna PoC - det finns bara en biljettyp per
 event. Fältet finns med i svaret redan nu så appens datamodell inte behöver
 ändras den dag fler biljettyper införs.
 
+**`message` (nytt fält, alltid med i svaret - `null` när det inte
+används):** en läsbar textsträng att visa i appen, bara ifylld för två
+`"invalid"`-fall:
+
+- Föreställningen är inställd: `"Föreställningen är inställd"`.
+- Fel föreställning vald i appen: `"Biljetten gäller <titel>, <datum> kl.
+  <HH:MM>"`, t.ex. `"Biljetten gäller Vårshow 2026, 10 maj kl. 19:00"`
+  (alltid Europe/Stockholm, oavsett telefonens egen tidszon). Visas
+  oavsett om biljetten redan var incheckad eller inte - appen får alltså
+  ALDRIG av detta svar veta om en biljett till fel föreställning redan
+  använts på sin egen föreställning.
+
+Avkoda `message` som en valfri sträng (`String?`/`decodeIfPresent`) - ett
+äldre klientbygge som inte känner till fältet alls påverkas inte, Swifts
+`Codable` ignorerar okända JSON-nycklar som standard.
+
 **Viktigt för appens design:** servern är alltid facit. Appen ska aldrig
 själv avgöra om en biljett är giltig baserat på lokal cache eller tidigare
 scan - varje scan måste gå mot `scan-ticket` och visa exakt det `result` som
 kommer tillbaka (grönt för `ok`, gult för `duplicate`, rött för `invalid`).
+Finns `message` för ett `"invalid"`-resultat: visa den texten tydligt
+tillsammans med den röda avvisningen.
 
 ## Bearer-token
 

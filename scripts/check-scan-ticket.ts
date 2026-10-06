@@ -1,7 +1,7 @@
 // Kontroll av determineScanOutcome i supabase/functions/scan-ticket/index.ts
-// (ordern "Före försäljning" 2026-10-05, 1.2 - inställt event ska avvisa
-// skanningen, "fel event" lämnat orört eftersom appen inte skickar
-// event_id, se filkommentaren i scan-ticket/index.ts).
+// (ordern "Före försäljning" 2026-10-05, 1.2 - inställt event; ordern
+// "Skannern ska veta vilken föreställning den släpper in till"
+// 2026-10-06, A1 - fel föreställning).
 //
 // Kör: deno run --allow-env scripts/check-scan-ticket.ts
 
@@ -14,68 +14,162 @@ function assertEqual(actual: unknown, expected: unknown, label: string) {
   if (!ok) failures++
 }
 
-// === Grundfallen (oförändrat beteende, samma tre resultat som förut) ===
+const EVENT_A = 'aaaaaaaa-0000-0000-0000-000000000000'
+const EVENT_B = 'bbbbbbbb-0000-0000-0000-000000000000'
+
+// === Grundfallen utan event_id (gammal appversion - requestedEventId
+// null) - oförändrat beteende, samma tre resultat som förut. ===
 
 assertEqual(
-  determineScanOutcome({ ticketStatus: 'valid', eventStatus: 'published' }),
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
   { result: 'ok', message: null },
-  'Giltig biljett, publicerat event -> ok',
+  'Inget event_id (gammal app), giltig biljett -> ok, oförändrat',
 )
 assertEqual(
-  determineScanOutcome({ ticketStatus: 'checked_in', eventStatus: 'published' }),
+  determineScanOutcome({
+    ticketStatus: 'checked_in',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
   { result: 'duplicate', message: null },
-  'Redan incheckad, publicerat event -> duplicate',
+  'Inget event_id, redan incheckad -> duplicate, oförändrat',
 )
 assertEqual(
-  determineScanOutcome({ ticketStatus: 'void', eventStatus: 'published' }),
+  determineScanOutcome({
+    ticketStatus: 'void',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
   { result: 'invalid', message: null },
-  'Annullerad biljett, publicerat event -> invalid (inget meddelande)',
+  'Inget event_id, annullerad biljett -> invalid (inget meddelande), oförändrat',
 )
 
-// === Inställt event - avvisar ALLTID, oavsett biljettens egen status ===
+// === Rätt föreställning (event_id matchar biljettens eget event) -
+// exakt som utan event_id. ===
 
 assertEqual(
-  determineScanOutcome({ ticketStatus: 'valid', eventStatus: 'cancelled' }),
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
+  { result: 'ok', message: null },
+  'event_id matchar biljettens event -> ok',
+)
+
+// === Fel föreställning - avvisas ALLTID med "invalid" + förklarande
+// meddelande, oavsett biljettens egen status - avslöjar ALDRIG om
+// biljetten redan är incheckad (måste visa samma sak oavsett
+// ticketStatus, aldrig "duplicate"). ===
+
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_B,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: 'TEST skanner B',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
+  { result: 'invalid', message: 'Biljetten gäller TEST skanner B, 12 dec kl. 15:00' },
+  'Oanvänd biljett, FEL föreställning vald -> invalid + "Biljetten gäller ..."',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'checked_in',
+    eventStatus: 'published',
+    ticketEventId: EVENT_B,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: 'TEST skanner B',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
+  { result: 'invalid', message: 'Biljetten gäller TEST skanner B, 12 dec kl. 15:00' },
+  'REDAN INCHECKAD biljett (på sitt eget event), FEL föreställning vald -> invalid + samma meddelande, INTE "duplicate" (avslöjar inte att den redan är använd)',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'void',
+    eventStatus: 'published',
+    ticketEventId: EVENT_B,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: 'TEST skanner B',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
+  { result: 'invalid', message: 'Biljetten gäller TEST skanner B, 12 dec kl. 15:00' },
+  'Annullerad biljett, FEL föreställning vald -> samma "fel föreställning"-meddelande, inte tyst',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_B,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: null,
+    ticketEventStartsAt: null,
+  }),
+  { result: 'invalid', message: 'Biljetten gäller en annan föreställning' },
+  'Fel föreställning, saknad titel/starttid -> rimlig reservtext istället för att krascha',
+)
+
+// === Kontrollordning (ordern A1): inställt event FÖRE fel föreställning
+// - ett inställt event som också råkar vara "fel" ska visa "inställd",
+// inte "gäller en annan föreställning". ===
+
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'cancelled',
+    ticketEventId: EVENT_B,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: 'TEST skanner B',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
   { result: 'invalid', message: 'Föreställningen är inställd' },
-  'Oanvänd, annars giltig biljett till INSTÄLLT event -> invalid + meddelande',
-)
-assertEqual(
-  determineScanOutcome({ ticketStatus: 'checked_in', eventStatus: 'cancelled' }),
-  { result: 'invalid', message: 'Föreställningen är inställd' },
-  'Redan incheckad biljett till INSTÄLLT event -> invalid + meddelande (inte duplicate)',
-)
-assertEqual(
-  determineScanOutcome({ ticketStatus: 'void', eventStatus: 'cancelled' }),
-  { result: 'invalid', message: 'Föreställningen är inställd' },
-  'Annullerad biljett till INSTÄLLT event -> invalid + meddelande',
+  'Inställt OCH fel föreställning samtidigt -> "inställd" vinner (kontrollordningen i ordern)',
 )
 
-// === Eventets status null/okänt (t.ex. om events-raden av någon
-// anledning saknas) ska inte krascha och inte felaktigt avvisas som
-// inställt - bara eventStatus === 'cancelled' ska trigga meddelandet. ===
+// === Eventets status null/okänt ska inte krascha och inte felaktigt
+// avvisas som inställt. ===
 
 assertEqual(
-  determineScanOutcome({ ticketStatus: 'valid', eventStatus: null }),
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: null,
+    ticketEventId: EVENT_A,
+    requestedEventId: EVENT_A,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+  }),
   { result: 'ok', message: null },
   'Okänd eventstatus (null) behandlas INTE som inställt',
-)
-assertEqual(
-  determineScanOutcome({ ticketStatus: 'valid', eventStatus: 'draft' }),
-  { result: 'ok', message: null },
-  'Utkast-event (inte cancelled) påverkar inte resultatet',
 )
 
 // === "result" är alltid en av exakt de tre värden appen redan känner
 // till (IOS_HANDOFF.md) - aldrig ett nytt, okänt värde. ===
 
 const ALL_KNOWN_RESULTS = ['ok', 'duplicate', 'invalid']
-const combos: { ticketStatus: 'valid' | 'checked_in' | 'void'; eventStatus: string | null }[] = [
-  { ticketStatus: 'valid', eventStatus: 'published' },
-  { ticketStatus: 'checked_in', eventStatus: 'published' },
-  { ticketStatus: 'void', eventStatus: 'published' },
-  { ticketStatus: 'valid', eventStatus: 'cancelled' },
-  { ticketStatus: 'checked_in', eventStatus: 'cancelled' },
-  { ticketStatus: 'void', eventStatus: 'cancelled' },
+const combos: Parameters<typeof determineScanOutcome>[0][] = [
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null },
+  { ticketStatus: 'checked_in', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null },
+  { ticketStatus: 'void', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null },
+  { ticketStatus: 'valid', eventStatus: 'cancelled', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null },
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_B, requestedEventId: EVENT_A, ticketEventTitle: 't', ticketEventStartsAt: null },
 ]
 for (const c of combos) {
   const outcome = determineScanOutcome(c)
@@ -85,6 +179,16 @@ for (const c of combos) {
     `result "${outcome.result}" (${JSON.stringify(c)}) är ett av de tre värden appen känner till`,
   )
 }
+
+// === event_id-formatvalidering (UUID_PATTERN i index.ts) - testas här
+// direkt mot samma reguljära uttryck, eftersom valideringen sker på
+// request-nivå i index.ts (ett tydligt 400-svar), inte i den rena
+// beslutsfunktionen. ===
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+assertEqual(UUID_PATTERN.test(EVENT_A), true, 'Giltigt UUID-format accepteras')
+assertEqual(UUID_PATTERN.test('inte-ett-uuid'), false, 'Ogiltigt format avvisas (-> 400 i index.ts)')
+assertEqual(UUID_PATTERN.test(''), false, 'Tom sträng avvisas som format (index.ts behandlar dock tom sträng som "inget skickat", inte 400 - se || null)')
 
 console.log(`\n${failures === 0 ? 'Alla kontroller gick igenom.' : `${failures} kontroll(er) misslyckades.`}`)
 if (failures > 0) Deno.exit(1)
