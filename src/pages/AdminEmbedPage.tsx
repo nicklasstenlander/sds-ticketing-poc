@@ -95,6 +95,13 @@ export function AdminEmbedPage() {
   const [accent, setAccent] = useState<string>('midnatt')
   const [title, setTitle] = useState('')
   const [copied, setCopied] = useState(false)
+  // Bredd på förhandsvisningsrutan (ordern "Widgeten ska fungera i smala
+  // vyer" 2026-10-06, avsnitt 5) - "Auto" = rutans naturliga bredd
+  // (samma som kortet den ligger i), annars en fast pixelbredd så den som
+  // bygger koden ser hur widgeten blir på mobil INNAN den klistras in på
+  // Squarespace. Samma embed.js monteras oavsett - bara den omgivande
+  // rutans bredd ändras.
+  const [previewWidth, setPreviewWidth] = useState<'320' | '390' | '768' | 'auto'>('auto')
 
   const previewHostRef = useRef<HTMLDivElement>(null)
   const scriptLoadedRef = useRef(false)
@@ -395,13 +402,43 @@ export function AdminEmbedPage() {
 
           <div className="flex flex-col gap-6">
             <section className="card">
-              <h2 className="font-semibold mb-3">Förhandsvisning</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold">Förhandsvisning</h2>
+                <div className="flex items-center gap-1 text-sm" role="group" aria-label="Förhandsvisningens bredd">
+                  {(
+                    [
+                      { value: 'auto', label: 'Auto' },
+                      { value: '320', label: '320' },
+                      { value: '390', label: '390' },
+                      { value: '768', label: '768' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPreviewWidth(opt.value)}
+                      className={previewWidth === opt.value ? 'btn-primary text-xs px-2 py-1' : 'btn-secondary text-xs px-2 py-1'}
+                      aria-pressed={previewWidth === opt.value}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {!hasSelection && (
                 <p className="text-sm text-[var(--text-muted)]">
                   Välj minst ett evenemang (eller kryssa i "Visa alla mina publicerade evenemang automatiskt").
                 </p>
               )}
-              <div ref={previewHostRef} />
+              {/* overflow-x:auto - en 768px-ruta är bredare än panelen på en
+                  smal admin-skärm, ska gå att scrolla istället för att
+                  trycka sönder resten av sidan. */}
+              <div style={{ overflowX: 'auto' }}>
+                <div
+                  ref={previewHostRef}
+                  style={previewWidth === 'auto' ? undefined : { width: `${previewWidth}px`, maxWidth: 'none' }}
+                />
+              </div>
             </section>
 
             <section className="card">

@@ -77,7 +77,7 @@ export function EventsPage() {
 
           return (
             <li key={event.id} className="card">
-              <div className="flex items-center gap-5">
+              <div className="flex items-center gap-5 flex-wrap">
                 {/* Affisch (liggande) som kortbild om en är uppladdad
                     (Tilläggsordern 2026-08-05) - annars samma
                     diagonalrandiga platshållare som innan, så kort utan
@@ -115,14 +115,18 @@ export function EventsPage() {
                   </div>
                   {lowStock && <div className="text-sm text-[var(--text-muted)]">Få biljetter kvar</div>}
                 </div>
-                <div className="text-right shrink-0">
+                {/* ml-auto: när raden inte får plats (flex-wrap ovan)
+                    hamnar det här blocket ensamt på en egen rad, höger-
+                    justerat på den raden - samma "stapla innan krympning"-
+                    princip som används i embed.js (ordern 2026-10-06). */}
+                <div className="text-right shrink-0 ml-auto">
                   <div className="font-semibold text-[var(--text)] mb-2">
                     {minPrice === null
                       ? '–'
                       : `${hasMultiplePrices ? 'Från ' : ''}${(minPrice / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
                   </div>
                   {upcoming && event.sales_open_at ? (
-                    <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] whitespace-nowrap">
+                    <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] inline-block">
                       Släpps {formatStockholmDateTime(event.sales_open_at)}
                     </span>
                   ) : types.length === 0 || soldOut ? (

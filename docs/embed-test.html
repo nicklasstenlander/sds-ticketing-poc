@@ -15,7 +15,9 @@
 <body>
 <!--
   Lokal testsida mot scripts/embed-mock-server.ts (ordern "Schemalagt
-  biljettsläpp och inbäddningsbar widget", steg 2.6). Kör:
+  biljettsläpp och inbäddningsbar widget", steg 2.6, utökad med
+  matris-läget i ordern "Widgeten ska fungera i smala vyer" 2026-10-06,
+  avsnitt 6). Kör:
     deno run --allow-net --allow-read scripts/embed-mock-server.ts
   och öppna http://localhost:8787/docs/embed-test.html
 
@@ -25,7 +27,84 @@
   "test-upcoming" har ett sales_open_at 20 sekunder fram i tiden VID VARJE
   sidladdning - vänta ~20s för att se nedräkningen slå om till
   "Köp biljetter" utan att sidan laddas om.
+
+  MATRIS-LÄGE (för scripts/test-embed-matrix.mjs/Playwright): öppnas med
+  frågeparametrar, t.ex.
+    /docs/embed-test.html?layout=agenda&width=320&events=test-long-title&show=poster,date,place,price,countdown&theme=dark
+  Renderar DÅ bara EN widget i en ruta med exakt den bredden, istället
+  för hela galleriet nedan - en enda, fokuserad kombination per sidladdning,
+  bekvämt för ett automatiskt skript att navigera till och mäta/skärmdumpa.
+  Utan frågeparametrar: samma galleri som förut, oförändrat, för manuell
+  granskning i en vanlig webbläsare.
 -->
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search)
+    var layout = params.get('layout')
+    if (!layout) return // inga query-params - vanligt galleri, oförändrat
+
+    document.write(
+      '<style>body{margin:0;padding:16px;background:#EAEEF2;font-family:system-ui,sans-serif}' +
+        '#matrix-host{box-sizing:border-box;width:' +
+        (params.get('width') || '390') +
+        'px;background:' +
+        (params.get('theme') === 'dark' ? '#141C27' : '#EAEEF2') +
+        ';padding:12px;border-radius:8px}</style>',
+    )
+  })()
+</script>
+<div id="matrix-root"></div>
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search)
+    var layout = params.get('layout')
+    if (!layout) return
+
+    var host = document.createElement('div')
+    host.id = 'matrix-host'
+    document.getElementById('matrix-root').appendChild(host)
+
+    var widget = document.createElement('div')
+    widget.className = 'rideau-widget'
+    widget.setAttribute('data-layout', layout)
+    widget.setAttribute('data-api', '')
+    var events = params.get('events')
+    var organizer = params.get('organizer')
+    if (organizer) widget.setAttribute('data-organizer', organizer)
+    else widget.setAttribute('data-events', events || 'test-open')
+    if (params.get('show')) widget.setAttribute('data-show', params.get('show'))
+    if (params.get('theme')) widget.setAttribute('data-theme', params.get('theme'))
+    if (params.get('accent')) widget.setAttribute('data-accent', params.get('accent'))
+    if (params.get('title')) widget.setAttribute('data-title', params.get('title'))
+    host.appendChild(widget)
+
+    var script = document.createElement('script')
+    script.src = '/embed.js'
+    document.body.appendChild(script)
+
+    // Signal till Playwright (document.body[data-test-ready]) när
+    // widgetens Shadow DOM faktiskt har renderat riktigt innehåll (inte
+    // bara "Laddar …") - öppen Shadow DOM, så huvudsidans egen kod kan
+    // läsa den direkt, även om CSS inte kan det.
+    var tries = 0
+    var poll = setInterval(function () {
+      tries++
+      var root = widget.shadowRoot
+      var loaded = root && root.textContent && root.textContent.indexOf('Laddar') === -1
+      if (loaded || tries > 100) {
+        clearInterval(poll)
+        document.body.setAttribute('data-test-ready', '1')
+      }
+    }, 50)
+
+    // Galleriet nedan laddas fortfarande (document.write kan inte
+    // "trunkera" resten av ett redan påbörjat HTML-dokument) - ofarligt
+    // för mätningen/skärmbilden (scripts/test-embed-matrix.mjs läser och
+    // skärmdumpar bara #matrix-host specifikt, ett Playwright element-
+    // screenshot påverkas inte av andra element på sidan), bara lite
+    // extra bakgrundsarbete per sidladdning.
+  })()
+</script>
 <h1>Rideau embed.js - alla layouter och tillstånd</h1>
 <p class="host-page-css">Denna stora röda text ska INTE synas inuti widgetarna nedan (Shadow DOM-isolering).</p>
 

@@ -181,14 +181,25 @@
 
   var STYLE = [
     ':host{all:initial;display:block;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}',
-    '*{box-sizing:border-box}',
-    // overflow-wrap/word-break ärvs av alla barn - svenska sammansatta
-    // ord ("Vinterföreställningen") saknar ofta naturlig brytpunkt, och
-    // utan detta kunde ett sånt ord svämma över sin flex-ruta i en smal
-    // rad (Agenda/Speltider) och hamna visuellt UNDER knappen bredvid
-    // istället för att brytas. Nicklas rapporterade detta i ett smalt
-    // fönster 2026-10-04.
-    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4;overflow-wrap:break-word;word-break:break-word}',
+    '*{box-sizing:border-box;min-width:0}',
+    // overflow-wrap+hyphens, INTE word-break:break-word - "break-word" är
+    // i praktiken samma sak som overflow-wrap:anywhere (bryter VARJE
+    // tecken så fort utrymmet blir för litet, även mitt i ett ord som
+    // hade kunnat avstavas snyggare). hyphens:auto (+ lang="sv" satt på
+    // detta element i JS) ger svenska avstavningspunkter åt långa
+    // sammansatta ord ("Avslutningsföreställningen") istället. Grundorsak
+    // till den ursprungliga buggen (ordern "Widgeten ska fungera i smala
+    // vyer" 2026-10-06): barn med text hade flex:none medan deras eget
+    // innehåll (en chip med width:100%) ändå krävde sin fulla
+    // max-content-bredd - det tvingade GRANNKOLUMNEN (texten) ner mot en
+    // bredd nära noll, och overflow-wrap:anywhere (via break-word) lät
+    // den då brytas bokstav för bokstav istället för att svämma över
+    // synligt. *{min-width:0} ovan är den strukturella grundfixen -
+    // inget flexbarn kan längre tvingas bredare än sitt innehåll bara
+    // för att en granne är girig. Explicit flex:none läggs bara dit där
+    // ett barn SKA ha fast bredd och ALDRIG innehåller radbruten text
+    // (t.ex. agenda-datumrutan, en ikon).
+    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4;overflow-wrap:break-word;hyphens:auto}',
     '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3;--hover-shadow:rgba(255,255,255,.14)}',
     // :not(.rw-btn) - annars vinner denna över .rw-btn{color:var(--accent-text)}
     // pga högre specificitet (klass+tagg > enkel klass), och knappen
@@ -210,8 +221,13 @@
     '.rw-btn:not([disabled]):hover{transform:scale(1.045);box-shadow:0 4px 12px var(--hover-shadow)}',
     '.rw-btn:not([disabled]):active{transform:scale(0.98)}',
     '@media (prefers-reduced-motion:reduce){.rw-btn{transition:none}.rw-btn:not([disabled]):hover{transform:none}}',
-    '.rw-chip{display:block;box-sizing:border-box;width:100%;padding:12px 14px;border-radius:999px;background:var(--chip-bg);color:var(--chip-text);text-align:center;font-size:13px;font-weight:700}',
-    '.rw-countdown-line{text-align:center;font-weight:700;font-size:13px;color:var(--text);margin-top:6px}',
+    // min-height:44px + flex-centrering på chippet också - ordern
+    // ("Widgeten ska fungera i smala vyer" 2026-10-06, avsnitt 3): "Chip
+    // och knappar ... är minst 44 px höga", inte bara knappar. 14px
+    // (inte 13) - samma avsnitt: "Brödtext aldrig under 14 px" (chippets
+    // text är en hel mening, inte en etikett).
+    '.rw-chip{display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-height:44px;padding:10px 14px;border-radius:999px;background:var(--chip-bg);color:var(--chip-text);text-align:center;font-size:14px;font-weight:700}',
+    '.rw-countdown-line{text-align:center;font-weight:700;font-size:14px;color:var(--text);margin-top:6px}',
     '.rw-card{display:flex;flex-direction:column;gap:10px;padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
     '.rw-poster{width:100%;border-radius:10px;overflow:hidden;background:var(--disabled-bg)}',
     '.rw-poster img{display:block;width:100%;height:100%;object-fit:cover}',
@@ -221,14 +237,26 @@
     '.rw-muted{color:var(--muted);font-size:14px}',
     '.rw-price{text-align:center;font-size:14px;color:var(--muted)}',
     '.rw-error,.rw-empty{padding:16px;color:var(--muted);font-size:14px}',
-    '.rw-grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}',
+    // auto-fit+minmax, INGEN media-regel - CSS Grid svarar redan nativt
+    // på widgetens EGEN bredd (inte fönstret). 210px vald så att två
+    // spalter (2*210+18px mellanrum=438px) precis INTE får plats under
+    // ca 440px (ordern, tabellen i avsnitt 4: "En kolumn när bredden
+    // understiger cirka 440 px").
+    '.rw-grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}',
     '.rw-grid .rw-card{max-width:360px}',
     '.rw-horizontal{display:flex;gap:16px;align-items:flex-start}',
     '.rw-horizontal .rw-poster{width:140px;flex:none;aspect-ratio:2/3}',
+    '.rw-horizontal-info{display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center}',
+    // "rubriken (24 till 20 px, aldrig under 18 px)" (ordern avsnitt 4) -
+    // horisontell är den enda layouten med en större rubrik än standard-
+    // .rw-title (19px); md=24, sm=20, xs=18 (se data-size-reglerna nedan).
+    '.rw-horizontal .rw-title{font-size:24px}',
     '.rw-landscape .rw-poster{aspect-ratio:16/9}',
     '.rw-landscape-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}',
     '.rw-portrait .rw-poster{aspect-ratio:2/3}',
     '.rw-list-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:12px}',
+    '.rw-list-row-head{display:flex;align-items:center;gap:10px;flex:1}',
+    '.rw-list-row-action{flex:0 1 auto}',
     // color:var(--accent-text) genomgående här (inte hårdkodat #fff/
     // --chip-bg) - dessa ytor använder SJÄLVA accentfärgen som bakgrund,
     // och accentfärgen kan vara Rampljus (ljusgul). Hårdkodad vit/gul text
@@ -236,21 +264,74 @@
     // samma eller närliggande färg (Nicklas bad om en genomgång av alla
     // layouter 2026-10-04, efter att Banner-knappen haft samma problem).
     '.rw-agenda-date{flex:none;width:52px;height:56px;border-radius:10px;background:var(--accent);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
-    '.rw-agenda-date .rw-agenda-month{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
+    '.rw-agenda-date .rw-agenda-month{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
     '.rw-agenda-date .rw-agenda-day{font-size:20px;font-weight:800;line-height:1;color:var(--accent-text)}',
+    '.rw-agenda-row{display:flex;align-items:center;gap:16px;padding:16px}',
+    '.rw-agenda-row-divider{border-bottom:1px solid var(--border)}',
+    '.rw-agenda-head{display:flex;align-items:center;gap:16px;flex:1}',
+    '.rw-agenda-action{flex:0 1 auto}',
     '.rw-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px;border-radius:16px;background:var(--accent);color:var(--accent-text)}',
     '.rw-banner-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
     '.rw-banner-title{margin:4px 0 0;font-size:20px;font-weight:800;color:var(--accent-text)}',
-    '.rw-banner-meta{font-size:13px;color:var(--accent-text);opacity:.8;margin-top:4px}',
+    '.rw-banner-meta{font-size:14px;color:var(--accent-text);opacity:.8;margin-top:4px}',
     '.rw-banner-buy{background:#FFFFFF;color:#171717}',
+    '.rw-banner-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}',
     '.rw-countdown{display:flex;gap:8px}',
     // --on-accent-overlay sätts i JS (mountWidget) till en mörk eller ljus
     // genomskinlig ton beroende på om --accent-text är vit eller mörk -
     // en fast vit ton hade blivit osynlig mot en ljus (Rampljus) banner.
     '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:var(--on-accent-overlay);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
     '.rw-countdown-box b{font-size:17px;line-height:1}',
-    '.rw-countdown-box span{font-size:9px;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
-    '@media (max-width:420px){.rw-horizontal{flex-direction:column}.rw-horizontal .rw-poster{width:100%;aspect-ratio:3/2}.rw-banner{flex-direction:column;align-items:flex-start}}',
+    '.rw-countdown-box span{font-size:11px;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
+
+    // ============================================================
+    // Smala vyer (ordern "Widgeten ska fungera i smala vyer",
+    // 2026-10-06). Styrs av data-size på rotelementet (satt av en
+    // ResizeObserver på VÄRDELEMENTET i mountWidget, aldrig av
+    // fönstrets bredd) - md (ingen attributväljare, ≥520px) är
+    // standardutseendet ovan, sm (360-519px) och xs (<360px) nedan.
+    // Princip (bindande, ordern avsnitt 4): stapla framför att
+    // förminska - åtgärden (knapp/chip) på en EGEN rad i full bredd
+    // under texten, aldrig en smalare textkolumn än nödvändigt.
+    // ============================================================
+
+    // --- agenda ---
+    '.rw[data-size="sm"] .rw-agenda-row,.rw[data-size="xs"] .rw-agenda-row{flex-direction:column;align-items:stretch;gap:12px;padding:14px}',
+    '.rw[data-size="sm"] .rw-agenda-action,.rw[data-size="xs"] .rw-agenda-action{flex:none;width:100%}',
+    '.rw[data-size="xs"] .rw-agenda-date{width:48px;height:52px}',
+
+    // --- showtimes (.rw-list-row) ---
+    '.rw[data-size="sm"] .rw-list-row,.rw[data-size="xs"] .rw-list-row{flex-direction:column;align-items:stretch;gap:10px}',
+    '.rw[data-size="sm"] .rw-list-row-action,.rw[data-size="xs"] .rw-list-row-action{flex:none;width:100%}',
+
+    // --- horizontal: stapla, affisch överst (ordern: "högst 280 px hög,
+    // object-fit: contain på Dimma-bakgrund") ---
+    '.rw[data-size="sm"] .rw-horizontal,.rw[data-size="xs"] .rw-horizontal{flex-direction:column}',
+    '.rw[data-size="sm"] .rw-horizontal .rw-poster,.rw[data-size="xs"] .rw-horizontal .rw-poster{width:100%;aspect-ratio:auto;max-height:280px}',
+    '.rw[data-size="sm"] .rw-horizontal .rw-poster img,.rw[data-size="xs"] .rw-horizontal .rw-poster img{object-fit:contain}',
+    '.rw[data-size="sm"] .rw-horizontal-info,.rw[data-size="xs"] .rw-horizontal-info{justify-content:flex-start}',
+    '.rw[data-size="sm"] .rw-horizontal .rw-btn,.rw[data-size="xs"] .rw-horizontal .rw-btn{width:100%}',
+    '.rw[data-size="sm"] .rw-horizontal .rw-title,.rw[data-size="xs"] .rw-horizontal .rw-title{font-size:20px}',
+    '.rw[data-size="xs"] .rw-horizontal .rw-title{font-size:18px}',
+
+    // --- landscape: rubrik/uppgifter över, knappen under i full bredd ---
+    '.rw[data-size="sm"] .rw-landscape-row,.rw[data-size="xs"] .rw-landscape-row{flex-direction:column;align-items:stretch}',
+    '.rw[data-size="sm"] .rw-landscape .rw-btn,.rw[data-size="xs"] .rw-landscape .rw-btn{width:100%}',
+
+    // --- button: knappen/chippet i full bredd, resten radbryts under ---
+    '.rw[data-size="sm"] .rw-button-wrap .rw-btn,.rw[data-size="xs"] .rw-button-wrap .rw-btn,.rw[data-size="sm"] .rw-button-wrap .rw-chip,.rw[data-size="xs"] .rw-button-wrap .rw-chip{width:100%}',
+
+    // --- banner: stapla text/nedräkning/chip, rutorna lika breda ---
+    '.rw[data-size="sm"] .rw-banner,.rw[data-size="xs"] .rw-banner{flex-direction:column;align-items:stretch;padding:16px}',
+    '.rw[data-size="sm"] .rw-banner-right,.rw[data-size="xs"] .rw-banner-right{align-items:stretch;width:100%}',
+    '.rw[data-size="sm"] .rw-countdown,.rw[data-size="xs"] .rw-countdown{width:100%}',
+    '.rw[data-size="sm"] .rw-countdown-box,.rw[data-size="xs"] .rw-countdown-box{flex:1;width:auto;max-width:72px}',
+    '.rw[data-size="xs"] .rw-countdown-box{max-width:56px;height:44px}',
+    '.rw[data-size="sm"] .rw-banner-buy,.rw[data-size="xs"] .rw-banner-buy{width:100%}',
+
+    // --- marginaler (andra prioritet att förminska, ordern avsnitt 4:
+    // "marginaler (16 till 12 px)") ---
+    '.rw[data-size="xs"] .rw-card{padding:12px}',
   ].join('')
 
   // ---- Attribut-parsing ----
@@ -395,17 +476,27 @@
   // ---- Rendering: layouter ----
 
   function renderCardLayout(container, ev, config, countdownState, variant) {
-    var card = el('div', { className: 'rw-card' })
+    // rw-landscape/rw-portrait: klasser som CSS:en ovan (.rw-landscape
+    // .rw-poster, .rw-portrait .rw-poster) alltid FÖRVÄNTAT sig men som
+    // aldrig faktiskt sattes på något element - affischens aspect-ratio
+    // föll därför tyst bort i liggande/stående/rutnät-layouterna (hittat
+    // under felsökningen av ordern "Widgeten ska fungera i smala vyer"
+    // 2026-10-06, inte bara ett smal-vy-problem men åtgärdat i samma
+    // svep). Rutnät återanvänder den stående affisch-proportionen (samma
+    // affisch-preferens som portrait, se preferLandscape nedan).
+    var cardClass = variant === 'landscape' ? 'rw-card rw-landscape' : variant === 'portrait' || variant === 'grid' ? 'rw-card rw-portrait' : 'rw-card'
+    var card = el('div', { className: cardClass })
     var preferLandscape = variant === 'landscape'
     var poster = config.show.indexOf('poster') !== -1 ? buildPosterBox(ev, preferLandscape) : null
 
     if (variant === 'horizontal') {
       // Horisontell.dc.html: datum och tid på VARSIN rad (till skillnad
       // från övriga layouter som slår ihop dem till "Lör 12 dec · 15:00"),
-      // och knapp+pris sida vid sida istället för staplat.
-      var right = el('div', { style: 'display:flex;flex-direction:column;gap:10px;min-width:0;flex:1;justify-content:center' })
+      // och knapp+pris sida vid sida istället för staplat (i md-storlek -
+      // se .rw-horizontal .rw-btn{width:100%} för sm/xs ovan).
+      var right = el('div', { className: 'rw-horizontal-info' })
       if (config.show.indexOf('organizer') !== -1 && ev.organizer_name) right.appendChild(el('div', { className: 'rw-eyebrow', text: ev.organizer_name }))
-      right.appendChild(el('h3', { className: 'rw-title', text: ev.title, style: 'font-size:26px' }))
+      right.appendChild(el('h3', { className: 'rw-title', text: ev.title }))
       if (config.show.indexOf('date') !== -1 && ev.starts_at) {
         right.appendChild(el('div', { className: 'rw-row' }, [svgIcon(ICON_CALENDAR, 18), el('span', { text: formatStockholmFullDate(ev.starts_at) })]))
         right.appendChild(el('div', { className: 'rw-row' }, [svgIcon(ICON_CLOCK, 18), el('span', { text: formatStockholmTimeOnly(ev.starts_at) })]))
@@ -413,7 +504,7 @@
       if (config.show.indexOf('place') !== -1 && ev.venue) {
         right.appendChild(el('div', { className: 'rw-row' }, [svgIcon(ICON_PIN, 18), el('span', { text: ev.venue })]))
       }
-      var buyRow = el('div', { style: 'display:flex;align-items:center;gap:16px;margin-top:4px' })
+      var buyRow = el('div', { style: 'display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-top:4px' })
       buyRow.appendChild(buildBuyBlock(ev, config, countdownState))
       right.appendChild(buyRow)
       var wrap = el('div', { className: 'rw-horizontal' }, [poster, right])
@@ -426,9 +517,11 @@
     card.appendChild(el('h3', { className: 'rw-title', text: ev.title }))
 
     if (variant === 'landscape') {
-      // Liggande.dc.html: datum och plats på SAMMA rad (inte staplade).
+      // Liggande.dc.html: datum och plats på SAMMA rad vid normal bredd
+      // (inte staplade) - se .rw-landscape-row{flex-direction:column}
+      // för sm/xs ovan, som staplar om det inte får plats.
       var row = el('div', { className: 'rw-landscape-row' })
-      var info = el('div', { style: 'display:flex;flex-direction:column;gap:6px;min-width:0' })
+      var info = el('div', { style: 'display:flex;flex-direction:column;gap:6px' })
       var inlineMeta = el('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px' })
       buildMetaRows(ev, config).forEach(function (r) {
         inlineMeta.appendChild(r)
@@ -458,7 +551,7 @@
   // "Bara en knapp" (Knapp.dc.html): INGEN kort-chrome, ingen titel - bara
   // köp-elementet och en kort textrad (datum · pris) sida vid sida.
   function renderButtonLayout(container, ev, config, countdownState) {
-    var wrap = el('div', { style: 'display:flex;align-items:center;gap:16px;flex-wrap:wrap' })
+    var wrap = el('div', { className: 'rw-button-wrap', style: 'display:flex;align-items:center;gap:16px;flex-wrap:wrap' })
 
     if (ev.sales_state === 'open') {
       wrap.appendChild(el('a', { className: 'rw-btn', href: APP_BASE + '/#/kop/' + encodeURIComponent(ev.slug), text: 'Köp biljetter' }))
@@ -507,17 +600,23 @@
         el('span', { className: 'rw-agenda-month', text: month }),
         el('span', { className: 'rw-agenda-day', text: day }),
       ])
-      var mid = el('div', { style: 'display:flex;flex-direction:column;gap:4px;min-width:0;flex:1' })
+      var mid = el('div', { style: 'display:flex;flex-direction:column;gap:4px;flex:1' })
       mid.appendChild(el('div', { className: 'rw-title', text: ev.title, style: 'font-size:18px' }))
       var bits = []
       if (config.show.indexOf('date') !== -1 && ev.starts_at) bits.push(formatStockholmWeekdayAndTime(ev.starts_at))
       if (config.show.indexOf('place') !== -1 && ev.venue) bits.push(ev.venue)
       if (bits.length > 0) mid.appendChild(el('div', { className: 'rw-muted', text: bits.join(' · ') }))
-      var right = el('div', { style: 'flex:none' })
-      right.appendChild(buildBuyBlock(ev, config, countdownStates[ev.slug]))
-      var rowStyle = 'display:flex;align-items:center;gap:20px;padding:16px'
-      if (i < events.length - 1) rowStyle += ';border-bottom:1px solid var(--border)'
-      card.appendChild(el('div', { style: rowStyle }, [dateBox, mid, right]))
+      // rw-agenda-head (dateBox+mid) och rw-agenda-action (knapp/chip) -
+      // EGEN rad under huvudet vid smala bredder (data-size="sm"/"xs"
+      // ovan), istället för att trycka ihop textkolumnen mot noll bredd
+      // (grundorsaken till den ursprungliga buggen - se filkommentaren
+      // vid *{min-width:0} högst upp i STYLE).
+      var head = el('div', { className: 'rw-agenda-head' }, [dateBox, mid])
+      var action = el('div', { className: 'rw-agenda-action' })
+      action.appendChild(buildBuyBlock(ev, config, countdownStates[ev.slug]))
+      var rowClass = 'rw-agenda-row'
+      if (i < events.length - 1) rowClass += ' rw-agenda-row-divider'
+      card.appendChild(el('div', { className: rowClass }, [head, action]))
     })
     container.appendChild(card)
   }
@@ -540,10 +639,13 @@
       // från knappen, där accenten är BAKGRUNDEN och accent-text redan är
       // beräknad för just den paringen) hade det blivit nästan oläsligt.
       var muted = ev.sales_state === 'sold_out'
-      var left = el('div', { className: 'rw-row', style: 'font-weight:700;font-size:16px;color:' + (muted ? 'var(--muted)' : 'var(--text)') })
+      var left = el('div', {
+        className: 'rw-row rw-list-row-head',
+        style: 'font-weight:700;font-size:16px;color:' + (muted ? 'var(--muted)' : 'var(--text)'),
+      })
       left.appendChild(svgIcon(ICON_CALENDAR, 18))
       if (ev.starts_at) left.appendChild(el('span', { text: formatStockholmShortDate(ev.starts_at) }))
-      var right = el('div', { style: 'flex:none' })
+      var right = el('div', { className: 'rw-list-row-action' })
       right.appendChild(buildBuyBlock(ev, config, countdownStates[ev.slug]))
       card.appendChild(el('div', { className: 'rw-list-row' }, [left, right]))
     })
@@ -553,7 +655,7 @@
   function renderBannerLayout(container, events, config, countdownStates) {
     var ev = events[0]
     if (!ev) return
-    var left = el('div', {})
+    var left = el('div', { style: 'flex:1' })
     left.appendChild(el('div', { className: 'rw-banner-eyebrow', text: 'Nästa föreställning' }))
     left.appendChild(el('h3', { className: 'rw-banner-title', text: ev.title }))
     var metaBits = []
@@ -561,7 +663,7 @@
     if (ev.venue) metaBits.push(ev.venue)
     left.appendChild(el('div', { className: 'rw-banner-meta', text: metaBits.join(' · ') }))
 
-    var right = el('div', { style: 'display:flex;flex-direction:column;align-items:flex-end;gap:10px' })
+    var right = el('div', { className: 'rw-banner-right' })
     var cd = countdownStates[ev.slug]
     if (ev.sales_state === 'upcoming' && config.show.indexOf('countdown') !== -1 && cd) {
       var boxes = el('div', { className: 'rw-countdown' })
@@ -638,12 +740,53 @@
     var style = document.createElement('style')
     style.textContent = STYLE
     shadow.appendChild(style)
-    var root = el('div', { className: 'rw', 'data-theme': config.theme })
+    // lang="sv" - ger webbläsaren rätt avstavningsordbok för hyphens:auto
+    // (CSS:en ovan) på långa svenska sammansatta ord.
+    var root = el('div', { className: 'rw', lang: 'sv', 'data-theme': config.theme })
     root.style.setProperty('--accent', config.accent)
     root.style.setProperty('--accent-text', config.accentText)
     root.style.setProperty('--on-accent-overlay', config.accentText === '#171717' ? 'rgba(0,0,0,.12)' : 'rgba(255,255,255,.14)')
     shadow.appendChild(root)
     root.appendChild(el('div', { className: 'rw-muted', text: 'Laddar …' }))
+
+    // data-size (ordern "Widgeten ska fungera i smala vyer" 2026-10-06,
+    // avsnitt 2) - mäter WIDGETENS EGEN bredd (hostEl, elementet i sidans
+    // DOM), aldrig fönstrets. Widgeten sitter ofta i en smal kolumn på en
+    // bredare sida, så en @media-regel mot fönsterbredden hade varit fel
+    // även på en bred skärm. "md" (ingen attributvärde krävs - CSS:en
+    // ovan har bara sm/xs-undantag) är standard vid 520px eller mer.
+    function sizeForWidth(px) {
+      if (px < 360) return 'xs'
+      if (px < 520) return 'sm'
+      return 'md'
+    }
+    var lastSize = null
+    function applySize(px) {
+      var size = sizeForWidth(px)
+      if (size === lastSize) return
+      lastSize = size
+      if (size === 'md') root.removeAttribute('data-size')
+      else root.setAttribute('data-size', size)
+    }
+    if (typeof ResizeObserver !== 'undefined') {
+      var resizeObserver = new ResizeObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i]
+          var width = entry.contentRect ? entry.contentRect.width : hostEl.getBoundingClientRect().width
+          applySize(width)
+        }
+      })
+      resizeObserver.observe(hostEl)
+    } else {
+      // Reservväg (ordern 2) - fångar bara fönsterstorleksändringar, inte
+      // t.ex. att sidans egen layout (en Squarespace-kolumn) ändras utan
+      // att fönstret gör det, men bättre än inget på en webbläsare utan
+      // ResizeObserver.
+      applySize(hostEl.getBoundingClientRect().width)
+      window.addEventListener('resize', function () {
+        applySize(hostEl.getBoundingClientRect().width)
+      })
+    }
 
     var state = {
       events: [],

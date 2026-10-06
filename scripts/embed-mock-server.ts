@@ -82,7 +82,71 @@ function buildEvents() {
       sales_open_at: minutesFromNow(60 * 24 * 7),
       sales_state: 'upcoming',
     },
+    // --- Innehållsvarianter (ordern "Widgeten ska fungera i smala vyer"
+    // 2026-10-06, avsnitt 6: "normal titel, mycket lång titel, ett långt
+    // ord ... lång plats, saknad affisch") ---
+    {
+      slug: 'test-long-title',
+      title: 'En mycket lång titel som definitivt behöver radbrytas flera gånger för att få plats i en smal kolumn',
+      organizer_name: 'Testarrangören',
+      starts_at: minutesFromNow(60 * 24 * 12),
+      venue: 'Dansscenen',
+      from_price_ore: 15000,
+      poster_landscape_url: null,
+      poster_portrait_url: null,
+      sales_open_at: null,
+      sales_state: 'open',
+    },
+    {
+      slug: 'test-long-word',
+      title: 'Avslutningsföreställningen',
+      organizer_name: 'Testarrangören',
+      starts_at: minutesFromNow(60 * 24 * 13),
+      venue: 'Dansscenen',
+      from_price_ore: 15000,
+      poster_landscape_url: null,
+      poster_portrait_url: null,
+      sales_open_at: null,
+      sales_state: 'open',
+    },
+    {
+      slug: 'test-long-venue',
+      title: 'Vårshow för alla åldrar',
+      organizer_name: 'Testarrangören',
+      starts_at: minutesFromNow(60 * 24 * 14),
+      venue: 'Sollentuna Dans- och Scenskolas stora aula vid Turebergstorg',
+      from_price_ore: 15000,
+      poster_landscape_url: null,
+      poster_portrait_url: null,
+      sales_open_at: null,
+      sales_state: 'open',
+    },
   ]
+}
+
+// 12 generiska event (ordern avsnitt 6: "fem event och tolv event") -
+// hämtas via data-organizer="testmany" (alla 12) eller data-events med
+// explicita slugs test-many-1..test-many-5 (fem). Alternerar
+// öppet/slutsålt/släpps-snart så matrisen även träffar flera tillstånd
+// samtidigt i en och samma rutnät/agenda-widget.
+function buildManyEvents() {
+  const states: Array<'open' | 'sold_out' | 'upcoming'> = ['open', 'sold_out', 'upcoming']
+  return Array.from({ length: 12 }, (_, i) => {
+    const n = i + 1
+    const state = states[i % states.length]
+    return {
+      slug: `test-many-${n}`,
+      title: `Föreställning ${n}`,
+      organizer_name: 'Testarrangören',
+      starts_at: minutesFromNow(60 * 24 * (5 + n)),
+      venue: 'Dansscenen',
+      from_price_ore: 10000 + n * 500,
+      poster_landscape_url: null,
+      poster_portrait_url: null,
+      sales_open_at: state === 'upcoming' ? minutesFromNow(60 * 24 * 2) : null,
+      sales_state: state,
+    }
+  })
 }
 
 function corsJson(body: unknown, status = 200): Response {
@@ -121,12 +185,12 @@ Deno.serve({ port: PORT }, async (req) => {
   }
 
   if (url.pathname === '/public-embed') {
-    const events = buildEvents()
+    const events = buildEvents().concat(buildManyEvents())
     const organizer = url.searchParams.get('organizer')
     const eventsParam = url.searchParams.get('events')
     let selected = events
     if (organizer) {
-      selected = organizer === 'testarrangor' ? events : []
+      selected = organizer === 'testarrangor' ? buildEvents() : organizer === 'testmany' ? buildManyEvents() : []
     } else if (eventsParam) {
       const slugs = eventsParam.split(',').map((s) => s.trim())
       selected = events.filter((e) => slugs.indexOf(e.slug) !== -1)
