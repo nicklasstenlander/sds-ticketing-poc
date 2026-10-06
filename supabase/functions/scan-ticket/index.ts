@@ -11,11 +11,30 @@
 //              holder_name: string | null,
 //              event_title: string | null,
 //              ticket_type: null,
-//              checked_in_at: string | null }
+//              checked_in_at: string | null,
+//              message: string | null }
+//
+// "message" (ordern "Före försäljning" 2026-10-05, 1.2) är ETT NYTT,
+// ADDITIVT fält - inget nytt "result"-värde läggs till (IOS_HANDOFF.md
+// dokumenterar bara ok/duplicate/invalid, och appen färgkodar på exakt
+// dessa tre). Fältet är alltid med i svaret (null när det inte används),
+// så formen är förutsägbar. Används just nu bara för att förklara VARFÖR
+// en biljett till ett inställt event avvisas med "invalid" - en vanlig
+// Swift Codable-struct ignorerar okända/extra JSON-nycklar som standard,
+// så detta BÖR inte kräva en app-ändring, men det är inte verifierat mot
+// den faktiska iOS-koden (som inte finns i det här repot) - flaggat i
+// rapporten till Nicklas, inte antaget.
+//
+// OBS - ingen event_id skickas med i requesten idag (varken i detta
+// kontrakt eller i IOS_HANDOFF.md:s exempel) - scanningen är alltså INTE
+// begränsad till ett visst event server-side. En biljett till FEL event
+// kan därför inte avvisas här utan en separat ändring av iOS-appen (se
+// rapporten).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+import { determineScanOutcome } from './determineScanOutcome.ts'
 
 interface ScanBody {
   ticket_code?: string
@@ -58,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: ticket, error: ticketError } = await supabase
     .from('tickets')
-    .select('id, holder_name, status, checked_in_at, event_id, events(title)')
+    .select('id, holder_name, status, checked_in_at, event_id, events(title, status)')
     .eq('ticket_code', ticketCode)
     .maybeSingle()
 
@@ -79,16 +98,28 @@ Deno.serve(async (req: Request) => {
       event_title: null,
       ticket_type: null,
       checked_in_at: null,
+      message: null,
     })
   }
 
-  // eventTitle kan komma som objekt eller array beroende på PostgREST-version.
+  // event (titel+status) kan komma som objekt eller array beroende på
+  // PostgREST-version.
   const eventRelation = ticket.events as unknown
-  const eventTitle = Array.isArray(eventRelation)
-    ? (eventRelation[0]?.title ?? null)
-    : ((eventRelation as { title?: string } | null)?.title ?? null)
+  const event = Array.isArray(eventRelation) ? (eventRelation[0] ?? null) : (eventRelation as { title?: string; status?: string } | null)
+  const eventTitle = event?.title ?? null
 
-  if (ticket.status === 'valid') {
+  const outcome = determineScanOutcome({
+    ticketStatus: ticket.status as 'valid' | 'checked_in' | 'void',
+    eventStatus: event?.status ?? null,
+  })
+
+  // checked_in_at i svaret: NU för en ny incheckning ("ok"), det
+  // URSPRUNGLIGA incheckningstillfället för "duplicate" (oförändrat),
+  // annars null (void, eller inställt event - oavsett biljettens egen
+  // status).
+  let checkedInAtResponse: string | null = null
+
+  if (outcome.result === 'ok') {
     const checkedInAt = new Date().toISOString()
     const { error: updateError } = await supabase
       .from('tickets')
@@ -98,50 +129,23 @@ Deno.serve(async (req: Request) => {
     if (updateError) {
       return jsonResponse({ error: `Kunde inte checka in: ${updateError.message}` }, 500)
     }
-
-    await supabase.from('ticket_scans').insert({
-      ticket_id: ticket.id,
-      device,
-      result: 'ok',
-    })
-
-    return jsonResponse({
-      result: 'ok',
-      holder_name: ticket.holder_name,
-      event_title: eventTitle,
-      ticket_type: null,
-      checked_in_at: toIso8601Seconds(checkedInAt),
-    })
+    checkedInAtResponse = toIso8601Seconds(checkedInAt)
+  } else if (outcome.result === 'duplicate') {
+    checkedInAtResponse = toIso8601Seconds(ticket.checked_in_at)
   }
 
-  if (ticket.status === 'checked_in') {
-    await supabase.from('ticket_scans').insert({
-      ticket_id: ticket.id,
-      device,
-      result: 'duplicate',
-    })
-
-    return jsonResponse({
-      result: 'duplicate',
-      holder_name: ticket.holder_name,
-      event_title: eventTitle,
-      ticket_type: null,
-      checked_in_at: toIso8601Seconds(ticket.checked_in_at), // ursprunglig incheckningstid, oförändrad
-    })
-  }
-
-  // status === 'void' - annullerad biljett, behandlas som ogiltig.
   await supabase.from('ticket_scans').insert({
     ticket_id: ticket.id,
     device,
-    result: 'invalid',
+    result: outcome.result,
   })
 
   return jsonResponse({
-    result: 'invalid',
+    result: outcome.result,
     holder_name: ticket.holder_name,
     event_title: eventTitle,
     ticket_type: null,
-    checked_in_at: null,
+    checked_in_at: checkedInAtResponse,
+    message: outcome.message,
   })
 })

@@ -113,6 +113,11 @@ async function sendConfirmationEmail(params: {
   orderId: string
   paidAt: string
   tickets: { ticket_code: string; qrUrl: string; typeName: string | null }[]
+  // Köpvillkor-länk längst ned i mailet (ordern "Före försäljning"
+  // 2026-10-05, 1.3) - bara när arrangören har satt terms_url (samma
+  // fält som redan styr köpsidans villkorskryssruta). INTE i PDF:en,
+  // vars layout är godkänd och inte ska ändras.
+  termsUrl: string | null
   receipt: {
     sellerLegalName: string | null
     sellerOrgNumber: string | null
@@ -162,8 +167,22 @@ async function sendConfirmationEmail(params: {
   const vatRates = new Set(r.lines.map((l) => l.vatRate))
   const totalVatOre = r.lines.reduce((sum, l) => sum + calcVatOre(l.unitPriceOre * l.qty, l.vatRate), 0)
   const vatLabel = vatRates.size === 1 ? `moms ${[...vatRates][0]} %` : 'moms'
+  // Stripe Link syns som ett eget betalsätt ("link") men är i grunden ett
+  // sparat kort - visas som "Kort (Stripe Link)" istället för den råa,
+  // engelska Stripe-termen. Allt annat (Apple Pay/Google Pay/Klarna m.fl.
+  // - Checkout Session sätter inget payment_method_types, Stripe Dashboard
+  // styr vilka som faktiskt erbjuds) blir "Annat betalsätt" istället för
+  // att läcka ett oöversatt Stripe-internt namn till köparen.
   const paymentMethodLabel =
-    r.paymentMethod === 'card' ? 'Kort' : r.paymentMethod === 'swish' ? 'Swish' : r.paymentMethod
+    r.paymentMethod === 'card'
+      ? 'Kort'
+      : r.paymentMethod === 'swish'
+        ? 'Swish'
+        : r.paymentMethod === 'link'
+          ? 'Kort (Stripe Link)'
+          : r.paymentMethod
+            ? 'Annat betalsätt'
+            : r.paymentMethod
   const receiptHtml = r.sellerLegalName
     ? `
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid #ddd;font-size:13px;color:#333;">
@@ -248,6 +267,11 @@ async function sendConfirmationEmail(params: {
       ${ticketsHtml}
       <p style="color:#666;font-size:13px;">Ordernummer: ${params.orderId}</p>
       ${receiptHtml}
+      ${
+        params.termsUrl
+          ? `<p style="color:#666;font-size:13px;">Köpvillkor: <a href="${params.termsUrl}">${params.termsUrl}</a></p>`
+          : ''
+      }
     </div>
   `
 
@@ -340,10 +364,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // Kvittodel i biljettmailet (ordern 2026-10-01, A5) - säljarens
   // legal_name/org_number. Saknas legal_name för arrangören: hoppa över
   // säljarraden helt, kraschar inte - se filkommentaren vid
-  // sendConfirmationEmail.
+  // sendConfirmationEmail. terms_url (ordern "Före försäljning"
+  // 2026-10-05, 1.3) - samma fält som redan styr köpsidans
+  // villkorskryssruta (create-order), återanvänds här bara för att visa
+  // en länk i mailet.
   const { data: organizerRow, error: organizerRowError } = await supabase
     .from('organizers')
-    .select('legal_name, org_number')
+    .select('legal_name, org_number, terms_url')
     .eq('id', event.organizer_id)
     .maybeSingle()
   if (organizerRowError) {
@@ -446,6 +473,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     orderId: order.id,
     paidAt,
     tickets: ticketsWithQr,
+    termsUrl: organizerRow?.terms_url ?? null,
     receipt: {
       sellerLegalName: organizerRow?.legal_name ?? null,
       sellerOrgNumber: organizerRow?.org_number ?? null,
