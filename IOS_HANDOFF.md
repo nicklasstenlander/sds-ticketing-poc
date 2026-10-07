@@ -107,7 +107,12 @@ Svar:
   "result": "ok",
   "holder_name": "Anna Andersson",
   "event_title": "Vårshow 2026",
-  "ticket_type": null,
+  "ticket_type": "Barn 0–3 år",
+  "ticket_is_free": true,
+  "order_summary": [
+    { "name": "Vuxen", "qty": 2 },
+    { "name": "Barn 0–3 år", "qty": 1 }
+  ],
   "checked_in_at": "2026-05-10T17:58:03Z",
   "message": null
 }
@@ -118,11 +123,62 @@ Svar:
 ORIGINALTIDEN, inte scan-tillfället), eller `"invalid"` (okänd/
 annullerad kod, inställd föreställning, eller fel föreställning).
 
-`ticket_type` är alltid `null` i denna PoC - det finns bara en biljettyp per
-event. Fältet finns med i svaret redan nu så appens datamodell inte behöver
-ändras den dag fler biljettyper införs.
+**`ticket_type`/`ticket_is_free`/`order_summary` (ordern "Skannern ska
+visa vilken typ av biljett som skannas", 2026-10-07, A2) - TRE NYA fält,
+alltid med i svaret (`null` när de inte används). Innan denna order var
+`ticket_type` alltid `null` ("bara en biljettyp per event, PoC") - det
+stämmer inte längre, flera biljettyper per event (Vuxen/Barn/...) har
+funnits sedan en tidigare order, och scan-ticket visar nu den verkliga
+typen:**
 
-**`message` (nytt fält, alltid med i svaret - `null` när det inte
+- `ticket_type`: biljettypens namn, t.ex. `"Barn 0–3 år"`, annars `null`
+  (en biljett utan typ, t.ex. en gammal testbiljett).
+- `ticket_is_free`: `true` om priset för JUST DEN HÄR biljetten var 0 kr
+  VID KÖPET, `false` om det inte var det, `null` om `ticket_type` är
+  `null` ELLER om köpet gjordes INNAN migrationen
+  `20261007000100_order_items_list_price.sql` (se nedan - ingen backfill
+  gjordes av befintliga rader, så ett gammalt köp ger `null`, dvs
+  "okänt", aldrig felaktigt `false`). **OBS, viktigt att detta görs
+  rätt:** detta är INTE `order_items.unit_price_ore` (trots att en
+  tidigare version av den här ordern sa så) - rabattkoder tillämpas PER
+  RAD i `create-order`, så `unit_price_ore` är redan det RABATTERADE
+  priset. En vuxenbiljett med en 100%-kod hade fått `unit_price_ore = 0`,
+  omöjligt att skilja från en genuint gratis barnbiljett. Servern
+  använder istället `order_items.list_price_ore` (radens pris FÖRE
+  rabattkoden, ny nullable kolumn utan backfill - rent additiv mot
+  tabellen, rör inga befintliga rader). **En vuxenbiljett som blev
+  gratis via en rabattkod är INTE `ticket_is_free`** - visa den som
+  vanlig, inte som gratis.
+- `order_summary`: biljetterna i samma köp, högst 6 rader, t.ex.
+  `[{"name":"Vuxen","qty":2},{"name":"Barn 0–3 år","qty":1}]`. Inga
+  personuppgifter. `null` om fältet inte ska visas (se nedan). **OBS:**
+  `order_summary` kan vara satt ÄVEN OM `ticket_type` är `null` (köpets
+  sammansättning är oberoende av just den enskilda biljettraden) - anta
+  inte att de två alltid är `null`/satta tillsammans. Se
+  `docs/scan-response.example.json`, exemplet `unknown_type`, för det
+  (ovanliga) fallet då alla tre verkligen är `null` samtidigt.
+
+Fyra kompletta exempelsvar (vanlig biljett, gratisbiljett, rabatterad
+vuxenbiljett som INTE är gratis, och okänd typ) finns i
+[`docs/scan-response.example.json`](./docs/scan-response.example.json) -
+`scripts/check-scan-ticket.ts` validerar att de har exakt rätt nycklar
+och typer.
+
+Alla tre fält är `null` tillsammans för de svar där typen INTE visas:
+okänd biljettkod, inställd föreställning, och fel föreställning vald i
+appen (precis de fall som redan sätter `message`, se nedan - men
+`message` och typfälten är två oberoende fält, anta inte att det ena
+styr det andra bara för att de råkar sammanfalla idag). Typen visas
+DÄREMOT för en redan incheckad biljett (`"duplicate"`) och för en
+annullerad biljett (`"invalid"` utan `message`).
+
+Avkoda alla tre som valfria (`decodeIfPresent`) - en äldre appversion som
+inte känner till fälten alls påverkas inte. **Dubbelkolla att appens
+egna typer inte redan har ett fält som heter `ticket_type`,
+`ticket_is_free` eller `order_summary` med en ANNAN betydelse** - annars
+kan en befintlig `Codable`-struct råka matcha fel.
+
+**`message` (alltid med i svaret - `null` när det inte
 används):** en läsbar textsträng att visa i appen, bara ifylld för två
 `"invalid"`-fall:
 

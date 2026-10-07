@@ -10,7 +10,9 @@
 // Response: { result: "ok" | "duplicate" | "invalid",
 //              holder_name: string | null,
 //              event_title: string | null,
-//              ticket_type: null,
+//              ticket_type: string | null,
+//              ticket_is_free: boolean | null,
+//              order_summary: { name: string, qty: number }[] | null,
 //              checked_in_at: string | null,
 //              message: string | null }
 //
@@ -32,11 +34,39 @@
 // biljetten ("invalid") med en förklarande "message" - UTAN att checka
 // in den eller avslöja om den redan är incheckad (se
 // determineScanOutcome.ts för den fullständiga kontrollordningen).
+//
+// "ticket_type"/"ticket_is_free"/"order_summary" (ordern "Skannern ska
+// visa vilken typ av biljett som skannas" 2026-10-07, A2) - TRE NYA,
+// ADDITIVA fält, alltid med i svaret (null när de inte används). Fylls i
+// för alla svar där biljetten faktiskt hittades i databasen OCH
+// determineScanOutcome satte showTicketType=true (dvs INTE "inställt
+// event" eller "fel föreställning" - se determineScanOutcome.ts). En
+// biljett utan ticket_type_id (bör inte förekomma längre, se
+// migrationen 20261007000000) ger ticket_type=null, ticket_is_free=null,
+// men kan ändå ha order_summary (köpets sammansättning är oberoende av
+// just DEN HÄR biljettraden). "ticket_is_free" använder order_items.
+// list_price_ore (radens pris FÖRE en ev. rabattkod, migrationen
+// 20261007000100) - INTE unit_price_ore (det rabatterade priset) och
+// INTE typens nuvarande pris. Den faktiska beräkningen ligger i
+// buildTicketTypeInfo (determineScanOutcome.ts), ren och testbar utan
+// DB-åtkomst - se dess filkommentar för varför unit_price_ore inte
+// duger (en vuxenbiljett med en 100%-kod skulle annars se ut som en
+// genuint gratis biljettyp). Inga personuppgifter i något av de tre
+// fälten.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
-import { determineScanOutcome } from './determineScanOutcome.ts'
+import { buildTicketTypeInfo, determineScanOutcome, type OrderItemForScan } from './determineScanOutcome.ts'
+
+/** PostgREST kan ge en inbäddad relation som objekt eller array beroende
+ * på version/frågeform - samma normalisering som stripe-webhook/index.ts
+ * egna `single()`, men inte delad därifrån (den är inte exporterad, och
+ * de två funktionerna har inget annat gemensamt beroende värt att skapa). */
+function single<T>(rel: T | T[] | null | undefined): T | null {
+  if (Array.isArray(rel)) return rel[0] ?? null
+  return rel ?? null
+}
 
 interface ScanBody {
   ticket_code?: string
@@ -94,7 +124,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: ticket, error: ticketError } = await supabase
     .from('tickets')
-    .select('id, holder_name, status, checked_in_at, event_id, events(title, status, starts_at)')
+    .select('id, holder_name, status, checked_in_at, event_id, order_id, ticket_type_id, events(title, status, starts_at)')
     .eq('ticket_code', ticketCode)
     .maybeSingle()
 
@@ -114,6 +144,8 @@ Deno.serve(async (req: Request) => {
       holder_name: null,
       event_title: null,
       ticket_type: null,
+      ticket_is_free: null,
+      order_summary: null,
       checked_in_at: null,
       message: null,
     })
@@ -134,6 +166,37 @@ Deno.serve(async (req: Request) => {
     requestedEventId,
     ticketEventTitle: eventTitle,
     ticketEventStartsAt: event?.starts_at ?? null,
+  })
+
+  // Biljettyp + köpsammansättning (ordern A2) - bara för svar där
+  // biljetten hittades OCH inte avvisas för inställt event/fel
+  // föreställning (showTicketType, se determineScanOutcome.ts). Den rena
+  // beräkningen (ticket_type/ticket_is_free/order_summary) ligger i
+  // buildTicketTypeInfo - index.ts hämtar bara raderna och normaliserar
+  // PostgREST:s objekt-eller-array-form för den inbäddade relationen.
+  let orderItemsForScan: OrderItemForScan[] = []
+  if (outcome.showTicketType) {
+    const { data: orderItems, error: orderItemsError } = await supabase
+      .from('order_items')
+      .select('ticket_type_id, qty, list_price_ore, ticket_types(name)')
+      .eq('order_id', ticket.order_id)
+
+    if (orderItemsError) {
+      console.error('Kunde inte hämta order_items för scan-ticket', ticket.order_id, orderItemsError.message)
+    } else if (orderItems) {
+      orderItemsForScan = orderItems.map((item) => ({
+        ticket_type_id: item.ticket_type_id,
+        qty: item.qty,
+        listPriceOre: item.list_price_ore,
+        typeName: single<{ name: string }>(item.ticket_types as unknown as { name: string } | { name: string }[] | null)?.name ?? null,
+      }))
+    }
+  }
+
+  const { ticket_type: ticketType, ticket_is_free: ticketIsFree, order_summary: orderSummary } = buildTicketTypeInfo({
+    showTicketType: outcome.showTicketType,
+    ownTicketTypeId: ticket.ticket_type_id,
+    orderItems: orderItemsForScan,
   })
 
   // checked_in_at i svaret: NU för en ny incheckning ("ok"), det
@@ -167,7 +230,9 @@ Deno.serve(async (req: Request) => {
     result: outcome.result,
     holder_name: ticket.holder_name,
     event_title: eventTitle,
-    ticket_type: null,
+    ticket_type: ticketType,
+    ticket_is_free: ticketIsFree,
+    order_summary: orderSummary,
     checked_in_at: checkedInAtResponse,
     message: outcome.message,
   })

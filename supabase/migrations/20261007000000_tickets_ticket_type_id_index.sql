@@ -1,0 +1,16 @@
+-- Ordern "Skannern ska visa vilken typ av biljett som skannas" 2026-10-07, A1.
+--
+-- VIKTIGT (upptäckt vid genomgång, inte i ordertexten): tickets.ticket_type_id
+-- finns REDAN sedan 20260105000000_ticket_types_and_discounts.sql (rad 52),
+-- med fullständig backfill av alla dåvarande biljetter till sitt events
+-- "Ordinarie"-typ (samma migration, rad 62-66) - ordertextens premiss att
+-- kolumnen saknas och att befintliga biljetter har null stämmer alltså
+-- inte, se rapporten till Nicklas. stripe-webhook sätter redan
+-- ticket_type_id per biljett vid skapande (index.ts, rad ~399) - inget av
+-- det behöver göras här.
+--
+-- Det enda som faktiskt saknas är indexet ordern efterfrågar - scan-ticket
+-- kommer från och med denna order (A2) slå upp biljettens typnamn och
+-- köpets sammansättning vid VARJE scanning, så ett index är motiverat även
+-- om volymerna i denna PoC är små.
+create index if not exists tickets_ticket_type_id_idx on tickets(ticket_type_id);

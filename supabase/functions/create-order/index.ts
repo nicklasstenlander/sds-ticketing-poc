@@ -425,6 +425,12 @@ Deno.serve(async (req: Request) => {
       ticket_type_id: l.ticketTypeId,
       qty: l.qty,
       unit_price_ore: l.unitPriceAfterOre,
+      // list_price_ore (ordern "Skannern ska visa vilken typ av biljett
+      // som skannas" 2026-10-07, A2) - radens pris FÖRE rabattkoden, se
+      // migrationen 20261007000100. Skiljer en genuint gratis biljettyp
+      // från en som blev gratis via en 100%-kod (scan-ticket använder
+      // ALDRIG unit_price_ore för "är gratis"-frågan, bara detta fält).
+      list_price_ore: l.unitPriceOre,
       vat_rate: l.vatRate,
     })),
   )

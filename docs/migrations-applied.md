@@ -38,3 +38,5 @@ migration bekräftas körd.
 | `20261002000100_organizer_receipt_fields.sql` | 2026-10-03 |
 | `20261003000000_order_terms_acceptance.sql` | 2026-10-03 |
 | `20261003002000_event_sales_open_at.sql` | 2026-10-03 |
+| `20261007000000_tickets_ticket_type_id_index.sql` | |
+| `20261007000100_order_items_list_price.sql` | |

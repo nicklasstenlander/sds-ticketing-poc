@@ -1,0 +1,46 @@
+{
+  "_description": "Fyra kompletta exempelsvar från scan-ticket (ordern 'Skannern ska visa vilken typ av biljett som skannas' 2026-10-07, A2). Validerade mot schemat i scripts/check-scan-ticket.ts (validateScanResponseShape). Varje nyckel UTOM '_description' här är ett komplett, orört scan-ticket-svar - exakt de åtta nycklar servern faktiskt skickar, inga fler, inga färre (tänkt att återanvändas som fixtur i appens egna avkodningstester, så inga extra '_note'-fält blandas in i själva svarsobjekten). Förklaringar till respektive exempel: normal_ticket = en vanlig betald vuxenbiljett. free_ticket = en genuint gratis biljettyp (list_price_ore=0) i ett köp som även innehöll två vuxenbiljetter (se order_summary). discounted_adult_not_free = en vuxenbiljett där en 100%-rabattkod gjorde det DEBITERADE priset (order_items.unit_price_ore) till 0, men listpriset (order_items.list_price_ore, radens pris FÖRE koden) fortfarande var >0 - ticket_is_free är därför korrekt false, exakt det fall ordertexten pekar ut ('En vuxenbiljett som blev gratis via rabattkod är alltså inte gratis i det här läget'). unknown_type = ticket_type_id null (t.ex. en gammal testbiljett) OCH inga hämtningsbara order_items - det ovanliga fallet då alla tre nya fälten är null SAMTIDIGT; vanligare är att order_summary ändå är satt trots att ticket_type är null, eftersom köpets sammansättning är oberoende av den enskilda biljettraden - anta inte att de alltid följs åt.",
+  "normal_ticket": {
+    "result": "ok",
+    "holder_name": "Anna Andersson",
+    "event_title": "Vårshow 2026",
+    "ticket_type": "Vuxen",
+    "ticket_is_free": false,
+    "order_summary": [{ "name": "Vuxen", "qty": 2 }],
+    "checked_in_at": "2026-05-10T17:58:03Z",
+    "message": null
+  },
+  "free_ticket": {
+    "result": "ok",
+    "holder_name": "Lisa Svensson",
+    "event_title": "Vårshow 2026",
+    "ticket_type": "Barn 0–3 år",
+    "ticket_is_free": true,
+    "order_summary": [
+      { "name": "Vuxen", "qty": 2 },
+      { "name": "Barn 0–3 år", "qty": 1 }
+    ],
+    "checked_in_at": "2026-05-10T18:02:11Z",
+    "message": null
+  },
+  "discounted_adult_not_free": {
+    "result": "ok",
+    "holder_name": "Erik Berg",
+    "event_title": "Vårshow 2026",
+    "ticket_type": "Vuxen",
+    "ticket_is_free": false,
+    "order_summary": [{ "name": "Vuxen", "qty": 1 }],
+    "checked_in_at": "2026-05-10T18:05:44Z",
+    "message": null
+  },
+  "unknown_type": {
+    "result": "duplicate",
+    "holder_name": "Gammal Testbiljett",
+    "event_title": "Vinterföreställningen",
+    "ticket_type": null,
+    "ticket_is_free": null,
+    "order_summary": null,
+    "checked_in_at": "2026-01-10T12:00:00Z",
+    "message": null
+  }
+}
