@@ -40,6 +40,10 @@ export interface EventOrganizerRelation {
   // Köpvillkor (ordern 2026-10-03, A6) - bara satt för arrangörer som
   // kräver godkännande på köpsidan. null/tom = ingen kryssruta visas.
   terms_url: string | null
+  // Arrangörens egen slug (ordern "Köpvillkor som egen sida i Rideau"
+  // 2026-10-07, punkt 3) - används för att länka footerns "Köpvillkor"
+  // till /villkor/:slug utan att hårdkoda vilken arrangör sidan gäller.
+  slug: string
 }
 
 export interface TicketTypeSummary {

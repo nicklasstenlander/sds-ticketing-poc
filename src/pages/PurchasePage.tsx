@@ -99,11 +99,12 @@ export function PurchasePage() {
   async function fetchEventAndTickets(cancelledRef?: { current: boolean }): Promise<EventWithOrganizer | null> {
     const { data: eventData, error: eventError } = await supabase
       .from('events')
-      // terms_url (A6) och sales_open_at (ordern 2026-10-03) - bara dessa
-      // nya fält läggs till i select():en, inget annat från organizers
-      // exponeras (se ordertexten avsnitt 4). sales_open_at kommer redan
-      // med automatiskt via "*".
-      .select('*, organizers(name, terms_url)')
+      // terms_url (A6), slug (ordern "Köpvillkor som egen sida" 2026-10-07,
+      // punkt 3 - footerns Köpvillkor-länk) och sales_open_at (ordern
+      // 2026-10-03) - bara dessa fält läggs till i select():en, inget
+      // annat från organizers exponeras. sales_open_at kommer redan med
+      // automatiskt via "*".
+      .select('*, organizers(name, terms_url, slug)')
       .eq('slug', slug)
       .maybeSingle()
     if (cancelledRef?.current) return null
@@ -263,6 +264,11 @@ export function PurchasePage() {
     : null
   // Köpvillkor (A6) - bara satt för arrangörer som kräver godkännande.
   const termsUrl = organizer?.terms_url ?? null
+  // Footerns Köpvillkor-länk (ordern "Köpvillkor som egen sida" 2026-10-07,
+  // punkt 3) - arrangörens egen slug när den är känd (event har laddats),
+  // annars hårdkodad "sds" som fallback innan/om det misslyckas (rapporterat
+  // till Nicklas - matchar bara om arrangörens slug faktiskt ÄR "sds").
+  const organizerSlug = organizer?.slug ?? 'sds'
 
   const remaining = event ? event.capacity - event.sold_count : 0
   const soldOut = event ? event.capacity > 0 && remaining <= 0 : false
@@ -335,7 +341,7 @@ export function PurchasePage() {
 
   if (loadError) {
     return (
-      <Layout>
+      <Layout termsSlug={organizerSlug}>
         <p className="text-red-600">Kunde inte hämta eventet: {loadError}</p>
       </Layout>
     )
@@ -343,7 +349,7 @@ export function PurchasePage() {
 
   if (notFound) {
     return (
-      <Layout>
+      <Layout termsSlug={organizerSlug}>
         <p className="text-[var(--text-muted)]">Eventet hittades inte, eller är inte publicerat.</p>
       </Layout>
     )
@@ -351,7 +357,7 @@ export function PurchasePage() {
 
   if (!event || ticketTypes === null) {
     return (
-      <Layout>
+      <Layout termsSlug={organizerSlug}>
         <p className="text-[var(--text-muted)]">Laddar…</p>
       </Layout>
     )
@@ -359,14 +365,14 @@ export function PurchasePage() {
 
   if (ticketTypes.length === 0) {
     return (
-      <Layout>
+      <Layout termsSlug={organizerSlug}>
         <p className="text-[var(--text-muted)]">Det här eventet har inga biljetter till salu ännu.</p>
       </Layout>
     )
   }
 
   return (
-    <Layout>
+    <Layout termsSlug={organizerSlug}>
       {/* Hero-affisch (liggande) om en är uppladdad (Tilläggsordern
           2026-08-05) - annars samma utseende som innan, utan bild. */}
       {event.poster_landscape_url && (

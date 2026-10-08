@@ -84,9 +84,15 @@ export function ConfirmationPage() {
     }
   }, [orderId])
 
+  // Footerns Köpvillkor-länk (ordern "Köpvillkor som egen sida" 2026-10-07,
+  // punkt 3) - den här sidan hämtar bara order-status (inget organizer-
+  // fält finns i det svaret), så ingen dynamisk slug är tillgänglig här.
+  // Hårdkodad "sds" tills vidare, rapporterat till Nicklas.
+  const organizerSlug = 'sds'
+
   if (!orderId) {
     return (
-      <Layout>
+      <Layout termsSlug={organizerSlug}>
         <p className="text-[var(--text-muted)] mb-4">
           Vi hittar ingen orderinformation att visa (sidan öppnades förmodligen direkt, utan att
           gå via köpflödet).
@@ -101,7 +107,7 @@ export function ConfirmationPage() {
   }
 
   return (
-    <Layout>
+    <Layout termsSlug={organizerSlug}>
       <div className="card mb-6">
         <div className="text-sm text-[var(--text-muted)] mb-2">Ordernummer</div>
         <div className="font-mono text-sm break-all text-[var(--text)]">{orderId}</div>
