@@ -7,6 +7,7 @@ import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/typ
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/salesState'
+import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface CreateOrderResponse {
@@ -287,6 +288,18 @@ export function PurchasePage() {
     feeConfig?.mode === 'flat_per_ticket' ? totalQty * feeConfig.flat_ore : 0
   const grandTotalOre = totalOre + platformFeeOre
 
+  // Skydd mot att gratisbiljetter fyller en föreställning (ordern
+  // 2026-10-07) - samma rena funktion som servern (create-order) kör,
+  // här bara för att visa/inaktivera UI:t direkt. priceOre = t.price_ore
+  // (biljettypens ORDINARIE pris), inte påverkad av en ev. rabattkod i
+  // fältet nedanför - servern är alltid den som faktiskt avgör, se
+  // create-order/index.ts.
+  const freeTicketCheck = checkFreeTicketLimit(
+    (ticketTypes ?? [])
+      .filter((t) => (quantities[t.id] ?? 0) > 0)
+      .map((t) => ({ priceOre: t.price_ore, qty: quantities[t.id] ?? 0 })),
+  )
+
   function setQty(ticketTypeId: string, qty: number) {
     setQuantities((q) => ({ ...q, [ticketTypeId]: Math.max(0, qty) }))
   }
@@ -295,6 +308,7 @@ export function PurchasePage() {
     e.preventDefault()
     if (!event || totalQty < 1) return
     if (termsUrl && !acceptedTerms) return
+    if (!freeTicketCheck.ok) return
     setSubmitting(true)
     setFormError(null)
     try {
@@ -451,6 +465,15 @@ export function PurchasePage() {
                     <div className="text-sm text-[var(--text-muted)]">
                       {(t.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
                     </div>
+                    {/* Skydd mot att gratisbiljetter fyller en
+                        föreställning (ordern 2026-10-07) - kort
+                        förklaring nära gratistypen, oavsett om något
+                        redan är valt. */}
+                    {t.price_ore === 0 && (
+                      <p className="text-xs text-[var(--text-muted)] mt-1 max-w-[32ch]">
+                        Gratisbiljett för barn 0–3 år bokas tillsammans med betald biljett, högst två per betald.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     <button
@@ -580,18 +603,32 @@ export function PurchasePage() {
               </div>
             )}
 
+            {/* Skydd mot att gratisbiljetter fyller en föreställning
+                (ordern 2026-10-07) - tydlig text OVANFÖR knappen när
+                valet bryter mot reglerna, inte bara en inaktiverad knapp
+                utan förklaring. */}
+            {!freeTicketCheck.ok && (
+              <p className="text-sm text-amber-700 bg-amber-50 rounded-[var(--radius-sm)] px-3 py-2">
+                {freeTicketCheck.error}
+              </p>
+            )}
+
             {formError && <p className="text-red-600 text-sm">{formError}</p>}
 
             <button
               type="submit"
-              disabled={submitting || totalQty < 1 || (Boolean(termsUrl) && !acceptedTerms)}
+              disabled={
+                submitting || totalQty < 1 || (Boolean(termsUrl) && !acceptedTerms) || !freeTicketCheck.ok
+              }
               className="btn-primary w-full py-2"
             >
               {submitting
                 ? 'Skickar dig till Stripe…'
                 : totalQty < 1
                   ? 'Välj minst en biljett'
-                  : 'Fortsätt till betalning'}
+                  : !freeTicketCheck.ok
+                    ? 'Ändra ditt val ovan'
+                    : 'Fortsätt till betalning'}
             </button>
             {/* Förklaring NÄR knappen är inaktiv på grund av villkoren
                 specifikt (inte bara en grå knapp utan anledning, ordertextens

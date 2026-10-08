@@ -23,6 +23,7 @@ import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.ts'
 import { calculatePlatformFee, readPlatformFeeFlatOre } from '../_shared/platformFee.ts'
 import { formatStockholmDateTimeSv } from '../_shared/salesState.ts'
+import { checkFreeTicketLimit } from '../_shared/freeTicketLimit.ts'
 
 interface CartItemInput {
   ticket_type_id?: string
@@ -311,6 +312,21 @@ Deno.serve(async (req: Request) => {
       vatRate: tt.vat_rate,
       unitPriceAfterOre: tt.price_ore,
     })
+  }
+
+  // Skydd mot att gratisbiljetter fyller en föreställning (ordern
+  // 2026-10-07) - FÖRE kapacitetsreservationen och FÖRE alla Stripe-
+  // anrop, så ett nekat anrop varken reserverar platser eller skapar
+  // någon order/session. Använder lines[].unitPriceOre (biljettypens
+  // ORDINARIE ticket_types.price_ore, satt direkt ovan) - INTE
+  // unitPriceAfterOre, som fortfarande är oförändrad här (rabattkoden
+  // tillämpas längre ner) men för tydlighetens skull: även om den redan
+  // vore rabatterad skulle checkFreeTicketLimit aldrig få den skickad,
+  // exakt enligt ordertextens definition ("Rabattkoder ändrar inte
+  // detta - en betald typ med 100% kod räknas som betald typ").
+  const freeTicketCheck = checkFreeTicketLimit(lines.map((l) => ({ priceOre: l.unitPriceOre, qty: l.qty })))
+  if (!freeTicketCheck.ok) {
+    return jsonResponse({ code: freeTicketCheck.code, error: freeTicketCheck.error }, 409)
   }
 
   // Rabattkod - valfri, tillämpas på hela kundvagnen. Ogiltig/utgången/
