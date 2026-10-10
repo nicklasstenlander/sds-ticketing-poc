@@ -106,7 +106,19 @@ export function EventsPage() {
                     aria-hidden="true"
                   />
                 )}
-                <div className="min-w-0 flex-1">
+                {/* flex-auto (inte flex-1): flex-1 sätter flex-basis:0%,
+                    vilket gör att den här kolumnen INTE räknas med alls när
+                    flex-wrap avgör om raden får plats - bara posterns 64px
+                    och prisblockets egen bredd (shrink-0) spelade roll, så
+                    wrap triggrades aldrig och kolumnen klämdes ner till
+                    enstaka pixlar i smal vy (upptäckt vid 360px, ordern
+                    2026-10-10 - fanns redan innan den ordern, aldrig testat
+                    vid just 360px tidigare). flex-auto (flex:1 1 auto) låter
+                    kolumnens egna innehåll räknas med i den bedömningen, så
+                    prisblocket korrekt hamnar på en egen rad istället när
+                    det inte får plats - samma "stapla innan krymp"-princip
+                    som embed.js (ordern 2026-10-06). */}
+                <div className="min-w-0 flex-auto">
                   <div className="font-semibold text-[var(--text)]">{event.title}</div>
                   <div className="text-sm text-[var(--text-muted)] mb-3">
                     {/* starts_at är null bara för ett ännu opublicerat
