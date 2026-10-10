@@ -147,30 +147,32 @@ export function EventsPage() {
                     {lowStock && <div className="text-sm text-[var(--text-muted)]">Få biljetter kvar</div>}
                   </div>
                 </div>
-                {/* ml-auto: när raden inte får plats (flex-wrap ovan)
-                    hamnar det här blocket ensamt på en egen rad, höger-
-                    justerat på den raden - samma "stapla innan krympning"-
-                    princip som används i embed.js (ordern 2026-10-06). */}
-                <div className="text-right shrink-0 ml-auto">
-                  <div className="font-semibold text-[var(--text)] mb-2">
+                {/* Pris, gratisrad och knapp/chip på SAMMA rad (Nicklas
+                    2026-10-10: "för att inte få den lika hög") - en flex-
+                    rad istället för tre staplade block, så kortet bara blir
+                    högre när raden faktiskt inte får plats (flex-wrap
+                    bryter då av DELAR av raden, inte allt på förhand). Höger-
+                    justerad som grupp (justify-end) även när den bryter till
+                    fler rader. ml-auto: när HELA den här raden inte får
+                    plats bredvid bild+text-gruppen (yttre flex-wrap ovan)
+                    hamnar den på en egen rad, höger-justerad - samma
+                    "stapla innan krympning"-princip som används i embed.js
+                    (ordern 2026-10-06). */}
+                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0 ml-auto max-w-full">
+                  <span className="font-semibold text-[var(--text)]">
                     {types.length === 0
                       ? '–'
                       : fromPriceOre === null
                         ? 'Gratis'
                         : `${hasMultiplePrices ? 'Från ' : ''}${(fromPriceOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
-                  </div>
-                  {/* Gratisrad (ordern 2026-10-10, B) - bara när det
+                  </span>
+                  {/* Gratistext (ordern 2026-10-10, B) - bara när det
                       BLANDAS med betalda typer (annars visar priset ovan
                       redan "Gratis" ensamt). */}
                   {fromPriceOre !== null && freeTicketNames.length > 0 && (
-                    // max-w: utan en breddbegränsning kan den här raden bli
-                    // bredare än chippet/priset och tvinga hela högerblocket
-                    // (shrink-0) brett nog för att klämma titelkolumnen i
-                    // smal vy (samma klass av bugg som ordern 2026-10-06
-                    // åtgärdade - se filkommentaren längre upp i filen).
-                    <div className="text-xs text-[var(--text-muted)] mb-2 max-w-[120px] ml-auto">
+                    <span className="text-xs text-[var(--text-muted)]">
                       {freeTicketNames.map((name) => `${name}: gratis`).join(', ')}
-                    </div>
+                    </span>
                   )}
                   {upcoming && event.sales_open_at ? (
                     <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] inline-block">
