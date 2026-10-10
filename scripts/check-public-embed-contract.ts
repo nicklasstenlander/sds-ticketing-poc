@@ -20,6 +20,7 @@ const EVENT_KEYS = [
   'starts_at',
   'venue',
   'from_price_ore',
+  'to_price_ore',
   'free_ticket_names',
   'poster_landscape_url',
   'poster_portrait_url',
@@ -58,6 +59,23 @@ function validateEvent(value: unknown): string[] {
   }
   if (typeof obj.from_price_ore === 'number' && obj.from_price_ore <= 0) {
     errors.push('from_price_ore måste vara > 0 när den inte är null (0 kr-typer räknas som gratis, inte betalda)')
+  }
+
+  // to_price_ore (uppföljning 2026-10-10): till skillnad från
+  // from_price_ore FÅR den vara 0 (ett event där alla typer är gratis) -
+  // bara null är förbjudet utanför "inga typer alls"-fallet.
+  if (obj.to_price_ore !== null && typeof obj.to_price_ore !== 'number') {
+    errors.push('to_price_ore måste vara ett heltal eller null')
+  }
+  if (typeof obj.to_price_ore === 'number' && obj.to_price_ore < 0) {
+    errors.push('to_price_ore får inte vara negativt')
+  }
+  if (
+    typeof obj.from_price_ore === 'number' &&
+    typeof obj.to_price_ore === 'number' &&
+    obj.to_price_ore < obj.from_price_ore
+  ) {
+    errors.push(`to_price_ore (${obj.to_price_ore}) kan inte vara lägre än from_price_ore (${obj.from_price_ore})`)
   }
 
   if (!Array.isArray(obj.free_ticket_names)) {
@@ -133,11 +151,23 @@ const hasEmptyFreeNames = (example.events as { free_ticket_names: unknown[] }[])
 )
 assertEqual(hasEmptyFreeNames, true, 'Exempelfilen täcker en tom free_ticket_names')
 
-const testSlapp = (example.events as { slug: string; from_price_ore: number | null; free_ticket_names: string[] }[]).find(
-  (e) => e.slug === 'test-slapp',
-)
+const testSlapp = (
+  example.events as { slug: string; from_price_ore: number | null; to_price_ore: number | null; free_ticket_names: string[] }[]
+).find((e) => e.slug === 'test-slapp')
 assertEqual(testSlapp?.from_price_ore, 300, 'test-slapp: from_price_ore är 300 (Billig, den billigaste BETALDA typen) - INTE 0 (Barn, gratis)')
+assertEqual(testSlapp?.to_price_ore, 29500, 'test-slapp: to_price_ore är 29500 (Ordinarie, det DYRASTE priset över alla typer)')
 assertEqual(testSlapp?.free_ticket_names, ['Barn'], 'test-slapp: free_ticket_names listar gratistypen separat')
+
+// oppet-hus-gratis: alla typer gratis -> to_price_ore=0 (INTE null - "null
+// bara om eventet saknar biljettyper helt", och det här eventet har
+// typer, de är bara gratis).
+const oppetHus = (example.events as { slug: string; to_price_ore: number | null }[]).find(
+  (e) => e.slug === 'oppet-hus-gratis',
+)
+assertEqual(oppetHus?.to_price_ore, 0, 'oppet-hus-gratis (alla typer gratis): to_price_ore=0, inte null')
+
+const hasNullToPrice = (example.events as Record<string, unknown>[]).some((e) => e.to_price_ore === null)
+assertEqual(hasNullToPrice, true, 'Exempelfilen täcker to_price_ore: null (inga biljettyper alls)')
 
 // === Negativa kontroller - bevisar att valideraren faktiskt upptäcker fel ===
 
@@ -165,6 +195,21 @@ assertEqual(
   validateEvent({ ...(example.events[0] as object), free_ticket_names: [1, 2] }).length > 0,
   true,
   'free_ticket_names med icke-text-element upptäcks',
+)
+assertEqual(
+  validateEvent({ ...(example.events[0] as object), to_price_ore: -1 }).length > 0,
+  true,
+  'Ett negativt to_price_ore upptäcks',
+)
+assertEqual(
+  validateEvent({ ...(example.events[0] as object), from_price_ore: 300, to_price_ore: 100 }).length > 0,
+  true,
+  'to_price_ore lägre än from_price_ore (logiskt omöjligt) upptäcks',
+)
+assertEqual(
+  validateEvent({ ...(example.events[0] as object), from_price_ore: null, to_price_ore: 0, free_ticket_names: ['Alla typer'] }),
+  [],
+  'to_price_ore=0 är GILTIGT (till skillnad från from_price_ore=0) - ett event där allt är gratis',
 )
 
 console.log(`\n${failures === 0 ? 'Alla kontroller gick igenom.' : `${failures} kontroll(er) misslyckades.`}`)

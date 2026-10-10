@@ -47,6 +47,7 @@ interface EmbedEvent {
   starts_at: string | null
   venue: string | null
   from_price_ore: number | null
+  to_price_ore: number | null
   free_ticket_names: string[]
   poster_landscape_url: string | null
   poster_portrait_url: string | null
@@ -172,6 +173,7 @@ Deno.serve(async (req: Request) => {
       starts_at: toIso8601Seconds(ev.starts_at),
       venue: ev.venue,
       from_price_ore: pricing.from_price_ore,
+      to_price_ore: pricing.to_price_ore,
       free_ticket_names: pricing.free_ticket_names,
       poster_landscape_url: trustedPosterUrl(ev.poster_landscape_url),
       poster_portrait_url: trustedPosterUrl(ev.poster_portrait_url),

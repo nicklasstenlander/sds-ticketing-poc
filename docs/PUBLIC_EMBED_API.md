@@ -61,6 +61,7 @@ aldrig på att klientens klocka är korrekt (se `computeClockSkewMs` i
 | `starts_at` | string (ISO 8601, UTC) | ja i typen, i praktiken alltid satt för ett publicerat event | |
 | `venue` | string | ja | |
 | `from_price_ore` | int | ja | Lägsta pris **bland betalda biljettyper** (pris > 0), i ören. `null` om eventet saknar betalda typer (inga typer alls, eller bara gratistyper — se `free_ticket_names` för att skilja de två åt). **Räknar aldrig in gratistyper** — se "Rättelse 2026-10-10" nedan. |
+| `to_price_ore` | int | ja | Högsta pris **över ALLA biljettyper**, i ören — till skillnad från `from_price_ore` räknas gratistyper HÄR med (ett event där alla typer är gratis ger `to_price_ore: 0`, inte `null`). `null` bara om eventet saknar biljettyper helt. Tillagt 2026-10-10 (uppföljning) - för att visa ett prisintervall (`from_price_ore`–`to_price_ore`) som på webbappens `/evenemang`. |
 | `free_ticket_names` | string[] | nej (tom lista, aldrig `null`) | Namnen på biljettyper med pris 0, i databasordning. Tom lista om inga gratistyper finns. |
 | `poster_landscape_url` | string | ja | Absolut, publik URL. Garanterat satt bara när den pekar på projektets eget Storage (`https://oyqgxnmwojjjpoubdlfa.supabase.co/storage/v1/object/public/...`) — en otillåten extern URL ger `null`, aldrig den otillåtna URL:en. Validerat server-sidan (appen behöver inte dubbelkolla). |
 | `poster_portrait_url` | string | ja | Samma regler som `poster_landscape_url`. Appen använder landscape och faller tillbaka på portrait om landscape saknas. |
@@ -94,6 +95,17 @@ listnings-endpointen, används av Squarespace-snutten "Kommande
 evenemang") — de två endpointerna delar prissammanfattningslogik
 (`supabase/functions/_shared/ticketPricing.ts`) av samma skäl som de
 redan delade `sales_state`-logiken.
+
+## Uppföljning 2026-10-10: `to_price_ore` tillagt
+
+Webbappens `/evenemang`-sida visar sedan samma dag ett prisintervall
+(t.ex. "0–200 kr") - men den sidan hämtar `ticket_types` direkt från
+Supabase i sin egen fråga, HELT SKILT från det här kontraktet. Fråga
+uppstod om varifrån CORE-appen skulle få motsvarande högsta pris -
+svaret var att kontraktet saknade det fältet helt. `to_price_ore`
+tillagt additivt (bara i `public-embed`, inte `public-events` - det är
+inte en del av CORE-appens dokumenterade kontrakt) för att göra samma
+intervall möjligt att visa i appen utan en egen, separat databasfråga.
 
 ## Exempelsvar
 
