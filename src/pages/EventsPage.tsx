@@ -5,7 +5,6 @@ import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/typ
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 import { computeSalesState } from '../lib/salesState'
-import { computePricingSummary } from '../lib/ticketPricing'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface EventWithTicketTypes extends EventRow {
@@ -71,16 +70,19 @@ export function EventsPage() {
           // kvar" under 10% kvar. "Slutsålt" hanteras redan separat nedan
           // (höger badge), oberoende av detta.
           const lowStock = !soldOut && event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
+          // Prisintervall (Nicklas 2026-10-10, efter att ha testat "Från X
+          // kr" + en separat "Barn 0-3 år: gratis"-rad: "Detta kan vi ta
+          // bort och istället ha 0-200kr") - ETT tal om alla typer har
+          // samma pris, annars MIN-MAX över ALLA typer (gratis räknas med
+          // i spannet, inte en egen rad längre). Gäller bara /evenemang -
+          // API-kontraktet (from_price_ore/free_ticket_names i public-
+          // embed/public-events, docs/PUBLIC_EMBED_API.md) är oförändrat,
+          // CORE-appen och widgeten läser fortfarande de fälten som de är.
           const prices = types.map((t) => t.price_ore)
-          const hasMultiplePrices = new Set(prices).size > 1
-          // Rättad (ordern "Förberedelse för CORE-appen" 2026-10-10, B) -
-          // from_price_ore/minPrice räknar bara BETALDA typer. En gratis
-          // barntyp gav tidigare "Från 0 kr" även när riktiga biljetter
-          // kostade mer - fromPriceOre=null nu bara om ALLA typer är
-          // gratis (freeTicketNames.length>0) eller inga typer finns alls.
-          const pricing = computePricingSummary(types.map((t) => ({ price_ore: t.price_ore, name: t.name })))
-          const fromPriceOre = pricing.from_price_ore
-          const freeTicketNames = pricing.free_ticket_names
+          const minPriceOre = prices.length > 0 ? Math.min(...prices) : null
+          const maxPriceOre = prices.length > 0 ? Math.max(...prices) : null
+          const singlePrice = new Set(prices).size <= 1
+          const formatKr = (ore: number) => (ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })
           const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
 
           return (
@@ -160,20 +162,14 @@ export function EventsPage() {
                     (ordern 2026-10-06). */}
                 <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0 ml-auto max-w-full">
                   <span className="font-semibold text-[var(--text)]">
-                    {types.length === 0
+                    {types.length === 0 || minPriceOre === null || maxPriceOre === null
                       ? '–'
-                      : fromPriceOre === null
-                        ? 'Gratis'
-                        : `${hasMultiplePrices ? 'Från ' : ''}${(fromPriceOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
+                      : singlePrice
+                        ? minPriceOre === 0
+                          ? 'Gratis'
+                          : `${formatKr(minPriceOre)} kr`
+                        : `${formatKr(minPriceOre)}–${formatKr(maxPriceOre)} kr`}
                   </span>
-                  {/* Gratistext (ordern 2026-10-10, B) - bara när det
-                      BLANDAS med betalda typer (annars visar priset ovan
-                      redan "Gratis" ensamt). */}
-                  {fromPriceOre !== null && freeTicketNames.length > 0 && (
-                    <span className="text-xs text-[var(--text-muted)]">
-                      {freeTicketNames.map((name) => `${name}: gratis`).join(', ')}
-                    </span>
-                  )}
                   {upcoming && event.sales_open_at ? (
                     <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] inline-block">
                       Släpps {formatStockholmDateTime(event.sales_open_at)}
