@@ -6,6 +6,7 @@ import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 import { computeSalesState } from '../lib/salesState'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { formatKr } from '../lib/formatPrice'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
@@ -82,8 +83,18 @@ export function EventsPage() {
           const minPriceOre = prices.length > 0 ? Math.min(...prices) : null
           const maxPriceOre = prices.length > 0 ? Math.max(...prices) : null
           const singlePrice = new Set(prices).size <= 1
-          const formatKr = (ore: number) => (ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })
           const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
+          // Affisch (ordern "Små ändringar i frontend" 2026-10-10, punkt
+          // 1): portrait är FÖRSTAVALET för kortlistans miniatyr (fast
+          // 2:3, object-fit:contain - aldrig beskuren/sträckt). Saknas
+          // portrait men landscape finns: landscape visas som en hero
+          // ÖVERST på kortet istället (inte klämd in i miniatyrplatsen -
+          // en liggande bild skulle beskäras hårt i en stående 2:3-ruta).
+          // Saknas båda: samma diagonalrandiga platshållare som förut,
+          // bara i miniatyrens nya 2:3-proportion istället för kvadratisk.
+          const hasPortrait = Boolean(event.poster_portrait_url)
+          const hasLandscape = Boolean(event.poster_landscape_url)
+          const showLandscapeHero = !hasPortrait && hasLandscape
 
           return (
             <li key={event.id} className="card">
@@ -99,28 +110,44 @@ export function EventsPage() {
                   enhet i den yttre radens wrap-bedömning - de stannar ihop
                   på första raden, bara prisblocket wrappar ner när det
                   inte får plats, precis som innan höjd-regressionen. */}
+              {/* Landscape-hero (punkt 1) - bara när portrait saknas men
+                  landscape finns. Full kortbredd, ovanför resten av
+                  kortet (inte i miniatyrplatsen - skulle beskäras hårt
+                  i en stående 2:3-ruta). Samma aspect-video/object-cover
+                  som köpsidans hero (PurchasePage.tsx). */}
+              {showLandscapeHero && (
+                <img
+                  src={event.poster_landscape_url!}
+                  alt=""
+                  className="w-full aspect-video object-cover rounded-xl mb-4 border border-[var(--border)]"
+                />
+              )}
               <div className="flex items-center gap-5 flex-wrap">
                 <div className="flex items-center gap-5 min-w-0 flex-auto">
-                  {/* Affisch (liggande) som kortbild om en är uppladdad
-                      (Tilläggsordern 2026-08-05) - annars samma
-                      diagonalrandiga platshållare som innan, så kort utan
-                      affisch inte ser trasiga/ofärdiga ut. */}
-                  {event.poster_landscape_url ? (
-                    <img
-                      src={event.poster_landscape_url}
-                      alt=""
-                      className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)] object-cover"
-                    />
-                  ) : (
+                  {/* Affisch-miniatyr (punkt 1): portrait i fast 2:3,
+                      object-fit:contain (ALDRIG beskuren/sträckt - en
+                      bakgrundsfärg bakom bilden fyller ev. mellanrum om
+                      den riktiga bildens proportion avviker lite från
+                      2:3). 96px smal vy, 128px bred (sm: och uppåt).
+                      Ingen miniatyr alls när landscape-heron ovan redan
+                      visas (showLandscapeHero) - annars samma
+                      diagonalrandiga platshållare som förut, nu i 2:3
+                      istället för kvadratisk, så kort helt utan affisch
+                      inte ser trasiga/ofärdiga ut. */}
+                  {hasPortrait ? (
+                    <div className="w-24 sm:w-32 aspect-[2/3] shrink-0 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--accent-soft)]">
+                      <img src={event.poster_portrait_url!} alt="" className="w-full h-full object-contain" />
+                    </div>
+                  ) : !showLandscapeHero ? (
                     <div
-                      className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)]"
+                      className="w-24 sm:w-32 aspect-[2/3] shrink-0 rounded-xl border border-[var(--border)]"
                       style={{
                         background:
                           'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
                       }}
                       aria-hidden="true"
                     />
-                  )}
+                  ) : null}
                   {/* flex-auto (inte flex-1): flex-1 sätter flex-basis:0%,
                       vilket gör att den här kolumnen INTE räknas med alls
                       när flex-wrap avgör om GRUPPEN (bild+text) får plats

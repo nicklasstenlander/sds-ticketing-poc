@@ -9,6 +9,7 @@ import { APP_NAME } from '../lib/constants'
 import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/salesState'
 import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { formatKr } from '../lib/formatPrice'
 
 interface CreateOrderResponse {
   checkout_url: string
@@ -387,14 +388,29 @@ export function PurchasePage() {
 
   return (
     <Layout termsSlug={organizerSlug}>
-      {/* Hero-affisch (liggande) om en är uppladdad (Tilläggsordern
-          2026-08-05) - annars samma utseende som innan, utan bild. */}
-      {event.poster_landscape_url && (
+      {/* Hero-affisch (Tilläggsordern 2026-08-05, utökad med portrait-
+          reserv i ordern "Små ändringar i frontend" 2026-10-10, punkt 2):
+          landscape FÖRST (passar en bred hero-yta bäst, object-cover ger
+          minimal beskärning av en bild som redan är liggande). Saknas
+          landscape men portrait finns: portrait visas istället, i sin
+          EGNA 2:3-proportion med object-fit:contain (en stående bild
+          skulle beskäras hårt av aspect-video/object-cover) - höjden
+          begränsad så den inte dominerar sidan. Saknas båda: oförändrat,
+          ingen bild alls. */}
+      {event.poster_landscape_url ? (
         <img
           src={event.poster_landscape_url}
           alt=""
           className="w-full aspect-video object-cover rounded-[var(--radius-sm)] mb-6 border border-[var(--border)]"
         />
+      ) : (
+        event.poster_portrait_url && (
+          <img
+            src={event.poster_portrait_url}
+            alt=""
+            className="w-full max-h-[400px] object-contain rounded-[var(--radius-sm)] mb-6 border border-[var(--border)] bg-[var(--accent-soft)]"
+          />
+        )
       )}
       <div className="eyebrow mb-3">{APP_NAME}</div>
       <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
@@ -465,9 +481,7 @@ export function PurchasePage() {
                     <div className="text-sm text-[var(--text-muted)]">
                       {/* "Gratis" för 0 kr-typer (ordern 2026-10-10, B) -
                           tydligare än "0,00 kr". */}
-                      {t.price_ore === 0
-                        ? 'Gratis'
-                        : `${(t.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
+                      {t.price_ore === 0 ? 'Gratis' : `${formatKr(t.price_ore)} kr`}
                     </div>
                     {/* Skydd mot att gratisbiljetter fyller en
                         föreställning (ordern 2026-10-07) - kort
@@ -550,9 +564,7 @@ export function PurchasePage() {
                   Biljetter ({totalQty} {totalQty === 1 ? 'st' : 'st'})
                   {discountCode.trim() && ' (innan ev. rabatt)'}
                 </span>
-                <span className="text-sm text-[var(--text)]">
-                  {(totalOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
-                </span>
+                <span className="text-sm text-[var(--text)]">{formatKr(totalOre)} kr</span>
               </div>
               {/* Serviceavgift som egen synlig rad - ENDAST i
                   flat_per_ticket-läget (ordertextens avsnitt 3). Visas
@@ -562,18 +574,14 @@ export function PurchasePage() {
               {feeConfig?.mode === 'flat_per_ticket' && totalQty > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[var(--text-muted)]">Serviceavgift ({totalQty} st)</span>
-                  <span className="text-sm text-[var(--text)]">
-                    {(platformFeeOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
-                  </span>
+                  <span className="text-sm text-[var(--text)]">{formatKr(platformFeeOre)} kr</span>
                 </div>
               )}
               <div className="flex items-center justify-between pt-1">
                 <span className="text-sm text-[var(--text-muted)]">
                   Totalt{discountCode.trim() && ' (innan ev. rabatt på biljettpriset)'}
                 </span>
-                <span className="text-xl font-extrabold text-[var(--text)]">
-                  {(grandTotalOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
-                </span>
+                <span className="text-xl font-extrabold text-[var(--text)]">{formatKr(grandTotalOre)} kr</span>
               </div>
             </div>
 

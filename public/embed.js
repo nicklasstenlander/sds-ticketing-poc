@@ -154,8 +154,21 @@
 
   var ICON_CLOCK = 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2'
 
+  // Heltal i kronor utan decimaler när beloppet är jämnt (ordern "Små
+  // ändringar i frontend" 2026-10-10, punkt 3 - samma regel som
+  // src/lib/formatPrice.ts i huvudappen, återimplementerad här eftersom
+  // embed.js bundlas separat och inte kan importera den modulen).
+  // ERSÄTTER den tidigare Math.round(ore/100) - den avrundade bort
+  // faktiska ören istället för att visa dem (295,50 kr hade blivit "296
+  // kr", tyst fel pris).
+  function formatKr(ore) {
+    var isWhole = ore % 100 === 0
+    var kr = ore / 100
+    return isWhole ? String(Math.round(kr)) : kr.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
   function formatPrice(ore) {
-    return 'Från ' + Math.round(ore / 100) + ' kr'
+    return 'Från ' + formatKr(ore) + ' kr'
   }
 
   // Pris + gratistyper (ordern "Förberedelse för CORE-appen" 2026-10-10,
@@ -258,6 +271,11 @@
     '.rw-card{display:flex;flex-direction:column;gap:10px;padding:16px;background:var(--card-bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
     '.rw-poster{width:100%;border-radius:10px;overflow:hidden;background:var(--disabled-bg)}',
     '.rw-poster img{display:block;width:100%;height:100%;object-fit:cover}',
+    // Diagonalrandig platshållare (ordern "Små ändringar i frontend"
+    // 2026-10-10, punkt 1) - --accent/--card-bg, ingendera omskriven i
+    // mörkt tema (se [data-theme="dark"] ovan), så randmönstret fungerar
+    // theme-säkert utan en egen mörk variant.
+    '.rw-poster-placeholder{background:repeating-linear-gradient(45deg,var(--accent) 0,var(--accent) 6px,var(--card-bg) 6px,var(--card-bg) 14px);opacity:.35}',
     '.rw-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}',
     '.rw-title{margin:0;font-size:19px;font-weight:800;line-height:1.2}',
     '.rw-row{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}',
@@ -276,8 +294,20 @@
     '.rw-grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}',
     '.rw-grid .rw-card{max-width:360px}',
     '.rw-horizontal{display:flex;gap:16px;align-items:flex-start}',
-    '.rw-horizontal .rw-poster{width:140px;flex:none;aspect-ratio:2/3}',
+    // 128px/2:3/object-fit:contain (ordern 2026-10-10, punkt 1 - "samma
+    // regel i widgeten") - ERSÄTTER den gamla 140px+object-fit:cover
+    // (som beskar en bredare affisch hårt). contain behöver en egen
+    // img-regel som bryter basreglens object-fit:cover ovan.
+    '.rw-horizontal .rw-poster{width:128px;flex:none;aspect-ratio:2/3}',
+    '.rw-horizontal .rw-poster img{object-fit:contain}',
     '.rw-horizontal-info{display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center}',
+    // Hero-variant (punkt 1) - portrait saknas men landscape finns: en
+    // full-bredd liggande hero OVANFÖR infoblocket istället för en
+    // beskuren affisch i den smala 128px-rutan. Egen klass, staplad
+    // layout (inte .rw-horizontal:s flex-rad).
+    '.rw-horizontal-hero{display:flex;flex-direction:column;gap:16px}',
+    '.rw-horizontal-hero .rw-poster{width:100%;aspect-ratio:16/9}',
+    '.rw-horizontal-hero .rw-poster img{object-fit:cover}',
     // "rubriken (24 till 20 px, aldrig under 18 px)" (ordern avsnitt 4) -
     // horisontell är den enda layouten med en större rubrik än standard-
     // .rw-title (19px); md=24, sm=20, xs=18 (se data-size-reglerna nedan).
@@ -335,15 +365,39 @@
     '.rw[data-size="sm"] .rw-list-row,.rw[data-size="xs"] .rw-list-row{flex-direction:column;align-items:stretch;gap:10px}',
     '.rw[data-size="sm"] .rw-list-row-action,.rw[data-size="xs"] .rw-list-row-action{flex:none;width:100%}',
 
-    // --- horizontal: stapla, affisch överst (ordern: "högst 280 px hög,
-    // object-fit: contain på Dimma-bakgrund") ---
-    '.rw[data-size="sm"] .rw-horizontal,.rw[data-size="xs"] .rw-horizontal{flex-direction:column}',
-    '.rw[data-size="sm"] .rw-horizontal .rw-poster,.rw[data-size="xs"] .rw-horizontal .rw-poster{width:100%;aspect-ratio:auto;max-height:280px}',
-    '.rw[data-size="sm"] .rw-horizontal .rw-poster img,.rw[data-size="xs"] .rw-horizontal .rw-poster img{object-fit:contain}',
-    '.rw[data-size="sm"] .rw-horizontal-info,.rw[data-size="xs"] .rw-horizontal-info{justify-content:flex-start}',
+    // --- horizontal: affischen stannar en SIDO-miniatyr (punkt 1,
+    // 2026-10-10: "96 px på smal vy, 128 px på bred") - ERSÄTTER den
+    // tidigare "stapla, affisch överst, högst 280 px hög"-regeln. Vid
+    // "sm" (360-519px) krymper bara miniatyrens bredd (128px->96px),
+    // raden staplas INTE om. Landscape-hero-fallet (ingen portrait) har
+    // sin EGEN, redan staplade .rw-horizontal-hero-klass - rör den inte
+    // här. ---
+    '.rw[data-size="sm"] .rw-horizontal .rw-poster,.rw[data-size="xs"] .rw-horizontal .rw-poster{width:96px}',
     '.rw[data-size="sm"] .rw-horizontal .rw-btn,.rw[data-size="xs"] .rw-horizontal .rw-btn{width:100%}',
     '.rw[data-size="sm"] .rw-horizontal .rw-title,.rw[data-size="xs"] .rw-horizontal .rw-title{font-size:20px}',
     '.rw[data-size="xs"] .rw-horizontal .rw-title{font-size:18px}',
+    // --- horizontal, ENDAST "xs" (widgetens EGEN bredd under 360px, se
+    // ResizeObserver/sizeForWidth i mountWidget - aldrig fönsterbredden):
+    // uppföljning 2026-10-10 - affischen (portrait-miniatyren) staplas
+    // här om ÖVER texten istället för att stanna en 96px-sidoruta, som
+    // annars blir för smal för att läsas bekvämt vid den allra smalaste
+    // bredden. ~180px hög, centrerad, object-fit:contain (ärver samma
+    // "aldrig beskuren"-regel). HÖJDEN MÅSTE vara en fast höjd, inte
+    // max-height: .rw-poster img har height:100% (basregeln), vilket med
+    // bara max-height på föräldern (auto content-height) löses upp till
+    // bildens egen naturliga höjd - .rw-poster{overflow:hidden} klipper
+    // då bilden som "cover" istället för att låta object-fit:contain
+    // brevlådeanpassa den (upptäckt och verifierat med Playwright-
+    // skärmdump: utan fast höjd fylldes rutan helt, ingen brevlåda).
+    // Kommer EFTER 96px-regeln ovan i källordning med flit - vinner över
+    // den vid xs specifikt (sm påverkas inte, stannar sido-miniatyr).
+    // Landscape-hero-fallet påverkas inte - .rw-horizontal-hero staplar
+    // redan, vid alla bredder, exakt det uppföljningen ber om ("Finns
+    // landscape: använd den som bred bild överst"). ---
+    '.rw[data-size="xs"] .rw-horizontal{flex-direction:column}',
+    '.rw[data-size="xs"] .rw-horizontal .rw-poster{width:100%;aspect-ratio:auto;height:180px}',
+    '.rw[data-size="xs"] .rw-horizontal .rw-poster img{object-fit:contain}',
+    '.rw[data-size="xs"] .rw-horizontal-info{justify-content:flex-start}',
 
     // --- landscape: rubrik/uppgifter över, knappen under i full bredd ---
     '.rw[data-size="sm"] .rw-landscape-row,.rw[data-size="xs"] .rw-landscape-row{flex-direction:column;align-items:stretch}',
@@ -503,6 +557,18 @@
     return box
   }
 
+  // Diagonalrandig platshållare i varumärkesfärg (ordern "Små ändringar
+  // i frontend" 2026-10-10, punkt 1) - samma princip som /evenemangs
+  // platshållare (EventsPage.tsx), fast med widgetens egna CSS-variabler
+  // (--accent/--card-bg, inga av dem skrivs om i mörkt tema, se
+  // [data-theme="dark"] ovan - fungerar alltså theme-säkert utan vidare).
+  function buildPosterPlaceholder() {
+    return el('div', {
+      className: 'rw-poster rw-poster-placeholder',
+      'aria-hidden': 'true',
+    })
+  }
+
   // Affischer visas BARA om URL:en pekar på projektets eget Storage -
   // aldrig en godtycklig extern bild (ordern 2.1, "endast om URL:en
   // börjar med projektets Storage-adress").
@@ -524,7 +590,16 @@
     var cardClass = variant === 'landscape' ? 'rw-card rw-landscape' : variant === 'portrait' || variant === 'grid' ? 'rw-card rw-portrait' : 'rw-card'
     var card = el('div', { className: cardClass })
     var preferLandscape = variant === 'landscape'
-    var poster = config.show.indexOf('poster') !== -1 ? buildPosterBox(ev, preferLandscape) : null
+    // horizontal bygger sin egen affisch-logik längre ner (portrait/hero/
+    // platshållare, ordern 2026-10-10 punkt 1) - den här generiska
+    // beräkningen används bara av landscape/portrait/grid nedan.
+    var showPosterSlot = variant !== 'horizontal' && config.show.indexOf('poster') !== -1
+    var poster = showPosterSlot ? buildPosterBox(ev, preferLandscape) : null
+    // Platshållare när affisch helt saknas (uppföljning 2026-10-10 - "lägg
+    // samma platshållarregel i grid/landscape/portrait-layouterna") - ärver
+    // rätt proportion (16:9/2:3) från .rw-landscape/.rw-portrait .rw-poster
+    // via samma rw-poster-klass, ingen egen aspect-ratio-regel behövs här.
+    if (!poster && showPosterSlot) poster = buildPosterPlaceholder()
 
     if (variant === 'horizontal') {
       // Horisontell.dc.html: datum och tid på VARSIN rad (till skillnad
@@ -544,7 +619,29 @@
       var buyRow = el('div', { style: 'display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-top:4px' })
       buyRow.appendChild(buildBuyBlock(ev, config, countdownState))
       right.appendChild(buyRow)
-      var wrap = el('div', { className: 'rw-horizontal' }, [poster, right])
+
+      // Affisch (ordern "Små ändringar i frontend" 2026-10-10, punkt 1):
+      // portrait FÖRST (sido-miniatyr, se .rw-horizontal .rw-poster ovan
+      // - 128px/96px, 2:3, object-fit:contain). Saknas portrait men
+      // landscape finns: landscape som en EGEN, full-bredd hero OVANFÖR
+      // infot (.rw-horizontal-hero) - en liggande bild klämd in i den
+      // smala 2:3-miniatyren hade beskurits hårt. Saknas båda: samma
+      // diagonalrandiga platshållare som i miniatyr-platsen.
+      var hasPortraitUrl = config.show.indexOf('poster') !== -1 && isTrustedPosterUrl(ev.poster_portrait_url)
+      var hasLandscapeUrl = config.show.indexOf('poster') !== -1 && isTrustedPosterUrl(ev.poster_landscape_url)
+      var wrap
+      if (hasPortraitUrl) {
+        wrap = el('div', { className: 'rw-horizontal' }, [buildPosterBox(ev, false), right])
+      } else if (hasLandscapeUrl) {
+        var hero = el('div', { className: 'rw-poster' })
+        hero.appendChild(el('img', { src: ev.poster_landscape_url, alt: '', loading: 'lazy' }))
+        wrap = el('div', { className: 'rw-horizontal-hero' }, [hero, right])
+      } else if (config.show.indexOf('poster') !== -1) {
+        wrap = el('div', { className: 'rw-horizontal' }, [buildPosterPlaceholder(), right])
+      } else {
+        // data-show utan "poster" alls - oförändrat, ingen bildplats.
+        wrap = el('div', { className: 'rw-horizontal' }, [right])
+      }
       container.appendChild(wrap)
       return
     }
