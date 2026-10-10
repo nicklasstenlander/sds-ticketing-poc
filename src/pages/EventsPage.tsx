@@ -85,55 +85,67 @@ export function EventsPage() {
 
           return (
             <li key={event.id} className="card">
+              {/* Två flex-items i YTTRE raden: posterGruppen (bild+text
+                  ihop) och prisblocket - INTE tre separata (bild, text,
+                  pris). Med tre separata items klämde flex-1 (basis:0%)
+                  textkolumnen i smal vy (se historik nedan), och att byta
+                  till flex-auto löste klämningen men fick posterbilden att
+                  hamna på en EGEN rad ovanför texten när priset wrappade -
+                  korrekt bredd, men onödigt höga kort (Nicklas rapporterade
+                  det 2026-10-10 efter den fixen gått i drift). Genom att
+                  gruppera bild+text i en EGEN inre flex-rad blir de EN
+                  enhet i den yttre radens wrap-bedömning - de stannar ihop
+                  på första raden, bara prisblocket wrappar ner när det
+                  inte får plats, precis som innan höjd-regressionen. */}
               <div className="flex items-center gap-5 flex-wrap">
-                {/* Affisch (liggande) som kortbild om en är uppladdad
-                    (Tilläggsordern 2026-08-05) - annars samma
-                    diagonalrandiga platshållare som innan, så kort utan
-                    affisch inte ser trasiga/ofärdiga ut. */}
-                {event.poster_landscape_url ? (
-                  <img
-                    src={event.poster_landscape_url}
-                    alt=""
-                    className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)] object-cover"
-                  />
-                ) : (
-                  <div
-                    className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)]"
-                    style={{
-                      background:
-                        'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
-                    }}
-                    aria-hidden="true"
-                  />
-                )}
-                {/* flex-auto (inte flex-1): flex-1 sätter flex-basis:0%,
-                    vilket gör att den här kolumnen INTE räknas med alls när
-                    flex-wrap avgör om raden får plats - bara posterns 64px
-                    och prisblockets egen bredd (shrink-0) spelade roll, så
-                    wrap triggrades aldrig och kolumnen klämdes ner till
-                    enstaka pixlar i smal vy (upptäckt vid 360px, ordern
-                    2026-10-10 - fanns redan innan den ordern, aldrig testat
-                    vid just 360px tidigare). flex-auto (flex:1 1 auto) låter
-                    kolumnens egna innehåll räknas med i den bedömningen, så
-                    prisblocket korrekt hamnar på en egen rad istället när
-                    det inte får plats - samma "stapla innan krymp"-princip
-                    som embed.js (ordern 2026-10-06). */}
-                <div className="min-w-0 flex-auto">
-                  <div className="font-semibold text-[var(--text)]">{event.title}</div>
-                  <div className="text-sm text-[var(--text-muted)] mb-3">
-                    {/* starts_at är null bara för ett ännu opublicerat
-                        dublicerat event (Tilläggsordern 2026-08-05) - RLS
-                        (status = 'published') gör att den här listan i
-                        praktiken aldrig innehåller ett sådant event, men
-                        typen tillåter null så vi faller tillbaka defensivt. */}
-                    {event.starts_at
-                      ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
-                        formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
-                      : ''}
-                    {event.venue ? ` · ${event.venue}` : ''}
-                    {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
+                <div className="flex items-center gap-5 min-w-0 flex-auto">
+                  {/* Affisch (liggande) som kortbild om en är uppladdad
+                      (Tilläggsordern 2026-08-05) - annars samma
+                      diagonalrandiga platshållare som innan, så kort utan
+                      affisch inte ser trasiga/ofärdiga ut. */}
+                  {event.poster_landscape_url ? (
+                    <img
+                      src={event.poster_landscape_url}
+                      alt=""
+                      className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)] object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="w-[64px] h-[64px] rounded-xl shrink-0 border border-[var(--border)]"
+                      style={{
+                        background:
+                          'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {/* flex-auto (inte flex-1): flex-1 sätter flex-basis:0%,
+                      vilket gör att den här kolumnen INTE räknas med alls
+                      när flex-wrap avgör om GRUPPEN (bild+text) får plats
+                      bredvid prisblocket - kolumnen klämdes ner till
+                      enstaka pixlar i smal vy (upptäckt vid 360px, ordern
+                      2026-10-10 - fanns redan innan den ordern, aldrig
+                      testat vid just 360px tidigare). flex-auto (flex:1 1
+                      auto) låter kolumnens egna innehåll räknas med i den
+                      bedömningen - samma "stapla innan krymp"-princip som
+                      embed.js (ordern 2026-10-06). */}
+                  <div className="min-w-0 flex-auto">
+                    <div className="font-semibold text-[var(--text)]">{event.title}</div>
+                    <div className="text-sm text-[var(--text-muted)] mb-3">
+                      {/* starts_at är null bara för ett ännu opublicerat
+                          dublicerat event (Tilläggsordern 2026-08-05) - RLS
+                          (status = 'published') gör att den här listan i
+                          praktiken aldrig innehåller ett sådant event, men
+                          typen tillåter null så vi faller tillbaka defensivt. */}
+                      {event.starts_at
+                        ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+                          formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
+                        : ''}
+                      {event.venue ? ` · ${event.venue}` : ''}
+                      {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
+                    </div>
+                    {lowStock && <div className="text-sm text-[var(--text-muted)]">Få biljetter kvar</div>}
                   </div>
-                  {lowStock && <div className="text-sm text-[var(--text-muted)]">Få biljetter kvar</div>}
                 </div>
                 {/* ml-auto: när raden inte får plats (flex-wrap ovan)
                     hamnar det här blocket ensamt på en egen rad, höger-
