@@ -463,7 +463,11 @@ export function PurchasePage() {
                   <div>
                     <div className="font-semibold text-[var(--text)]">{t.name}</div>
                     <div className="text-sm text-[var(--text-muted)]">
-                      {(t.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
+                      {/* "Gratis" för 0 kr-typer (ordern 2026-10-10, B) -
+                          tydligare än "0,00 kr". */}
+                      {t.price_ore === 0
+                        ? 'Gratis'
+                        : `${(t.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
                     </div>
                     {/* Skydd mot att gratisbiljetter fyller en
                         föreställning (ordern 2026-10-07) - kort

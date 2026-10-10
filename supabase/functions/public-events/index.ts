@@ -15,11 +15,16 @@
 // slug (som redan är tänkt att vara publik, den utgör själva köp-URL:en).
 //
 // GET public-events (inga query-params, inga headers)
-// -> { events: { slug, title, venue, date, from_price_ore, poster_landscape_url, poster_portrait_url, organizer_name }[] }
+// -> { events: { slug, title, venue, date, from_price_ore, free_ticket_names, poster_landscape_url, poster_portrait_url, organizer_name, sales_open_at, sales_state }[] }
+//
+// from_price_ore rättad och free_ticket_names tillagt (ordern
+// "Förberedelse för CORE-appen" 2026-10-10, B) - se
+// _shared/ticketPricing.ts.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
 import { computeSalesState } from '../_shared/salesState.ts'
+import { computePricingSummary } from '../_shared/ticketPricing.ts'
 
 interface PublicEvent {
   slug: string
@@ -35,6 +40,11 @@ interface PublicEvent {
   // "Kommande evenemang" använder dem redan).
   sales_open_at: string | null
   sales_state: 'upcoming' | 'sold_out' | 'open'
+  // free_ticket_names (ordern "Förberedelse för CORE-appen" 2026-10-10, B)
+  // - namn på biljettyper med price_ore=0, tom lista om inga. from_price_ore
+  // samtidigt RÄTTAD i samma order: räknar nu bara BETALDA typer (se
+  // _shared/ticketPricing.ts filkommentar för bakgrunden/beviset).
+  free_ticket_names: string[]
 }
 
 Deno.serve(async (req: Request) => {
@@ -65,13 +75,14 @@ Deno.serve(async (req: Request) => {
   const publishedEvents = events ?? []
   const eventIds = publishedEvents.map((e) => e.id)
 
-  // Lägsta pris per event bland dess biljettyper (eller enda priset om
-  // bara en typ finns) - bara för visning, ingen köplogik här.
-  const minPriceByEventId = new Map<string, number>()
+  // Biljettyper per event (pris + namn, för from_price_ore/
+  // free_ticket_names - se _shared/ticketPricing.ts) - bara för visning,
+  // ingen köplogik här.
+  const ticketTypesByEventId = new Map<string, { price_ore: number; name: string }[]>()
   if (eventIds.length > 0) {
     const { data: ticketTypes, error: ticketTypesError } = await supabase
       .from('ticket_types')
-      .select('event_id, price_ore')
+      .select('event_id, price_ore, name')
       .in('event_id', eventIds)
 
     if (ticketTypesError) {
@@ -79,22 +90,23 @@ Deno.serve(async (req: Request) => {
     }
 
     for (const tt of ticketTypes ?? []) {
-      const current = minPriceByEventId.get(tt.event_id)
-      if (current === undefined || tt.price_ore < current) {
-        minPriceByEventId.set(tt.event_id, tt.price_ore)
-      }
+      const list = ticketTypesByEventId.get(tt.event_id) ?? []
+      list.push({ price_ore: tt.price_ore, name: tt.name })
+      ticketTypesByEventId.set(tt.event_id, list)
     }
   }
 
   const now = new Date()
   const result: PublicEvent[] = publishedEvents.map((ev) => {
     const organizer = Array.isArray(ev.organizers) ? ev.organizers[0] : ev.organizers
+    const pricing = computePricingSummary(ticketTypesByEventId.get(ev.id) ?? [])
     return {
       slug: ev.slug,
       title: ev.title,
       venue: ev.venue,
       date: toIso8601Seconds(ev.starts_at),
-      from_price_ore: minPriceByEventId.get(ev.id) ?? null,
+      from_price_ore: pricing.from_price_ore,
+      free_ticket_names: pricing.free_ticket_names,
       poster_landscape_url: ev.poster_landscape_url,
       poster_portrait_url: ev.poster_portrait_url,
       organizer_name: organizer?.name ?? null,

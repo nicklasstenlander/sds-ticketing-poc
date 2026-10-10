@@ -1,0 +1,75 @@
+{
+  "events": [
+    {
+      "slug": "test-slapp",
+      "title": "TEST  släpp",
+      "organizer_name": "Sollentuna Dans & Scenskola",
+      "starts_at": "2027-01-25T19:00:00Z",
+      "venue": "Släpp",
+      "from_price_ore": 300,
+      "free_ticket_names": ["Barn"],
+      "poster_landscape_url": null,
+      "poster_portrait_url": null,
+      "purchase_url": "https://biljetter.sollentunadansochscenskola.se/#/kop/test-slapp",
+      "sales_open_at": "2026-10-04T13:00:00Z",
+      "sales_state": "open"
+    },
+    {
+      "slug": "varshow-2027",
+      "title": "Vårshow 2027",
+      "organizer_name": "Sollentuna Dans & Scenskola",
+      "starts_at": "2027-05-10T17:00:00Z",
+      "venue": "Berga Teater",
+      "from_price_ore": 15000,
+      "free_ticket_names": [],
+      "poster_landscape_url": "https://oyqgxnmwojjjpoubdlfa.supabase.co/storage/v1/object/public/posters/example-landscape.jpg",
+      "poster_portrait_url": "https://oyqgxnmwojjjpoubdlfa.supabase.co/storage/v1/object/public/posters/example-portrait.jpg",
+      "purchase_url": "https://biljetter.sollentunadansochscenskola.se/#/kop/varshow-2027",
+      "sales_open_at": "2027-03-01T08:00:00Z",
+      "sales_state": "upcoming"
+    },
+    {
+      "slug": "hostshow-2026",
+      "title": "Höstshowen",
+      "organizer_name": "Sollentuna Dans & Scenskola",
+      "starts_at": "2026-11-20T18:00:00Z",
+      "venue": "Berga Teater",
+      "from_price_ore": 20000,
+      "free_ticket_names": [],
+      "poster_landscape_url": null,
+      "poster_portrait_url": null,
+      "purchase_url": "https://biljetter.sollentunadansochscenskola.se/#/kop/hostshow-2026",
+      "sales_open_at": null,
+      "sales_state": "sold_out"
+    },
+    {
+      "slug": "ny-produktion-utan-biljetter",
+      "title": "Ny produktion (ej till salu ännu)",
+      "organizer_name": "Sollentuna Dans & Scenskola",
+      "starts_at": "2027-06-01T18:00:00Z",
+      "venue": null,
+      "from_price_ore": null,
+      "free_ticket_names": [],
+      "poster_landscape_url": null,
+      "poster_portrait_url": null,
+      "purchase_url": "https://biljetter.sollentunadansochscenskola.se/#/kop/ny-produktion-utan-biljetter",
+      "sales_open_at": null,
+      "sales_state": "open"
+    },
+    {
+      "slug": "oppet-hus-gratis",
+      "title": "Öppet hus (alla biljetter gratis)",
+      "organizer_name": "Sollentuna Dans & Scenskola",
+      "starts_at": "2027-04-15T13:00:00Z",
+      "venue": "Berga Teater",
+      "from_price_ore": null,
+      "free_ticket_names": ["Vuxen", "Barn 0–3 år"],
+      "poster_landscape_url": null,
+      "poster_portrait_url": null,
+      "purchase_url": "https://biljetter.sollentunadansochscenskola.se/#/kop/oppet-hus-gratis",
+      "sales_open_at": null,
+      "sales_state": "open"
+    }
+  ],
+  "server_time": "2026-10-10T12:00:00.000Z"
+}

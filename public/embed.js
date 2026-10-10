@@ -158,6 +158,33 @@
     return 'Från ' + Math.round(ore / 100) + ' kr'
   }
 
+  // Pris + gratistyper (ordern "Förberedelse för CORE-appen" 2026-10-10,
+  // B) - from_price_ore räknar numera bara BETALDA typer (servern är
+  // rättad, se supabase/functions/_shared/ticketPricing.ts), så ett event
+  // som blandar en gratis barntyp med betalda vuxentyper visar "Från X
+  // kr" (den riktiga lägsta BETALDA biljetten) plus en separat rad per
+  // gratistyp. Ett event där ALLA typer är gratis har from_price_ore=null
+  // OCH minst ett namn i free_ticket_names - det fallet visar bara
+  // "Gratis", ingen upprepning av typnamnen (ingen "från"-siffra att
+  // ställa dem mot). from_price_ore=null OCH tom free_ticket_names
+  // betyder att eventet saknar biljettyper helt (t.ex. "Ej till salu
+  // ännu") - ingen prisrad alls, oförändrat.
+  function formatPriceInfo(ev) {
+    var freeNames = ev.free_ticket_names || []
+    if (ev.from_price_ore != null) {
+      return {
+        mainText: formatPrice(ev.from_price_ore),
+        freeLines: freeNames.map(function (name) {
+          return name + ': gratis'
+        }),
+      }
+    }
+    if (freeNames.length > 0) {
+      return { mainText: 'Gratis', freeLines: [] }
+    }
+    return { mainText: null, freeLines: [] }
+  }
+
   // ---- Försäljningsstatus/nedräkning: samma logik som src/lib/salesState.ts ----
 
   function computeClockSkewMs(serverTimeIso, clientNowAtFetchMs) {
@@ -236,6 +263,10 @@
     '.rw-row{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}',
     '.rw-muted{color:var(--muted);font-size:14px}',
     '.rw-price{text-align:center;font-size:14px;color:var(--muted)}',
+    // rw-price-free: samma utseende som rw-price, bara en egen klass så
+    // "X: gratis"-raderna (ordern "Förberedelse för CORE-appen" 2026-10-10,
+    // B) går att särskilja/styla separat vid behov senare.
+    '.rw-price-free{text-align:center;font-size:14px;color:var(--muted)}',
     '.rw-error,.rw-empty{padding:16px;color:var(--muted);font-size:14px}',
     // auto-fit+minmax, INGEN media-regel - CSS Grid svarar redan nativt
     // på widgetens EGEN bredd (inte fönstret). 210px vald så att två
@@ -402,8 +433,14 @@
         text: 'Köp biljetter',
       })
       frag.appendChild(buyLink)
-      if (config.show.indexOf('price') !== -1 && ev.from_price_ore != null) {
-        frag.appendChild(el('div', { className: 'rw-price', text: formatPrice(ev.from_price_ore) }))
+      if (config.show.indexOf('price') !== -1) {
+        var priceInfo = formatPriceInfo(ev)
+        if (priceInfo.mainText) {
+          frag.appendChild(el('div', { className: 'rw-price', text: priceInfo.mainText }))
+        }
+        priceInfo.freeLines.forEach(function (line) {
+          frag.appendChild(el('div', { className: 'rw-price rw-price-free', text: line }))
+        })
       }
     } else if (ev.sales_state === 'sold_out') {
       frag.appendChild(el('button', { className: 'rw-btn', disabled: true, type: 'button', text: 'Slutsålt' }))
@@ -558,7 +595,10 @@
       var bits = []
       if (config.show.indexOf('date') !== -1 && ev.starts_at) bits.push(formatStockholmShortDate(ev.starts_at).split('·')[0].trim())
       if (config.show.indexOf('place') !== -1 && ev.venue) bits.push(ev.venue)
-      if (config.show.indexOf('price') !== -1 && ev.from_price_ore != null) bits.push(formatPrice(ev.from_price_ore).toLowerCase())
+      if (config.show.indexOf('price') !== -1) {
+        var buttonPriceText = formatPriceInfo(ev).mainText
+        if (buttonPriceText) bits.push(buttonPriceText.toLowerCase())
+      }
       if (bits.length > 0) wrap.appendChild(el('span', { className: 'rw-muted', text: bits.join(' · ') }))
     } else if (ev.sales_state === 'sold_out') {
       wrap.appendChild(el('button', { className: 'rw-btn', disabled: true, type: 'button', text: 'Slutsålt' }))
@@ -691,8 +731,14 @@
       right.appendChild(
         el('a', { className: 'rw-btn rw-banner-buy', href: APP_BASE + '/#/kop/' + encodeURIComponent(ev.slug), text: 'Köp biljetter' }),
       )
-      if (config.show.indexOf('price') !== -1 && ev.from_price_ore != null) {
-        right.appendChild(el('div', { className: 'rw-banner-meta', text: formatPrice(ev.from_price_ore) }))
+      if (config.show.indexOf('price') !== -1) {
+        var bannerPriceInfo = formatPriceInfo(ev)
+        if (bannerPriceInfo.mainText) {
+          right.appendChild(el('div', { className: 'rw-banner-meta', text: bannerPriceInfo.mainText }))
+        }
+        bannerPriceInfo.freeLines.forEach(function (line) {
+          right.appendChild(el('div', { className: 'rw-banner-meta', text: line }))
+        })
       }
     } else {
       // Slutsålt: den gråa inaktiverade standardknappen syns redan bra

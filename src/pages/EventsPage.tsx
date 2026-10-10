@@ -5,6 +5,7 @@ import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/typ
 import { Layout } from '../components/Layout'
 import { APP_NAME } from '../lib/constants'
 import { computeSalesState } from '../lib/salesState'
+import { computePricingSummary } from '../lib/ticketPricing'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface EventWithTicketTypes extends EventRow {
@@ -71,8 +72,15 @@ export function EventsPage() {
           // (höger badge), oberoende av detta.
           const lowStock = !soldOut && event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
           const prices = types.map((t) => t.price_ore)
-          const minPrice = prices.length > 0 ? Math.min(...prices) : null
           const hasMultiplePrices = new Set(prices).size > 1
+          // Rättad (ordern "Förberedelse för CORE-appen" 2026-10-10, B) -
+          // from_price_ore/minPrice räknar bara BETALDA typer. En gratis
+          // barntyp gav tidigare "Från 0 kr" även när riktiga biljetter
+          // kostade mer - fromPriceOre=null nu bara om ALLA typer är
+          // gratis (freeTicketNames.length>0) eller inga typer finns alls.
+          const pricing = computePricingSummary(types.map((t) => ({ price_ore: t.price_ore, name: t.name })))
+          const fromPriceOre = pricing.from_price_ore
+          const freeTicketNames = pricing.free_ticket_names
           const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
 
           return (
@@ -121,10 +129,25 @@ export function EventsPage() {
                     princip som används i embed.js (ordern 2026-10-06). */}
                 <div className="text-right shrink-0 ml-auto">
                   <div className="font-semibold text-[var(--text)] mb-2">
-                    {minPrice === null
+                    {types.length === 0
                       ? '–'
-                      : `${hasMultiplePrices ? 'Från ' : ''}${(minPrice / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
+                      : fromPriceOre === null
+                        ? 'Gratis'
+                        : `${hasMultiplePrices ? 'Från ' : ''}${(fromPriceOre / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr`}
                   </div>
+                  {/* Gratisrad (ordern 2026-10-10, B) - bara när det
+                      BLANDAS med betalda typer (annars visar priset ovan
+                      redan "Gratis" ensamt). */}
+                  {fromPriceOre !== null && freeTicketNames.length > 0 && (
+                    // max-w: utan en breddbegränsning kan den här raden bli
+                    // bredare än chippet/priset och tvinga hela högerblocket
+                    // (shrink-0) brett nog för att klämma titelkolumnen i
+                    // smal vy (samma klass av bugg som ordern 2026-10-06
+                    // åtgärdade - se filkommentaren längre upp i filen).
+                    <div className="text-xs text-[var(--text-muted)] mb-2 max-w-[120px] ml-auto">
+                      {freeTicketNames.map((name) => `${name}: gratis`).join(', ')}
+                    </div>
+                  )}
                   {upcoming && event.sales_open_at ? (
                     <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] inline-block">
                       Släpps {formatStockholmDateTime(event.sales_open_at)}
