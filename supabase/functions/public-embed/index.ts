@@ -98,6 +98,9 @@ Deno.serve(async (req: Request) => {
       'id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url, organizers(name), sales_open_at, capacity, sold_count',
     )
     .eq('status', 'published')
+    // Arkiverade event (ordern "Arkiv för ordrar och event" 2026-10-12)
+    // ska inte synas i widgeten - samma motivering som public-events.
+    .is('archived_at', null)
     .gte('starts_at', nowIso)
     .order('starts_at', { ascending: true })
     .limit(MAX_EVENTS)

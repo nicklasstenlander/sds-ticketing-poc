@@ -1,17 +1,21 @@
 // admin-delete-event
 //
-// Raderar eller ställer in ett event, beroende på om det har BETALDA
-// ordrar (status = 'paid'). ALDRIG en rå delete av event-raden när
-// betalda ordrar finns kopplade - events.id refereras av orders.event_id
-// och tickets.event_id (ingen "on delete cascade", se
-// 20260101000000_init.sql), och att radera event-raden skulle antingen
-// krascha på foreign key-constrainten eller lämna föräldralösa rader
-// bakom sig, vilket i sin tur skulle förstöra export-sales
-// bokföringsunderlag för redan betalda ordrar.
+// Raderar ett event PERMANENT - bara tillåtet för ett utkast (status=
+// 'draft') som helt saknar ordrar (ordern "Arkiv för ordrar och event"
+// 2026-10-12, DEL 2 punkt 3: "stäng av hård radering för event som har
+// några ordrar alls, oavsett status - hänvisa till arkivera"). Ett
+// arkiverat event (archived_at satt) får ALDRIG raderas, oavsett
+// ordrar - arkivet är tänkt att vara permanent, "radera aldrig något".
 //
-// Overksamma ordrar (pending/expired/cancelled - aldrig levererade
-// biljetter) blockerar DÄREMOT inte radering, och städas bort explicit
-// innan event-raden raderas.
+// Tidigare (före den ordern) tillät den här funktionen radering av ett
+// event med bara overksamma ordrar (pending/expired/cancelled, aldrig
+// levererade biljetter) och föll tillbaka till ett "mjukt" cancelled-
+// status när BETALDA ordrar fanns. Nu finns admin-archive-event för det
+// mjuka fallet - den här funktionen är bara kvar för det EXTREMA fallet:
+// ett helt orört utkast, admin skapade av misstag. events.id refereras
+// av orders.event_id/tickets.event_id (ingen "on delete cascade", se
+// 20260101000000_init.sql), så raderingen städar dessa explicit innan
+// event-raden själv raderas.
 //
 // Kräver giltig Supabase Auth-JWT (se _shared/organizerAuth.ts), och
 // eventet måste tillhöra den inloggade användarens egen arrangör
@@ -54,7 +58,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, status, organizer_id')
+    .select('id, status, organizer_id, archived_at')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -65,52 +69,53 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 
-  // Redan inställt - idempotent, gör inget om igen (t.ex. om admin råkar
-  // klicka "Radera" två gånger innan listan hunnit ladda om).
+  // Arkiverade event raderas ALDRIG (ordern 2026-10-12, DEL 2 punkt 3) -
+  // kontrolleras före allt annat nedan.
+  if (event.archived_at) {
+    return jsonResponse({ error: 'Arkiverade event kan inte raderas.' }, 400)
+  }
+
+  // Legacy - ett event som blev "cancelled" under DEN GAMLA logiken
+  // (innan arkivfunktionen fanns, se filkommentaren) kan fortfarande
+  // finnas. Idempotent, gör inget om igen.
   if (event.status === 'cancelled') {
     return jsonResponse({ result: 'cancelled' })
   }
 
-  // Räknar ENDAST betalda ordrar. Bara "paid" har biljetter (skapade av
-  // stripe-webhook) och ett bokföringsunderlag i export-sales som måste
-  // bevaras - "pending"/"expired"/"cancelled" representerar ingen
-  // levererad biljett och ska inte i sig blockera radering (rättat efter
-  // en observerad bugg: ett event med bara kvarvarande expired-ordrar
-  // från tidigare tester av expiry-flödet blev felaktigt "cancelled" i
-  // stället för raderat).
-  const { count: paidOrderCount, error: countError } = await supabase
+  // Räknar ALLA ordrar, oavsett status (2026-10-12, DEL 2 punkt 3 - till
+  // skillnad från den gamla "bara betalda blockerar"-regeln). Finns det
+  // några ordrar alls ska admin arkivera eventet istället för att
+  // radera det.
+  const { count: orderCount, error: countError } = await supabase
     .from('orders')
     .select('id', { count: 'exact', head: true })
     .eq('event_id', eventId)
-    .eq('status', 'paid')
 
   if (countError) {
     return jsonResponse({ error: `Kunde inte kontrollera ordrar: ${countError.message}` }, 500)
   }
 
-  if (paidOrderCount && paidOrderCount > 0) {
-    const { error: cancelError } = await supabase
-      .from('events')
-      .update({ status: 'cancelled' })
-      .eq('id', eventId)
-
-    if (cancelError) {
-      return jsonResponse({ error: `Kunde inte ställa in eventet: ${cancelError.message}` }, 500)
-    }
-
-    return jsonResponse({ result: 'cancelled' })
+  if (orderCount && orderCount > 0) {
+    return jsonResponse(
+      { error: 'Eventet har ordrar och kan inte raderas - arkivera det istället.' },
+      400,
+    )
   }
 
-  // Inga betalda ordrar - men det kan fortfarande finnas overksamma rader
-  // (pending/expired/cancelled) kvar från köpförsök som aldrig fullföljdes.
-  // orders.event_id och tickets.event_id refererar events(id) utan "on
-  // delete cascade" (se 20260101000000_init.sql), så dessa måste städas
-  // bort explicit innan event-raden raderas - annars stoppar databasens
-  // egen foreign key-constraint hela raderingen. Ingen "paid"-order kan
-  // finnas kvar här (vi har redan bekräftat paidOrderCount === 0), så
-  // tickets-tabellen borde redan vara tom för detta event (tickets skapas
-  // bara av stripe-webhook för betalda ordrar) - raden nedan är ändå med
-  // som ett billigt skyddsnät mot att anta det utan att kolla.
+  // Radering får bara finnas kvar för utkast utan ordrar (2026-10-12,
+  // DEL 2 punkt 3) - ett publicerat event, även utan ordrar, har kunnat
+  // vara synligt/länkat publikt och ska arkiveras, inte raderas.
+  if (event.status !== 'draft') {
+    return jsonResponse(
+      { error: 'Bara opublicerade utkast utan ordrar kan raderas - arkivera eventet istället.' },
+      400,
+    )
+  }
+
+  // Vi vet redan att orderCount === 0 här, så tickets/orders-raderingen
+  // nedan är i praktiken en no-op - kvar som ett billigt skyddsnät mot
+  // att anta det utan att faktiskt köra det (t.ex. en biljett utan
+  // order_id-koppling, om en sådan någonsin skulle uppstå).
   const { error: deleteTicketsError } = await supabase.from('tickets').delete().eq('event_id', eventId)
   if (deleteTicketsError) {
     return jsonResponse({ error: `Kunde inte städa biljetter: ${deleteTicketsError.message}` }, 500)

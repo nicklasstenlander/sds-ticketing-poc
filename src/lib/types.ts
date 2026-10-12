@@ -27,7 +27,16 @@ export interface EventRow {
   // publiceras utan affisch.
   poster_landscape_url: string | null
   poster_portrait_url: string | null
+  // Arkiv (ordern "Arkiv för ordrar och event" 2026-10-12) - satt om
+  // eventet är arkiverat. Publika sidor (EventsPage/PurchasePage) ser i
+  // praktiken aldrig ett satt värde här (RLS filtrerar bort arkiverade
+  // event helt, se 20261012010000_archive.sql), bara admin-vyerna.
+  archived_at: string | null
+  archived_by: string | null
+  archived_reason: ArchivedReason | null
 }
+
+export type ArchivedReason = 'test' | 'hidden'
 
 // Publika sidor (EventsPage, PurchasePage) joinar organizers(name) via
 // PostgREST-embedding för att visa vilken arrangör som står bakom eventet
@@ -57,6 +66,30 @@ export interface TicketTypeSummary {
 // typer - kapacitet/sålt finns redan direkt på EventRow, se ovan).
 export interface AdminEventRow extends EventRow {
   ticket_types_summary: TicketTypeSummary
+  // order_count (ordern 2026-10-12) - ALLA ordrar oavsett status, avgör
+  // i UI:t om "Radera" ska visas alls (bara draft+0 ordrar är raderbart,
+  // se admin-delete-event) eller om det måste bli "Arkivera" istället.
+  order_count: number
+}
+
+// admin-event-tickets returnerar en rad per order för eventet (ordern
+// "Arkiv för ordrar och event" 2026-10-12, DEL 2 - order-arkivering).
+// Fristående typ, inte en utökning av något annat - orders är en egen
+// tabell, inte en EventRow-variant.
+export interface AdminOrderRow {
+  id: string
+  buyer_name: string
+  buyer_email: string
+  status: 'pending' | 'paid' | 'expired' | 'cancelled'
+  created_at: string
+  // Beräknat server-sidan (order_items-summan, med fallback till de
+  // gamla förkundvagns-kolumnerna för äldre köp) - se admin-event-
+  // tickets/index.ts.
+  total_ore: number | null
+  ticket_qty: number
+  archived_at: string | null
+  archived_by: string | null
+  archived_reason: ArchivedReason | null
 }
 
 export interface TicketTypeRow {

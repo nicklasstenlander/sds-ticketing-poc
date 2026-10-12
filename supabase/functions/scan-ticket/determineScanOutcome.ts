@@ -11,14 +11,18 @@
 // biljettyp/köpsammansättning) ligger kvar i index.ts, som fortfarande
 // behöver riktig Supabase-åtkomst.
 //
-// Kontrollordning (ordern A1, bindande): 1) inställt event, 2) fel
-// föreställning (bara om requestedEventId skickats OCH skiljer sig från
-// biljettens eget event - en gammal appversion som aldrig skickar fältet
-// ger requestedEventId=null och hoppar alltså över detta steg helt,
-// exakt dagens beteende), 3) biljettens egen status. Steg 2 körs INNAN
-// steg 3 med flit - en redan incheckad biljett som skannas mot FEL event
-// ska svara "fel föreställning", aldrig "duplicate" (det skulle avslöja
-// att biljetten redan är använd, se ordertextens A1).
+// Kontrollordning (ordern A1, bindande; arkiverat tillagt i ordern
+// "Arkiv för ordrar och event" 2026-10-12, DEL 2 punkt 5 - FÖRST, före
+// allt annat, samma result/status som "inställt event" (invalid) och
+// inga nya svarsfält): 1) arkiverad order eller arkiverat event, 2)
+// inställt event, 3) fel föreställning (bara om requestedEventId
+// skickats OCH skiljer sig från biljettens eget event - en gammal
+// appversion som aldrig skickar fältet ger requestedEventId=null och
+// hoppar alltså över detta steg helt, exakt dagens beteende), 4)
+// biljettens egen status. Steg 3 körs INNAN steg 4 med flit - en redan
+// incheckad biljett som skannas mot FEL event ska svara "fel
+// föreställning", aldrig "duplicate" (det skulle avslöja att biljetten
+// redan är använd, se ordertextens A1).
 import { formatStockholmDateTimeSv } from '../_shared/salesState.ts'
 
 export type ScanResultValue = 'ok' | 'duplicate' | 'invalid'
@@ -46,7 +50,15 @@ export function determineScanOutcome(params: {
   requestedEventId: string | null
   ticketEventTitle: string | null
   ticketEventStartsAt: string | null
+  /** orders.archived_at / events.archived_at (ordern 2026-10-12) - satt
+   * (icke-null) om arkiverad. Antingen räcker för avvisning. */
+  orderArchivedAt: string | null
+  eventArchivedAt: string | null
 }): ScanOutcome {
+  if (params.orderArchivedAt || params.eventArchivedAt) {
+    return { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false }
+  }
+
   if (params.eventStatus === 'cancelled') {
     return { result: 'invalid', message: 'Föreställningen är inställd', showTicketType: false }
   }

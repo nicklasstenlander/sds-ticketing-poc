@@ -79,8 +79,21 @@ export async function callFunction<T>(name: string, opts: CallOptions = {}): Pro
  * och triggar en nedladdning i webbläsaren. Kan inte återanvända
  * callFunction() ovan eftersom svaret här inte är JSON - vi läser det som
  * en blob och behåller filnamnet från Content-Disposition-headern.
+ *
+ * Returnerar en summering av uteslutna testordrar (ordern "Arkiv för
+ * ordrar och event" 2026-10-12, DEL 2 punkt 2) läst från X-Excluded-
+ * Test-*-headers, satta av export-sales/platform-export-revenue. {count:
+ * 0, totalOre: 0} - INTE null - om headern saknas (äldre/orelaterad
+ * funktion som råkar använda samma hjälpare) eller om CORS av någon
+ * anledning skulle blockera dem - se _shared/cors.ts Access-Control-
+ * Expose-Headers, som denna funktion litar på.
  */
-export async function downloadAdminFile(nameAndQuery: string, fallbackFilename: string): Promise<void> {
+export interface DownloadResult {
+  excludedTestCount: number
+  excludedTestTotalOre: number
+}
+
+export async function downloadAdminFile(nameAndQuery: string, fallbackFilename: string): Promise<DownloadResult> {
   const url = `${functionsBaseUrl()}/${nameAndQuery}`
   const token = await getAccessToken()
   const headers: Record<string, string> = {
@@ -106,6 +119,8 @@ export async function downloadAdminFile(nameAndQuery: string, fallbackFilename: 
   const disposition = res.headers.get('Content-Disposition') ?? ''
   const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
   const filename = filenameMatch ? filenameMatch[1] : fallbackFilename
+  const excludedTestCount = Number(res.headers.get('X-Excluded-Test-Order-Count') ?? '0') || 0
+  const excludedTestTotalOre = Number(res.headers.get('X-Excluded-Test-Total-Ore') ?? '0') || 0
 
   const blob = await res.blob()
   const objectUrl = URL.createObjectURL(blob)
@@ -116,4 +131,6 @@ export async function downloadAdminFile(nameAndQuery: string, fallbackFilename: 
   link.click()
   link.remove()
   URL.revokeObjectURL(objectUrl)
+
+  return { excludedTestCount, excludedTestTotalOre }
 }

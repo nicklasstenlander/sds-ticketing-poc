@@ -211,14 +211,19 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, organizer_id, sales_open_at')
+    .select('id, slug, title, venue, starts_at, status, organizer_id, sales_open_at, archived_at')
     .eq('slug', slug)
     .maybeSingle()
 
   if (eventError) {
     return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
   }
-  if (!event || event.status !== 'published') {
+  // archived_at (ordern "Arkiv för ordrar och event" 2026-10-12): samma
+  // 404 som "hittades inte" - service role kringgår RLS, så detta MÅSTE
+  // kontrolleras explicit här (ett direktanrop till funktionen skulle
+  // annars kunna köpa biljetter till ett event köpsidan inte ens kan visa,
+  // se RLS-policyn på events i 20261012010000_archive.sql).
+  if (!event || event.status !== 'published' || event.archived_at) {
     return jsonResponse({ error: 'Eventet hittades inte.' }, 404)
   }
 

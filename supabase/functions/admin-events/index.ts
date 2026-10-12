@@ -13,6 +13,15 @@
 // Varje event kompletteras här bara med en liten ticket_types_summary
 // (antal typer, lägsta/högsta pris) - bekvämt för listvyn utan att varje
 // anropare måste räkna själv.
+//
+// Arkiverade event (ordern "Arkiv för ordrar och event" 2026-10-12)
+// exkluderas som STANDARD - precis som adminlistan redan är tänkt att
+// visa "det aktiva", inte allt som någonsin funnits. ?include_archived=1
+// tar med dem igen (växeln "Visa arkiverade" i AdminPage.tsx). Varje
+// event kompletteras också med order_count (ALLA ordrar, oavsett status)
+// - UI:t använder det för att avgöra om "Radera" överhuvudtaget ska
+// visas (bara draft+0 ordrar är raderbart, se admin-delete-event) eller
+// om det måste bli "Arkivera" istället.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -37,12 +46,21 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Ej behörig. Logga in i admin igen.' }, 401)
   }
 
+  const url = new URL(req.url)
+  const includeArchived = url.searchParams.get('include_archived') === '1'
+
   const supabase = createAdminClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, sales_open_at')
+    .select(
+      'id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, sales_open_at, archived_at, archived_by, archived_reason',
+    )
     .eq('organizer_id', auth.organizerId)
     .order('starts_at', { ascending: true })
+  if (!includeArchived) {
+    query = query.is('archived_at', null)
+  }
+  const { data, error } = await query
 
   if (error) {
     return jsonResponse({ error: `Kunde inte hämta events: ${error.message}` }, 500)
@@ -91,6 +109,26 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // order_count (ALLA statusar) - avgör om "Radera" får visas för
+  // eventet i UI:t, se filkommentaren. En rad per order med dess
+  // event_id räcker, räknas i minnet precis som ticket_types_summary
+  // ovan - billigare än N egna count-queries.
+  const orderCounts = new Map<string, number>()
+  if (eventIds.length > 0) {
+    const { data: orderRows, error: orderRowsError } = await supabase
+      .from('orders')
+      .select('event_id')
+      .in('event_id', eventIds)
+
+    if (orderRowsError) {
+      return jsonResponse({ error: `Kunde inte hämta ordrar: ${orderRowsError.message}` }, 500)
+    }
+
+    for (const o of orderRows ?? []) {
+      orderCounts.set(o.event_id, (orderCounts.get(o.event_id) ?? 0) + 1)
+    }
+  }
+
   const events = eventRows.map((e) => ({
     ...e,
     starts_at: toIso8601Seconds(e.starts_at),
@@ -100,6 +138,7 @@ Deno.serve(async (req: Request) => {
       min_price_ore: null,
       max_price_ore: null,
     },
+    order_count: orderCounts.get(e.id) ?? 0,
   }))
 
   return jsonResponse({ events, organizer_slug: organizerRow.slug })

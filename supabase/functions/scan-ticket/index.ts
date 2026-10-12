@@ -124,7 +124,9 @@ Deno.serve(async (req: Request) => {
 
   const { data: ticket, error: ticketError } = await supabase
     .from('tickets')
-    .select('id, holder_name, status, checked_in_at, event_id, order_id, ticket_type_id, events(title, status, starts_at)')
+    .select(
+      'id, holder_name, status, checked_in_at, event_id, order_id, ticket_type_id, events(title, status, starts_at, archived_at), orders(archived_at)',
+    )
     .eq('ticket_code', ticketCode)
     .maybeSingle()
 
@@ -151,13 +153,19 @@ Deno.serve(async (req: Request) => {
     })
   }
 
-  // event (titel+status+starttid) kan komma som objekt eller array
-  // beroende på PostgREST-version.
-  const eventRelation = ticket.events as unknown
-  const event = Array.isArray(eventRelation)
-    ? (eventRelation[0] ?? null)
-    : (eventRelation as { title?: string; status?: string; starts_at?: string } | null)
+  // event (titel+status+starttid+archived_at) kan komma som objekt eller
+  // array beroende på PostgREST-version, precis som ticket_types(name)
+  // längre ner - samma single()-hjälpare.
+  const event = single<{ title?: string; status?: string; starts_at?: string; archived_at?: string | null }>(
+    ticket.events as unknown as
+      | { title?: string; status?: string; starts_at?: string; archived_at?: string | null }
+      | { title?: string; status?: string; starts_at?: string; archived_at?: string | null }[]
+      | null,
+  )
   const eventTitle = event?.title ?? null
+  const order = single<{ archived_at?: string | null }>(
+    ticket.orders as unknown as { archived_at?: string | null } | { archived_at?: string | null }[] | null,
+  )
 
   const outcome = determineScanOutcome({
     ticketStatus: ticket.status as 'valid' | 'checked_in' | 'void',
@@ -166,6 +174,8 @@ Deno.serve(async (req: Request) => {
     requestedEventId,
     ticketEventTitle: eventTitle,
     ticketEventStartsAt: event?.starts_at ?? null,
+    orderArchivedAt: order?.archived_at ?? null,
+    eventArchivedAt: event?.archived_at ?? null,
   })
 
   // Biljettyp + köpsammansättning (ordern A2) - bara för svar där

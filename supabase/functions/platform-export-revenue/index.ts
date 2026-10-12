@@ -29,6 +29,7 @@ import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { encodeCp437 } from '../_shared/cp437.ts'
 import { PLATFORM_FEE_VAT_RATE } from '../_shared/platformFee.ts'
+import { splitArchivedTestItems } from '../_shared/archiveExport.ts'
 
 interface OrderRow {
   id: string
@@ -36,6 +37,7 @@ interface OrderRow {
   stripe_session_id: string | null
   platform_fee_ore: number | null
   platform_fee_vat_ore: number | null
+  archived_reason: string | null
   events: { title: string; organizers: { name: string } | { name: string }[] | null } | { title: string; organizers: { name: string } | { name: string }[] | null }[] | null
 }
 
@@ -238,7 +240,7 @@ Deno.serve(async (req: Request) => {
   let query = supabase
     .from('orders')
     .select(
-      'id, paid_at, stripe_session_id, status, platform_fee_ore, platform_fee_vat_ore, events!inner(title, organizers(name))',
+      'id, paid_at, stripe_session_id, status, platform_fee_ore, platform_fee_vat_ore, archived_reason, events!inner(title, organizers(name))',
     )
     .eq('status', 'paid')
 
@@ -266,7 +268,24 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Databasfel: ${error.message}` }, 500)
   }
 
-  const rows = toRevenueRows((data ?? []) as unknown as OrderRow[])
+  // Samma uteslutning som export-sales (ordern 2026-10-12, DEL 2 punkt
+  // 2), se _shared/archiveExport.ts - arkiverade ordrar med orsak 'test'
+  // utesluts, 'hidden' ligger kvar. Summan här är plattformsAVGIFTEN
+  // (platform_fee_ore), inte biljettbeloppet - det är vad den här
+  // exporten faktiskt bokför.
+  const allOrders = (data ?? []) as unknown as OrderRow[]
+  const { included: includedOrders, excludedCount, excludedTotalOre: excludedFeeTotalOre } = splitArchivedTestItems(
+    allOrders,
+    (order) => order.archived_reason,
+    (order) => order.platform_fee_ore ?? 0,
+    (order) => order.id,
+  )
+
+  const rows = toRevenueRows(includedOrders)
+  const extraHeaders = {
+    'X-Excluded-Test-Order-Count': String(excludedCount),
+    'X-Excluded-Test-Total-Ore': String(excludedFeeTotalOre),
+  }
 
   if (format === 'csv') {
     const csv = buildCsv(rows)
@@ -276,6 +295,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: {
         ...corsHeaders,
+        ...extraHeaders,
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="plattformsintakt-${scope}.csv"`,
       },
@@ -288,6 +308,7 @@ Deno.serve(async (req: Request) => {
     status: 200,
     headers: {
       ...corsHeaders,
+      ...extraHeaders,
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': `attachment; filename="plattformsintakt-${scope}.se"`,
     },

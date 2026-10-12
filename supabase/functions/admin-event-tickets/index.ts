@@ -1,11 +1,20 @@
 // admin-event-tickets
 //
-// Returnerar ett event, dess biljettyper och dess biljetter (status,
-// incheckningstid m.m.) för admin-detaljvyn. Kräver giltig Supabase
-// Auth-JWT (se _shared/organizerAuth.ts), och eventet måste tillhöra den
-// inloggade användarens egen arrangör (Tilläggsordern 2026-08-05) - samma
-// 404-för-annan-arrangörs-event-mönster som admin-update-event.
+// Returnerar ett event, dess biljettyper, dess ordrar och dess biljetter
+// (status, incheckningstid m.m.) för admin-detaljvyn. Kräver giltig
+// Supabase Auth-JWT (se _shared/organizerAuth.ts), och eventet måste
+// tillhöra den inloggade användarens egen arrangör (Tilläggsordern
+// 2026-08-05) - samma 404-för-annan-arrangörs-event-mönster som
+// admin-update-event.
 // event_id skickas som query-param: /admin-event-tickets?event_id=<uuid>
+//
+// orders (ordern "Arkiv för ordrar och event" 2026-10-12) - en rad per
+// order för eventet, med total_ore beräknat från order_items (orders.
+// total_ore är null för äldre köp före kundvagnen, se filkommentaren i
+// 20260106000100_order_items_cart.sql) så UI:t alltid kan visa ett
+// belopp. Det här är FÖRSTA stället i admin-UI:t som visar köparens namn/
+// e-post på en lista - tidigare bara exponerat via tickets.holder_name
+// (gästlistan), som kan skilja sig från beställaren.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -34,7 +43,9 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, organizer_id, sales_open_at')
+    .select(
+      'id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, organizer_id, sales_open_at, archived_at, archived_by, archived_reason',
+    )
     .eq('id', eventId)
     .maybeSingle()
 
@@ -65,6 +76,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Kunde inte hämta biljetter: ${ticketsError.message}` }, 500)
   }
 
+  const { data: orders, error: ordersError } = await supabase
+    .from('orders')
+    .select(
+      'id, buyer_name, buyer_email, status, created_at, total_ore, price_ore, qty, archived_at, archived_by, archived_reason, order_items(qty)',
+    )
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false })
+
+  if (ordersError) {
+    return jsonResponse({ error: `Kunde inte hämta ordrar: ${ordersError.message}` }, 500)
+  }
+
   const { organizer_id: _organizerId, ...eventWithoutOrganizerId } = event
   const formattedEvent = {
     ...eventWithoutOrganizerId,
@@ -79,6 +102,26 @@ Deno.serve(async (req: Request) => {
     ...t,
     checked_in_at: toIso8601Seconds(t.checked_in_at),
   }))
+  // total_ore/ticket_qty: order_items är sanningen för köp gjorda EFTER
+  // kundvagnen (20260106000100) - de äldre, backfillade raderna faller
+  // tillbaka på orders.total_ore/price_ore*qty direkt på ordern (samma
+  // fallback-mönster som export-sales/EventsPage.tsx använder på andra
+  // håll i kodbasen).
+  const formattedOrders = (orders ?? []).map((o) => {
+    const { order_items, price_ore, qty, ...rest } = o
+    const itemQty = (order_items as { qty: number }[] | null)?.reduce((sum, i) => sum + i.qty, 0) ?? 0
+    return {
+      ...rest,
+      created_at: toIso8601Seconds(o.created_at),
+      total_ore: o.total_ore ?? (price_ore !== null && qty !== null ? price_ore * qty : null),
+      ticket_qty: itemQty > 0 ? itemQty : (qty ?? 0),
+    }
+  })
 
-  return jsonResponse({ event: formattedEvent, ticket_types: formattedTicketTypes, tickets: formattedTickets })
+  return jsonResponse({
+    event: formattedEvent,
+    ticket_types: formattedTicketTypes,
+    tickets: formattedTickets,
+    orders: formattedOrders,
+  })
 })

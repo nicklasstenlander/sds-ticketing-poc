@@ -37,6 +37,7 @@ import { handleOptions, corsHeaders, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { encodeCp437 } from '../_shared/cp437.ts'
+import { splitArchivedTestItems } from '../_shared/archiveExport.ts'
 
 interface OrderItemRow {
   id: string
@@ -52,6 +53,7 @@ interface OrderItemRow {
         paid_at: string
         stripe_session_id: string | null
         discount_amount_ore: number
+        archived_reason: string | null
         events: { title: string } | { title: string }[] | null
         discount_codes: { code: string } | { code: string }[] | null
       }
@@ -61,6 +63,7 @@ interface OrderItemRow {
         paid_at: string
         stripe_session_id: string | null
         discount_amount_ore: number
+        archived_reason: string | null
         events: { title: string } | { title: string }[] | null
         discount_codes: { code: string } | { code: string }[] | null
       }[]
@@ -322,7 +325,7 @@ Deno.serve(async (req: Request) => {
   let query = supabase
     .from('order_items')
     .select(
-      'id, order_id, qty, unit_price_ore, vat_rate, ticket_types(name), orders!inner(id, event_id, paid_at, stripe_session_id, status, discount_amount_ore, events!inner(title, organizer_id), discount_codes(code))',
+      'id, order_id, qty, unit_price_ore, vat_rate, ticket_types(name), orders!inner(id, event_id, paid_at, stripe_session_id, status, discount_amount_ore, archived_reason, events!inner(title, organizer_id), discount_codes(code))',
     )
     .eq('orders.status', 'paid')
     .eq('orders.events.organizer_id', auth.organizerId)
@@ -366,7 +369,25 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: `Databasfel: ${error.message}` }, 500)
   }
 
-  const rows = toSaleRows((data ?? []) as unknown as OrderItemRow[])
+  // Arkiverade ordrar med orsak 'test' (ordern "Arkiv för ordrar och
+  // event" 2026-10-12, DEL 2 punkt 2) utesluts ur bokföringsexporten -
+  // se _shared/archiveExport.ts (delad, testad ren funktion). Delar upp
+  // FÖRE toSaleRows så en summering av det uteslutna (antal ordrar +
+  // belopp) kan skickas tillbaka som headers - UI:t visar det som en
+  // rad i exportvyn, se AdminPage.tsx.
+  const allItems = (data ?? []) as unknown as OrderItemRow[]
+  const { included: includedItems, excludedCount, excludedTotalOre } = splitArchivedTestItems(
+    allItems,
+    (item) => single(item.orders)?.archived_reason,
+    (item) => item.unit_price_ore * item.qty,
+    (item) => single(item.orders)?.id ?? item.order_id,
+  )
+
+  const rows = toSaleRows(includedItems)
+  const extraHeaders = {
+    'X-Excluded-Test-Order-Count': String(excludedCount),
+    'X-Excluded-Test-Total-Ore': String(excludedTotalOre),
+  }
 
   if (format === 'csv') {
     const csv = buildCsv(rows)
@@ -378,6 +399,7 @@ Deno.serve(async (req: Request) => {
       status: 200,
       headers: {
         ...corsHeaders,
+        ...extraHeaders,
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="forsaljning-${scope}.csv"`,
       },
@@ -390,6 +412,7 @@ Deno.serve(async (req: Request) => {
     status: 200,
     headers: {
       ...corsHeaders,
+      ...extraHeaders,
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': `attachment; filename="forsaljning-${scope}.se"`,
     },

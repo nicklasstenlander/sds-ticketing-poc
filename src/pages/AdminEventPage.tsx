@@ -4,13 +4,22 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
-import type { EventRow, TicketRow, TicketTypeRow } from '../lib/types'
+import type { AdminOrderRow, EventRow, TicketRow, TicketTypeRow } from '../lib/types'
 import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { formatKr } from '../lib/formatPrice'
 
 interface AdminEventTicketsResponse {
   event: EventRow
   ticket_types: TicketTypeRow[]
   tickets: TicketRow[]
+  orders: AdminOrderRow[]
+}
+
+const ORDER_STATUS_LABEL: Record<AdminOrderRow['status'], string> = {
+  pending: 'Väntande',
+  paid: 'Betald',
+  expired: 'Utgången',
+  cancelled: 'Avbokad',
 }
 
 const STATUS_LABEL: Record<TicketRow['status'], string> = {
@@ -88,6 +97,19 @@ export function AdminEventPage() {
             {data.event.sold_count} / {data.event.capacity} sålda totalt
           </p>
 
+          {/* Arkiverat event (ordern "Arkiv för ordrar och event"
+              2026-10-12) - synligt här även om man kommer direkt till
+              den här sidan (t.ex. en sparad länk) utan att ha sett
+              badgen i adminlistan. Återställning görs från adminlistan
+              (AdminPage.tsx), inte här - undviker två olika ställen med
+              samma knapp. */}
+          {data.event.archived_at && (
+            <p className="mb-6 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+              Det här eventet är arkiverat (orsak: {data.event.archived_reason === 'test' ? 'testdata' : 'dold'}).
+              Återställ det från adminlistan för att redigera igen.
+            </p>
+          )}
+
           <PostersSection
             eventId={data.event.id}
             posterLandscapeUrl={data.event.poster_landscape_url}
@@ -96,6 +118,8 @@ export function AdminEventPage() {
           />
 
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
+
+          <OrdersSection orders={data.orders} onChange={load} />
 
           <h2 className="font-semibold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
           {data.tickets.length === 0 ? (
@@ -313,6 +337,190 @@ function PosterUploadField({
       {uploading && <p className="text-slate-500 text-xs mt-2">Laddar upp…</p>}
       {error && <p className="text-red-600 text-xs mt-2">{error}</p>}
     </div>
+  )
+}
+
+// Ordrar (ordern "Arkiv för ordrar och event" 2026-10-12, DEL 2 punkt 1 -
+// "order-arkivering som tillägg, enskilt och flerval"). Döljer arkiverade
+// ordrar som standard ("Visa arkiverade ordrar"-växel, samma princip som
+// adminlistans "Visa arkiverade" för event). EN delad reason-väljare för
+// både enskild och flervalsarkivering - admin kryssar i en eller flera
+// rader och klickar "Arkivera valda", inget separat enrads-flöde.
+// Återställning är per rad (reversibelt, inget val av orsak behövs).
+function OrdersSection({ orders, onChange }: { orders: AdminOrderRow[]; onChange: () => Promise<void> }) {
+  const [showArchived, setShowArchived] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [pickingReason, setPickingReason] = useState(false)
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+
+  const visibleOrders = showArchived ? orders : orders.filter((o) => !o.archived_at)
+  const selectedActiveIds = [...selected].filter((id) => orders.some((o) => o.id === id && !o.archived_at))
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleArchiveSelected(reason: 'test' | 'hidden') {
+    if (selectedActiveIds.length === 0) return
+    const reasonLabel = reason === 'test' ? 'testdata (utesluts ur bokföringsexporten)' : 'dold (ligger kvar i bokföringsexporten)'
+    if (!window.confirm(`Arkivera ${selectedActiveIds.length} order${selectedActiveIds.length === 1 ? '' : 'ar'} som ${reasonLabel}? Går att återställa senare.`)) {
+      return
+    }
+    setPickingReason(false)
+    setError(null)
+    setBusyIds(new Set(selectedActiveIds))
+    try {
+      await callFunction('admin-archive-orders', {
+        auth: true,
+        method: 'POST',
+        body: { order_ids: selectedActiveIds, action: 'archive', reason },
+      })
+      setSelected(new Set())
+      await onChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kunde inte arkivera ordrarna.')
+    } finally {
+      setBusyIds(new Set())
+    }
+  }
+
+  async function handleRestore(order: AdminOrderRow) {
+    setError(null)
+    setBusyIds((prev) => new Set(prev).add(order.id))
+    try {
+      await callFunction('admin-archive-orders', {
+        auth: true,
+        method: 'POST',
+        body: { order_ids: [order.id], action: 'restore' },
+      })
+      await onChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kunde inte återställa ordern.')
+    } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev)
+        next.delete(order.id)
+        return next
+      })
+    }
+  }
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold">Ordrar ({orders.length})</h2>
+        <label className="flex items-center gap-1.5 text-sm text-slate-500">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => {
+              setShowArchived(e.target.checked)
+              setSelected(new Set())
+            }}
+          />
+          Visa arkiverade ordrar
+        </label>
+      </div>
+
+      {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
+
+      {visibleOrders.length === 0 ? (
+        <p className="text-slate-500">Inga ordrar ännu.</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="px-4 py-2"></th>
+                  <th className="px-4 py-2">Köpare</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Antal</th>
+                  <th className="px-4 py-2">Belopp</th>
+                  <th className="px-4 py-2">Datum</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleOrders.map((order) => (
+                  <tr key={order.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-2">
+                      {!order.archived_at && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(order.id)}
+                          onChange={() => toggleSelected(order.id)}
+                          disabled={busyIds.has(order.id)}
+                        />
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <div>{order.buyer_name}</div>
+                      <div className="text-xs text-slate-400">{order.buyer_email}</div>
+                    </td>
+                    <td className="px-4 py-2">{ORDER_STATUS_LABEL[order.status]}</td>
+                    <td className="px-4 py-2">{order.ticket_qty}</td>
+                    <td className="px-4 py-2">{order.total_ore !== null ? `${formatKr(order.total_ore)} kr` : '-'}</td>
+                    <td className="px-4 py-2">
+                      {new Date(order.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}
+                    </td>
+                    <td className="px-4 py-2">
+                      {order.archived_at ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                            Arkiverad ({order.archived_reason === 'test' ? 'testdata' : 'dold'})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRestore(order)}
+                            disabled={busyIds.has(order.id)}
+                            className="text-xs underline disabled:opacity-50"
+                          >
+                            {busyIds.has(order.id) ? 'Återställer…' : 'Återställ'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {pickingReason ? (
+              <>
+                <span className="text-sm text-slate-700">Arkivera {selectedActiveIds.length} valda som:</span>
+                <button type="button" onClick={() => handleArchiveSelected('test')} className="admin-action-btn">
+                  Testdata (uteslut ur export)
+                </button>
+                <button type="button" onClick={() => handleArchiveSelected('hidden')} className="admin-action-btn">
+                  Dölj (riktig betalning, kvar i export)
+                </button>
+                <button type="button" onClick={() => setPickingReason(false)} className="admin-action-btn">
+                  Avbryt
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPickingReason(true)}
+                disabled={selectedActiveIds.length === 0}
+                className="admin-action-btn disabled:opacity-50"
+              >
+                Arkivera valda ({selectedActiveIds.length})
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 

@@ -18,6 +18,7 @@ import {
   formatStockholmDateTimeLocale,
 } from '../lib/stockholmTime'
 import { computeSalesState } from '../lib/salesState'
+import { formatKr } from '../lib/formatPrice'
 
 interface AdminEventsResponse {
   events: AdminEventRow[]
@@ -189,6 +190,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
+  // Arkiv (ordern "Arkiv för ordrar och event" 2026-10-12, DEL 2 punkt
+  // 1) - "Visa arkiverade" döljer/visar arkiverade event i listan.
+  // archivingEventId: raden som just nu visar reason-väljaren (test/
+  // dold) - bara en i taget, stängs av en lyckad/avbruten åtgärd.
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivingEventId, setArchivingEventId] = useState<string | null>(null)
+  const [archiveActionId, setArchiveActionId] = useState<string | null>(null)
 
   const editingEvent = events?.find((e) => e.id === editingEventId) ?? null
   const capacityTooLow = editingEvent !== null && capacity < editingEvent.sold_count
@@ -200,15 +208,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   // handleDuplicate nedan) slipper racea mot Reacts asynkrona setState -
   // events-variabeln i komponentens closure speglar INTE nödvändigtvis
   // det nya state:et forran nasta rendering.
-  async function loadEvents(): Promise<AdminEventRow[]> {
+  async function loadEvents(includeArchived = showArchived): Promise<AdminEventRow[]> {
     try {
-      const res = await callFunction<AdminEventsResponse>('admin-events', { auth: true })
+      const query = includeArchived ? 'admin-events?include_archived=1' : 'admin-events'
+      const res = await callFunction<AdminEventsResponse>(query, { auth: true })
       setEvents(res.events)
       return res.events
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kunde inte hämta events.')
       return []
     }
+  }
+
+  function handleToggleShowArchived() {
+    const next = !showArchived
+    setShowArchived(next)
+    loadEvents(next)
   }
 
   // Körs en gång vid mount: avgör om den inloggade användaren är en
@@ -369,13 +384,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  // "Radera" är bara möjligt för ett utkast utan några ordrar alls (se
+  // admin-delete-event/index.ts, ordern 2026-10-12 DEL 2 punkt 3) - ett
+  // publicerat event eller ett med ordrar ska arkiveras istället.
+  // Server-sidan är den egentliga spärren, det här styr bara om knappen
+  // ens visas.
+  function canHardDelete(event: AdminEventRow): boolean {
+    return event.status === 'draft' && event.order_count === 0 && !event.archived_at
+  }
+
   async function handleDelete(event: AdminEventRow) {
-    const soldCount = event.sold_count
-    const message =
-      soldCount > 0
-        ? `Eventet har ${soldCount} sålda biljetter och kan inte raderas — det markeras som inställt istället. Fortsätt?`
-        : 'Radera eventet permanent?'
-    if (!window.confirm(message)) return
+    if (!window.confirm('Radera eventet permanent? Det går inte att ångra.')) return
 
     setDeletingId(event.id)
     setRowError(null)
@@ -391,6 +410,52 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setRowError(err instanceof Error ? err.message : 'Kunde inte radera eventet.')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  // Arkivering (ordern "Arkiv för ordrar och event" 2026-10-12, DEL 2
+  // punkt 1) - event-fokuserat: arkiverar eventet OCH kaskaderar till
+  // alla dess ordrar (admin-archive-event). reason väljs av admin innan
+  // bekräftelse - "test" (ingen riktig betalning, utesluts ur
+  // bokföringsexporten) eller "hidden" (riktig betalning, bara dold).
+  async function handleArchiveEvent(event: AdminEventRow, reason: 'test' | 'hidden') {
+    const reasonLabel = reason === 'test' ? 'testdata (utesluts ur bokföringsexporten)' : 'dold (ligger kvar i bokföringsexporten)'
+    const orderNote = event.order_count > 0 ? ` Eventets ${event.order_count} order${event.order_count === 1 ? '' : 'ar'} arkiveras samtidigt.` : ''
+    if (!window.confirm(`Arkivera "${event.title}" som ${reasonLabel}?${orderNote} Går att återställa senare.`)) {
+      return
+    }
+    setArchiveActionId(event.id)
+    setArchivingEventId(null)
+    setRowError(null)
+    try {
+      await callFunction('admin-archive-event', {
+        auth: true,
+        method: 'POST',
+        body: { event_id: event.id, action: 'archive', reason },
+      })
+      if (editingEventId === event.id) resetForm()
+      await loadEvents()
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Kunde inte arkivera eventet.')
+    } finally {
+      setArchiveActionId(null)
+    }
+  }
+
+  async function handleRestoreEvent(event: AdminEventRow) {
+    setArchiveActionId(event.id)
+    setRowError(null)
+    try {
+      await callFunction('admin-archive-event', {
+        auth: true,
+        method: 'POST',
+        body: { event_id: event.id, action: 'restore' },
+      })
+      await loadEvents()
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Kunde inte återställa eventet.')
+    } finally {
+      setArchiveActionId(null)
     }
   }
 
@@ -495,7 +560,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <section className="order-1">
-          <h2 className="font-semibold mb-4 text-[var(--text)]">Befintliga events</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-[var(--text)]">Befintliga events</h2>
+            <label className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+              <input type="checkbox" checked={showArchived} onChange={handleToggleShowArchived} />
+              Visa arkiverade
+            </label>
+          </div>
           {error && <p className="text-red-600">{error}</p>}
           {rowError && (
             <p className="text-red-600 mb-2">
@@ -568,6 +639,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       >
                         {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
                       </span>
+                      {event.archived_at && (
+                        <div className="mt-1">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-white">
+                            Arkiverad ({event.archived_reason === 'test' ? 'testdata' : 'dold'})
+                          </span>
+                        </div>
+                      )}
                       {isUpcoming && event.sales_open_at && (
                         <div className="mt-1">
                           <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)]">
@@ -578,34 +656,83 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     </div>
                   </div>
 
-                  {!cancelled && (
-                    <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)] text-sm">
-                      <button type="button" onClick={() => startEdit(event)} className="admin-action-btn">
-                        Redigera
-                      </button>
-                      <Link to={`/admin/event/${event.id}`} className="admin-action-btn">
-                        Biljettyper
-                      </Link>
-                      <button type="button" onClick={() => handleTogglePublish(event)} className="admin-action-btn">
-                        {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
-                      </button>
+                  {event.archived_at ? (
+                    <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                      <span className="text-[var(--text-muted)]">
+                        Arkiverad {formatStockholmDateTime(event.archived_at)}
+                        {event.order_count > 0 ? ` · ${event.order_count} order${event.order_count === 1 ? '' : 'ar'} med` : ''}
+                      </span>
                       <button
                         type="button"
-                        onClick={() => handleDuplicate(event)}
-                        disabled={duplicatingId === event.id}
+                        onClick={() => handleRestoreEvent(event)}
+                        disabled={archiveActionId === event.id}
                         className="admin-action-btn disabled:opacity-50"
                       >
-                        {duplicatingId === event.id ? 'Duplicerar…' : 'Duplicera'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(event)}
-                        disabled={deletingId === event.id}
-                        className="admin-action-btn admin-action-btn-danger disabled:opacity-50"
-                      >
-                        {deletingId === event.id ? 'Raderar…' : 'Radera'}
+                        {archiveActionId === event.id ? 'Återställer…' : 'Återställ'}
                       </button>
                     </div>
+                  ) : (
+                    !cancelled &&
+                    (archivingEventId === event.id ? (
+                      <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                        <span className="text-[var(--text)]">Arkivera som:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveEvent(event, 'test')}
+                          className="admin-action-btn"
+                        >
+                          Testdata (uteslut ur export)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveEvent(event, 'hidden')}
+                          className="admin-action-btn"
+                        >
+                          Dölj (riktig betalning, kvar i export)
+                        </button>
+                        <button type="button" onClick={() => setArchivingEventId(null)} className="admin-action-btn">
+                          Avbryt
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                        <button type="button" onClick={() => startEdit(event)} className="admin-action-btn">
+                          Redigera
+                        </button>
+                        <Link to={`/admin/event/${event.id}`} className="admin-action-btn">
+                          Biljettyper
+                        </Link>
+                        <button type="button" onClick={() => handleTogglePublish(event)} className="admin-action-btn">
+                          {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicate(event)}
+                          disabled={duplicatingId === event.id}
+                          className="admin-action-btn disabled:opacity-50"
+                        >
+                          {duplicatingId === event.id ? 'Duplicerar…' : 'Duplicera'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setArchivingEventId(event.id)}
+                          disabled={archiveActionId === event.id}
+                          className="admin-action-btn disabled:opacity-50"
+                        >
+                          {archiveActionId === event.id ? 'Arkiverar…' : 'Arkivera'}
+                        </button>
+                        {canHardDelete(event) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(event)}
+                            disabled={deletingId === event.id}
+                            className="admin-action-btn admin-action-btn-danger disabled:opacity-50"
+                          >
+                            {deletingId === event.id ? 'Raderar…' : 'Radera'}
+                          </button>
+                        )}
+                      </div>
+                    ))
                   )}
                 </li>
               )
@@ -781,6 +908,11 @@ function ExportSection({ events }: { events: AdminEventRow[] }) {
   const [eventId, setEventId] = useState(events[0]?.id ?? '')
   const [downloading, setDownloading] = useState<'csv' | 'sie' | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  // Arkiv (ordern 2026-10-12, DEL 2 punkt 2) - "en rad med antal och
+  // summa för uteslutna testordrar" i exportvyn, satt efter varje lyckad
+  // nedladdning (null innan första nedladdningen - visa inget förrän
+  // något faktiskt laddats ner).
+  const [excludedTestNotice, setExcludedTestNotice] = useState<{ count: number; totalOre: number } | null>(null)
 
   function buildQuery(format: 'csv' | 'sie'): string | null {
     const params = new URLSearchParams({ format, scope })
@@ -807,7 +939,8 @@ function ExportSection({ events }: { events: AdminEventRow[] }) {
     setDownloading(format)
     setExportError(null)
     try {
-      await downloadAdminFile(query, `forsaljning.${format === 'csv' ? 'csv' : 'se'}`)
+      const result = await downloadAdminFile(query, `forsaljning.${format === 'csv' ? 'csv' : 'se'}`)
+      setExcludedTestNotice({ count: result.excludedTestCount, totalOre: result.excludedTestTotalOre })
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Export misslyckades.')
     } finally {
@@ -915,6 +1048,14 @@ function ExportSection({ events }: { events: AdminEventRow[] }) {
           {downloading === 'sie' ? 'Laddar ner…' : 'Ladda ner SIE'}
         </button>
       </div>
+
+      {excludedTestNotice && (
+        <p className="mt-3 text-sm text-[var(--text-muted)]">
+          {excludedTestNotice.count === 0
+            ? 'Inga arkiverade testordrar uteslutna ur den här exporten.'
+            : `${excludedTestNotice.count} arkiverad${excludedTestNotice.count === 1 ? '' : 'e'} testorder${excludedTestNotice.count === 1 ? '' : 'ar'} (${formatKr(excludedTestNotice.totalOre)} kr) uteslutna ur den här exporten.`}
+        </p>
+      )}
     </section>
   )
 }
@@ -939,6 +1080,7 @@ function PlatformRevenueExportSection() {
   const [to, setTo] = useState(today)
   const [downloading, setDownloading] = useState<'csv' | 'sie' | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [excludedTestNotice, setExcludedTestNotice] = useState<{ count: number; totalOre: number } | null>(null)
 
   function buildQuery(format: 'csv' | 'sie'): string | null {
     const params = new URLSearchParams({ format, scope })
@@ -962,7 +1104,8 @@ function PlatformRevenueExportSection() {
     setDownloading(format)
     setExportError(null)
     try {
-      await downloadAdminFile(query, `plattformsintakt.${format === 'csv' ? 'csv' : 'se'}`)
+      const result = await downloadAdminFile(query, `plattformsintakt.${format === 'csv' ? 'csv' : 'se'}`)
+      setExcludedTestNotice({ count: result.excludedTestCount, totalOre: result.excludedTestTotalOre })
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Export misslyckades.')
     } finally {
@@ -1021,6 +1164,14 @@ function PlatformRevenueExportSection() {
           {downloading === 'sie' ? 'Laddar ner…' : 'Ladda ner SIE'}
         </button>
       </div>
+
+      {excludedTestNotice && (
+        <p className="mt-3 text-sm text-[var(--text-muted)]">
+          {excludedTestNotice.count === 0
+            ? 'Inga arkiverade testordrar uteslutna ur den här exporten.'
+            : `${excludedTestNotice.count} arkiverad${excludedTestNotice.count === 1 ? '' : 'e'} testorder${excludedTestNotice.count === 1 ? '' : 'ar'} (${formatKr(excludedTestNotice.totalOre)} kr) uteslutna ur den här exporten.`}
+        </p>
+      )}
     </section>
   )
 }

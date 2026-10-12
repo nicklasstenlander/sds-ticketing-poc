@@ -66,6 +66,11 @@ Deno.serve(async (req: Request) => {
       'id, slug, title, venue, starts_at, status, poster_landscape_url, poster_portrait_url, organizers(name), sales_open_at, capacity, sold_count',
     )
     .eq('status', 'published')
+    // Arkiverade event (ordern "Arkiv för ordrar och event" 2026-10-12)
+    // ska inte synas här - samma regel som RLS-policyn på events redan
+    // sätter för en direkt PostgREST-läsning, upprepad explicit här
+    // eftersom den här funktionen använder service role (kringgår RLS).
+    .is('archived_at', null)
     .order('starts_at', { ascending: true })
 
   if (eventsError) {

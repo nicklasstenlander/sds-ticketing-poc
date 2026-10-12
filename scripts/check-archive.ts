@@ -160,5 +160,25 @@ assertTrue(
   assertTrue(!rollback.includes('.delete(') && !rollback.includes('drop table') && !rollback.includes('drop column'), 'Reservfilen rör bara policyer, inget annat')
 }
 
+{
+  // Uppföljning 2026-10-12: event-återställning fick INTE återställa en
+  // order som arkiverats enskilt med annan orsak/tidpunkt. Nyckeln är
+  // att restore-grenen matchar ordrarnas archived_at mot EVENTETS egna
+  // (lästa FÖRE nollställning), inte en bar "archived_at is not null".
+  const content = read('supabase/functions/admin-archive-event/index.ts')
+  assertTrue(
+    content.includes("const archivedAtBeforeRestore = event.archived_at"),
+    'admin-archive-event: läser eventets archived_at i en egen variabel INNAN det nollställs',
+  )
+  assertTrue(
+    content.includes(".eq('archived_at', archivedAtBeforeRestore)"),
+    'admin-archive-event: återställningen av ordrar matchar EXAKT den tidsstämpeln - inte "alla arkiverade ordrar"',
+  )
+  assertTrue(
+    !content.includes(".not('archived_at', 'is', null)"),
+    'admin-archive-event: innehåller INTE den gamla "återställ alla arkiverade ordrar oavsett ursprung"-frågan',
+  )
+}
+
 console.log(`\n${failures === 0 ? 'Alla kontroller gick igenom.' : `${failures} kontroll(er) misslyckades.`}`)
 if (failures > 0) Deno.exit(1)
