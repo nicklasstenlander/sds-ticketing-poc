@@ -33,6 +33,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'ok', message: null, showTicketType: true },
   'Inget event_id (gammal app), giltig biljett -> ok, oförändrat',
@@ -47,6 +48,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'duplicate', message: null, showTicketType: true },
   'Inget event_id, redan incheckad -> duplicate, oförändrat (showTicketType=true, ordern A2 kräver synlig typ även vid "redan incheckad")',
@@ -61,6 +63,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: null, showTicketType: true },
   'Inget event_id, annullerad biljett -> invalid (inget meddelande), oförändrat',
@@ -79,6 +82,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'ok', message: null, showTicketType: true },
   'event_id matchar biljettens event -> ok',
@@ -99,6 +103,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Biljetten gäller TEST skanner B, 12 dec kl. 15:00', showTicketType: false },
   'Oanvänd biljett, FEL föreställning vald -> invalid + "Biljetten gäller ...", showTicketType=false (ordern A2 - typen döljs vid fel föreställning)',
@@ -113,6 +118,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Biljetten gäller TEST skanner B, 12 dec kl. 15:00', showTicketType: false },
   'REDAN INCHECKAD biljett (på sitt eget event), FEL föreställning vald -> invalid + samma meddelande, INTE "duplicate" (avslöjar inte att den redan är använd)',
@@ -127,6 +133,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Biljetten gäller TEST skanner B, 12 dec kl. 15:00', showTicketType: false },
   'Annullerad biljett, FEL föreställning vald -> samma "fel föreställning"-meddelande, inte tyst',
@@ -141,6 +148,7 @@ assertEqual(
     ticketEventStartsAt: null,
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Biljetten gäller en annan föreställning', showTicketType: false },
   'Fel föreställning, saknad titel/starttid -> rimlig reservtext istället för att krascha',
@@ -161,6 +169,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: '2026-10-12T10:00:00Z',
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false },
   'Arkiverad order (eventet oarkiverat) -> invalid, samma result som inställt/duplicate, showTicketType=false',
@@ -175,6 +184,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: '2026-10-12T10:00:00Z',
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false },
   'Arkiverat event (ordern oarkiverad) -> invalid, samma som ovan',
@@ -189,6 +199,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: '2026-10-12T10:00:00Z',
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false },
   'Arkiverad order, biljetten redan incheckad -> "arkiverad" vinner, INTE "duplicate" (avslöjar inte att den redan är använd, samma princip som fel föreställning)',
@@ -203,9 +214,92 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: '2026-10-12T10:00:00Z',
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false },
   'Arkiverad OCH inställt samtidigt -> "arkiverad" vinner (kontrolleras allra först)',
+)
+
+// === orders.status='cancelled' (ordern "Avbokning, återbetalning,
+// omsändning och köparmeddelanden" 2026-10-12, STEG 2 tillägg C) -
+// EXTRA skydd, inte den primära spärren (den är ticketStatus='void',
+// som cancel_paid_order alltid sätter i samma transaktion). Samma
+// result/showTicketType som övriga avvisningar, inget nytt svarsfält. ===
+
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+    orderArchivedAt: null,
+    eventArchivedAt: null,
+    orderStatus: 'cancelled',
+  }),
+  { result: 'invalid', message: 'Ordern är avbokad', showTicketType: false },
+  'orders.status=cancelled, biljetten ANDÅ "valid" (missat void) -> invalid, fångas ändå av skyddsnätet',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'checked_in',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+    orderArchivedAt: null,
+    eventArchivedAt: null,
+    orderStatus: 'cancelled',
+  }),
+  { result: 'invalid', message: 'Ordern är avbokad', showTicketType: false },
+  'orders.status=cancelled, biljetten redan incheckad -> "avbokad" vinner, INTE "duplicate"',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'void',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+    orderArchivedAt: null,
+    eventArchivedAt: null,
+    orderStatus: 'cancelled',
+  }),
+  { result: 'invalid', message: 'Ordern är avbokad', showTicketType: false },
+  'orders.status=cancelled OCH biljetten redan void (normalfallet) -> samma "avbokad"-meddelande, inte tyst void',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+    orderArchivedAt: '2026-10-12T10:00:00Z',
+    eventArchivedAt: null,
+    orderStatus: 'cancelled',
+  }),
+  { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false },
+  'Arkiverad OCH avbokad samtidigt -> "arkiverad" vinner (kontrolleras allra först, samma princip som inställt)',
+)
+assertEqual(
+  determineScanOutcome({
+    ticketStatus: 'valid',
+    eventStatus: 'published',
+    ticketEventId: EVENT_A,
+    requestedEventId: null,
+    ticketEventTitle: 'Vinterföreställningen',
+    ticketEventStartsAt: '2026-12-12T14:00:00Z',
+    orderArchivedAt: null,
+    eventArchivedAt: null,
+    orderStatus: 'paid',
+  }),
+  { result: 'ok', message: null, showTicketType: true },
+  'orders.status=paid (det normala) -> helt oförändrat, ok',
 )
 
 // === Kontrollordning (ordern A1): inställt event FÖRE fel föreställning
@@ -222,6 +316,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'invalid', message: 'Föreställningen är inställd', showTicketType: false },
   'Inställt OCH fel föreställning samtidigt -> "inställd" vinner (kontrollordningen i ordern)',
@@ -240,6 +335,7 @@ assertEqual(
     ticketEventStartsAt: '2026-12-12T14:00:00Z',
     orderArchivedAt: null,
     eventArchivedAt: null,
+    orderStatus: 'paid',
   }),
   { result: 'ok', message: null, showTicketType: true },
   'Okänd eventstatus (null) behandlas INTE som inställt',
@@ -250,13 +346,14 @@ assertEqual(
 
 const ALL_KNOWN_RESULTS = ['ok', 'duplicate', 'invalid']
 const combos: Parameters<typeof determineScanOutcome>[0][] = [
-  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null },
-  { ticketStatus: 'checked_in', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null },
-  { ticketStatus: 'void', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null },
-  { ticketStatus: 'valid', eventStatus: 'cancelled', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null },
-  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_B, requestedEventId: EVENT_A, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null },
-  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: '2026-10-12T00:00:00Z', eventArchivedAt: null },
-  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: '2026-10-12T00:00:00Z' },
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null, orderStatus: 'paid' },
+  { ticketStatus: 'checked_in', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null, orderStatus: 'paid' },
+  { ticketStatus: 'void', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null, orderStatus: 'paid' },
+  { ticketStatus: 'valid', eventStatus: 'cancelled', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null, orderStatus: 'paid' },
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_B, requestedEventId: EVENT_A, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null, orderStatus: 'paid' },
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: '2026-10-12T00:00:00Z', eventArchivedAt: null, orderStatus: 'paid' },
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: '2026-10-12T00:00:00Z', orderStatus: 'paid' },
+  { ticketStatus: 'valid', eventStatus: 'published', ticketEventId: EVENT_A, requestedEventId: null, ticketEventTitle: 't', ticketEventStartsAt: null, orderArchivedAt: null, eventArchivedAt: null, orderStatus: 'cancelled' },
 ]
 for (const c of combos) {
   const outcome = determineScanOutcome(c)

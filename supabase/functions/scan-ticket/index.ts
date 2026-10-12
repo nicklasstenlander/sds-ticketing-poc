@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
   const { data: ticket, error: ticketError } = await supabase
     .from('tickets')
     .select(
-      'id, holder_name, status, checked_in_at, event_id, order_id, ticket_type_id, events(title, status, starts_at, archived_at), orders(archived_at)',
+      'id, holder_name, status, checked_in_at, event_id, order_id, ticket_type_id, events(title, status, starts_at, archived_at), orders(archived_at, status)',
     )
     .eq('ticket_code', ticketCode)
     .maybeSingle()
@@ -163,8 +163,11 @@ Deno.serve(async (req: Request) => {
       | null,
   )
   const eventTitle = event?.title ?? null
-  const order = single<{ archived_at?: string | null }>(
-    ticket.orders as unknown as { archived_at?: string | null } | { archived_at?: string | null }[] | null,
+  const order = single<{ archived_at?: string | null; status?: string | null }>(
+    ticket.orders as unknown as
+      | { archived_at?: string | null; status?: string | null }
+      | { archived_at?: string | null; status?: string | null }[]
+      | null,
   )
 
   const outcome = determineScanOutcome({
@@ -176,6 +179,7 @@ Deno.serve(async (req: Request) => {
     ticketEventStartsAt: event?.starts_at ?? null,
     orderArchivedAt: order?.archived_at ?? null,
     eventArchivedAt: event?.archived_at ?? null,
+    orderStatus: order?.status ?? null,
   })
 
   // Biljettyp + köpsammansättning (ordern A2) - bara för svar där

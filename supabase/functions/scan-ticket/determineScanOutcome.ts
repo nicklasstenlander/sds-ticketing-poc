@@ -54,6 +54,14 @@ export function determineScanOutcome(params: {
    * (icke-null) om arkiverad. Antingen räcker för avvisning. */
   orderArchivedAt: string | null
   eventArchivedAt: string | null
+  /** orders.status (ordern "Avbokning, återbetalning, omsändning och
+   * köparmeddelanden" 2026-10-12, STEG 2 tillägg C) - EXTRA skydd,
+   * inte den primära spärren. cancel_paid_order (admin-cancel-order,
+   * och senare charge.refunded) sätter ALLTID biljetterna till 'void'
+   * i SAMMA transaktion som ordern avbokas, så ticketStatus === 'void'
+   * fångar redan det normala fallet. Det här är bara ett skyddsnät om
+   * en biljett av någon anledning ändå skulle missa void-sättningen. */
+  orderStatus: string | null
 }): ScanOutcome {
   if (params.orderArchivedAt || params.eventArchivedAt) {
     return { result: 'invalid', message: 'Ordern är arkiverad', showTicketType: false }
@@ -71,6 +79,10 @@ export function determineScanOutcome(params: {
       message: when ? `Biljetten gäller ${title}, ${when}` : `Biljetten gäller ${title}`,
       showTicketType: false,
     }
+  }
+
+  if (params.orderStatus === 'cancelled') {
+    return { result: 'invalid', message: 'Ordern är avbokad', showTicketType: false }
   }
 
   if (params.ticketStatus === 'valid') return { result: 'ok', message: null, showTicketType: true }
