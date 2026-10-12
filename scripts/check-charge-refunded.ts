@@ -80,9 +80,16 @@ function read(relPath: string): string {
 
 {
   const content = read('supabase/functions/stripe-webhook/index.ts')
+  // Sedan STEG B (ordern "Webhooken: misslyckade händelser måste kunna
+  // försökas igen" 2026-10-12) görs statusbytet+stripe_payment_intent_id
+  // inte längre som en egen .update() i handleCheckoutCompleted - det
+  // sker nu INUTI finalize_paid_order (samma transaktion som biljetterna
+  // och rabattkodsräkningen). Se check-webhook-retry.ts för kontrollen av
+  // SQL-funktionens UPDATE-sats; här räcker det att se att
+  // paymentIntentId faktiskt skickas in till den.
   assertTrue(
-    content.includes("stripe_payment_intent_id: paymentIntentId") && content.includes("status: 'paid', paid_at: paidAt"),
-    'handleCheckoutCompleted sätter stripe_payment_intent_id i SAMMA update som status=paid',
+    content.includes('await finalizePaidOrder(supabase, order.id, paymentIntentId, ticketCodes)'),
+    'handleCheckoutCompleted skickar paymentIntentId in till finalizePaidOrder (som sätter stripe_payment_intent_id i SAMMA UPDATE som status=paid, inuti finalize_paid_order)',
   )
   assertTrue(
     content.includes("else if (event.type === 'charge.refunded')") &&
