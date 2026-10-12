@@ -1,9 +1,28 @@
 name: Release expired orders
 
+# RESERV, inte längre primär mekanism (ordern "Avbokning, återbetalning,
+# omsändning och köparmeddelanden" 2026-10-12, uppföljning: schema-
+# läggningsrapporten). Den primära mekanismen är nu pg_cron INUTI
+# databasen - se migrationen
+# supabase/migrations/20261012040000_schedule_release_expired_orders.sql
+# - som anropar release_expired_orders() direkt var 5:e minut utan att
+# gå via HTTP/den här workflown alls. Den här filen är
+# kvar som ett extra skyddsnät OM pg_cron-jobbet någon gång skulle
+# sluta fungera (extension avaktiverad av misstag, Supabase-secret
+# försvunnen, etc.) - därför nedtonad till var 30:e minut istället för
+# var 10:e.
+#
+# Deklarerat att köra var 30:e minut, men GitHub Actions' schemaläggning
+# ("on: schedule") är "best effort" och ger INGEN garanti om
+# intervallet - observerat i praktiken (gh run list, 2026-10-02 till
+# 2026-10-12, innan den här ändringen): mellan ~2,5 och ~9 timmar
+# mellan körningar, inte det deklarerade intervallet. Ett lågfrekvent
+# extra skyddsnät, inte något att lita på för snabb frigörning.
+#
 # Säkerhetsnät utöver checkout.session.expired-webhooken - se
-# supabase/functions/release-expired-orders/index.ts. Körs var 10:e minut
-# och anropar edge-funktionen som städar bort pending-ordrar vars
-# expires_at har passerat, och återför deras reserverade kapacitet.
+# supabase/functions/release-expired-orders/index.ts. Anropar edge-
+# funktionen som städar bort pending-ordrar vars expires_at har
+# passerat, och återför deras reserverade kapacitet.
 #
 # Kräver två repo-secrets (Settings -> Secrets and variables -> Actions):
 #   SUPABASE_FUNCTIONS_URL  - t.ex. https://<ref>.supabase.co/functions/v1
@@ -11,7 +30,7 @@ name: Release expired orders
 #                              (supabase secrets set CRON_SECRET=...)
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
