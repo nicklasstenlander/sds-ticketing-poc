@@ -24,6 +24,7 @@ import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.t
 import { calculatePlatformFee, readPlatformFeeFlatOre } from '../_shared/platformFee.ts'
 import { formatStockholmDateTimeSv } from '../_shared/salesState.ts'
 import { checkFreeTicketLimit } from '../_shared/freeTicketLimit.ts'
+import { resolveTermsVersion } from '../_shared/termsVersions.ts'
 
 interface CartItemInput {
   ticket_type_id?: string
@@ -255,7 +256,7 @@ Deno.serve(async (req: Request) => {
   // README avsnitt 8b), inte via en kodmässig fallback-väg.
   const { data: organizer, error: organizerError } = await supabase
     .from('organizers')
-    .select('id, stripe_account_id, stripe_onboarding_complete, payment_mode, terms_url')
+    .select('id, slug, stripe_account_id, stripe_onboarding_complete, payment_mode, terms_url')
     .eq('id', event.organizer_id)
     .single()
 
@@ -418,6 +419,12 @@ Deno.serve(async (req: Request) => {
       // efterhand. Null för ordrar där arrangören saknade terms_url.
       terms_accepted_at: requiresTerms ? new Date().toISOString() : null,
       terms_url: requiresTerms ? organizer.terms_url : null,
+      // Versionsspår (uppföljning 2026-10-12, orders.terms_version - se
+      // 20261012000000_order_terms_version.sql) - BESTÄMD AV SERVERN via
+      // _shared/termsVersions.ts, aldrig av klienten (en direkt POST
+      // skulle annars kunna skicka vilket värde som helst). Null om
+      // arrangören saknar en registrerad version där, oavsett terms_url.
+      terms_version: requiresTerms ? resolveTermsVersion(organizer.slug) : null,
     })
     .select()
     .single()
