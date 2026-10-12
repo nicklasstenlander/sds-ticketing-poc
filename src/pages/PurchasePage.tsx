@@ -600,7 +600,10 @@ export function PurchasePage() {
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--border)] text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
                   />
                   <span>
-                    Jag har läst och godkänner{' '}
+                    {/* Exakt ordalydelse "Jag godkänner köpvillkoren" (ordern
+                        "Köpvillkor godkända, gå live" 2026-10-12, punkt 5) -
+                        bytte ut den tidigare "Jag har läst och godkänner". */}
+                    Jag godkänner{' '}
                     <a
                       href={termsUrl}
                       target="_blank"
