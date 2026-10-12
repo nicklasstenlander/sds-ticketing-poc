@@ -135,5 +135,67 @@ for (const file of ['supabase/functions/admin-cancel-order/index.ts', 'supabase/
   assertTrue(rollback.includes('drop function if exists cancel_paid_order(uuid)'), 'Reservfilen droppar HELA funktionen (ny funktion, ingen tidigare version att återskapa)')
 }
 
+// === Säkerhetsmigrationen för de befintliga SECURITY DEFINER-
+// funktionerna (uppföljning 2026-10-12 efter granskningen av
+// cancel_paid_order) - samma två krav som efterfrågades: service_role
+// behåller EXECUTE på alla fem, och ingen av dem anropas direkt från
+// webbläsaren (src/). ===
+
+const LOCKED_DOWN_FUNCTIONS = [
+  'release_shared_capacity_multi(uuid, jsonb, integer)',
+  'reserve_shared_capacity_multi(uuid, jsonb, integer)',
+  'release_expired_orders()',
+  'duplicate_event(uuid)',
+  'increment_discount_code_used_count(uuid)',
+]
+
+{
+  const migration = read('supabase/migrations/20261012030000_lock_down_definer_functions.sql')
+  assertTrue(migration.includes('begin;') && migration.includes('commit;'), 'Säkerhetsmigrationen är omsluten av begin/commit')
+  assertTrue(!migration.includes('drop function') && !migration.includes('drop table'), 'Säkerhetsmigrationen droppar ingenting - bara ACL')
+  const migrationCodeOnly = migration
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+  assertTrue(!/\bsecurity definer\b/i.test(migrationCodeOnly), 'Säkerhetsmigrationen ändrar INGET security-läge - bara EXECUTE-grants')
+  for (const fn of LOCKED_DOWN_FUNCTIONS) {
+    assertTrue(
+      migration.includes(`revoke all on function ${fn} from public`) &&
+        migration.includes(`revoke all on function ${fn} from anon`) &&
+        migration.includes(`revoke all on function ${fn} from authenticated`) &&
+        migration.includes(`grant execute on function ${fn} to service_role`),
+      `${fn}: revoke per roll (public/anon/authenticated) + explicit grant till service_role`,
+    )
+  }
+}
+
+{
+  // Kravet "inget webbläsaren anropar dras in" - ingen av de fem
+  // funktionerna (eller någon annan) anropas direkt från src/. En
+  // framtida .rpc(-användning i frontend skulle fångas här.
+  const frontendFiles: string[] = []
+  function collectTsxFiles(dirPath: string) {
+    for (const entry of Deno.readDirSync(new URL(dirPath, root))) {
+      const entryPath = `${dirPath}/${entry.name}`
+      if (entry.isDirectory) collectTsxFiles(entryPath)
+      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) frontendFiles.push(entryPath)
+    }
+  }
+  collectTsxFiles('src')
+  const anyDirectRpc = frontendFiles.some((f) => read(f).includes('.rpc('))
+  assertTrue(!anyDirectRpc, 'src/ (webbläsarkoden) innehåller INGEN direkt .rpc(-anrop till någon Postgres-funktion - allt går via edge functions')
+}
+
+{
+  const rollback = read('supabase/rollbacks/20261012030000_lock_down_definer_functions_rollback.sql')
+  assertTrue(rollback.includes('begin;') && rollback.includes('commit;'), 'Säkerhetsmigrationens reservfil är omsluten av begin/commit')
+  for (const fn of LOCKED_DOWN_FUNCTIONS) {
+    assertTrue(
+      rollback.includes(`grant execute on function ${fn} to anon, authenticated`),
+      `Reservfilen återställer anon/authenticated-grant för ${fn}`,
+    )
+  }
+}
+
 console.log(`\n${failures === 0 ? 'Alla kontroller gick igenom.' : `${failures} kontroll(er) misslyckades.`}`)
 if (failures > 0) Deno.exit(1)
