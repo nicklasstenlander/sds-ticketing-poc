@@ -119,7 +119,7 @@ export function AdminEventPage() {
 
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
 
-          <OrdersSection orders={data.orders} onChange={load} />
+          <OrdersSection orders={data.orders} tickets={data.tickets} onChange={load} />
 
           <h2 className="font-semibold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
           {data.tickets.length === 0 ? (
@@ -347,7 +347,15 @@ function PosterUploadField({
 // både enskild och flervalsarkivering - admin kryssar i en eller flera
 // rader och klickar "Arkivera valda", inget separat enrads-flöde.
 // Återställning är per rad (reversibelt, inget val av orsak behövs).
-function OrdersSection({ orders, onChange }: { orders: AdminOrderRow[]; onChange: () => Promise<void> }) {
+function OrdersSection({
+  orders,
+  tickets,
+  onChange,
+}: {
+  orders: AdminOrderRow[]
+  tickets: TicketRow[]
+  onChange: () => Promise<void>
+}) {
   const [showArchived, setShowArchived] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pickingReason, setPickingReason] = useState(false)
@@ -414,9 +422,20 @@ function OrdersSection({ orders, onChange }: { orders: AdminOrderRow[]; onChange
   }
 
   async function handleCancelOrder(order: AdminOrderRow) {
+    // Varning om redan incheckade biljetter (admin bad om detta separat,
+    // 2026-10-12) - cancel_paid_order (databasfunktionen) sätter ALLA
+    // ordens biljetter till void oavsett status, inklusive redan
+    // incheckade. Det ändras inte här - bara en tydlig varning INNAN
+    // bekräftelse, beräknad klientsidigt från data.tickets (redan
+    // hämtat av admin-event-tickets för gästlistan, inget nytt anrop).
+    const checkedInCount = tickets.filter((t) => t.order_id === order.id && t.status === 'checked_in').length
+    const checkedInWarning =
+      checkedInCount > 0
+        ? `\n\nOBS: ${checkedInCount} biljett${checkedInCount === 1 ? '' : 'er'} på den här ordern är redan incheckad${checkedInCount === 1 ? '' : 'e'}.`
+        : ''
     if (
       !window.confirm(
-        `Avboka ordern för ${order.buyer_name}? En eventuell återbetalning görs separat i Stripe - den här åtgärden rör inte Stripe.`,
+        `Avboka ordern för ${order.buyer_name}? En eventuell återbetalning görs separat i Stripe - den här åtgärden rör inte Stripe.${checkedInWarning}`,
       )
     ) {
       return
