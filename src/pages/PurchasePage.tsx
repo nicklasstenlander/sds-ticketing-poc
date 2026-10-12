@@ -10,6 +10,7 @@ import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/
 import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
+import { loadPurchaseDraft, savePurchaseDraft, clearPurchaseDraft } from '../lib/purchaseDraft'
 
 interface CreateOrderResponse {
   checkout_url: string
@@ -91,6 +92,12 @@ export function PurchasePage() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [feeConfig, setFeeConfig] = useState<FeeConfig | null>(null)
+  // Skydd mot att formuläret nollställs om villkorslänken öppnas i samma
+  // flik (se src/lib/purchaseDraft.ts) - draftAppliedRef säkerställer att
+  // återställningen nedan bara körs EN gång (annars skulle den senare
+  // auto-spara-effekten kunna köra innan återställningen hunnit läsa det
+  // gamla utkastet, och skriva över det med tomma startvärden).
+  const draftAppliedRef = useRef(false)
 
   // Extraherad (inte bara en inline-funktion i useEffect) - returnerar det
   // färska eventet direkt istället för att gå via React-state, så att
@@ -305,6 +312,41 @@ export function PurchasePage() {
     setQuantities((q) => ({ ...q, [ticketTypeId]: Math.max(0, qty) }))
   }
 
+  // Återställ ett ev. sparat utkast (se src/lib/purchaseDraft.ts) så fort
+  // event OCH ticketTypes har laddat - behövs för att kunna rensa bort
+  // val som inte längre gäller (borttagen typ) eller som inte längre
+  // får plats (föreställningen helt slutsåld sedan utkastet sparades)
+  // innan något visas som valt. Kör bara en gång per sidladdning
+  // (draftAppliedRef) - annars skulle en omrendering kunna återställa
+  // utkastet ovanpå ändringar köparen redan hunnit göra.
+  useEffect(() => {
+    if (draftAppliedRef.current) return
+    if (!slug || !event || !ticketTypes) return
+    draftAppliedRef.current = true
+    const draft = loadPurchaseDraft(slug)
+    if (!draft) return
+    setName(draft.name)
+    setEmail(draft.email)
+    const eventRemaining = event.capacity - event.sold_count
+    const eventSoldOut = event.capacity > 0 && eventRemaining <= 0
+    if (eventSoldOut) return
+    const validIds = new Set(ticketTypes.map((t) => t.id))
+    const restored: Record<string, number> = {}
+    for (const [id, qty] of Object.entries(draft.quantities)) {
+      if (validIds.has(id) && qty > 0) restored[id] = qty
+    }
+    setQuantities(restored)
+  }, [slug, event, ticketTypes])
+
+  // Spara utkastet löpande (se src/lib/purchaseDraft.ts) - väntar på att
+  // återställningen ovan har körts (draftAppliedRef), annars skulle den
+  // här effekten hinna skriva över ett sparat utkast med tomma
+  // startvärden innan återställningen läst det.
+  useEffect(() => {
+    if (!slug || !draftAppliedRef.current) return
+    savePurchaseDraft(slug, { name, email, quantities })
+  }, [slug, name, email, quantities])
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!event || totalQty < 1) return
@@ -328,6 +370,10 @@ export function PurchasePage() {
           accepted_terms: acceptedTerms,
         },
       })
+      // Ordern är skapad - rensa utkastet (se src/lib/purchaseDraft.ts)
+      // innan vi lämnar sidan, så ett senare besök på samma event inte
+      // råkar återställa ett redan inlöst formulär.
+      if (slug) clearPurchaseDraft(slug)
       // Fullständig sidomdirigering (inte en klientroutning) - Stripe
       // Checkout är en hostad sida, ingen komponent i denna app.
       window.location.href = result.checkout_url
