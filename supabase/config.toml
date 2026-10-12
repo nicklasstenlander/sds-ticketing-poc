@@ -76,6 +76,12 @@ verify_jwt = true
 [functions.admin-archive-orders]
 verify_jwt = true
 
+[functions.admin-cancel-order]
+verify_jwt = true
+
+[functions.admin-resend-tickets]
+verify_jwt = true
+
 [functions.admin-events]
 verify_jwt = true
 
