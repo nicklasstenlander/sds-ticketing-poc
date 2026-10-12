@@ -229,8 +229,28 @@ export async function sendConfirmationEmail(params: {
   })
 
   if (!emailResponse.ok) {
+    // Rättat (ordern "Webhooken: misslyckade händelser måste kunna
+    // försökas igen" 2026-10-12, STEG B punkt 2/4) - ett Resend-fel är
+    // ett RIKTIGT fel, inte en tyst accepterad avvikelse. Måste kastas
+    // så att stripe-webhook svarar 500 och Stripe försöker igen, och
+    // (via handleCheckoutCompleted) så att confirmation_email_sent_at
+    // aldrig sätts för ett mejl som faktiskt inte skickades. admin-
+    // resend-tickets, som återanvänder den här funktionen, hade redan
+    // en try/catch runt anropet - den fångade bara aldrig något innan,
+    // eftersom felet aldrig kastades.
+    //
+    // Rättat (oberoende granskning 2026-10-12, STEG B): Resends RÅA
+    // svarstext (errText) ekar ofta tillbaka det ogiltiga fältvärdet
+    // vid en valideringsfel (t.ex. "invalid `to` address: ...") - om
+    // den kastas ordagrant hamnar köparens e-postadress i
+    // webhook_events.last_error, som är tänkt att vara helt fritt från
+    // personuppgifter. errText loggas därför bara till konsolen (fullt
+    // tillgängligt för felsökning i funktionsloggarna), medan det
+    // KASTADE felet (som stripe-webhook persisterar i last_error) bara
+    // innehåller statuskoden.
     const errText = await emailResponse.text()
-    console.error('Resend-fel:', errText)
+    console.error('Resend-fel (fullständigt svar - loggas INTE till webhook_events.last_error):', emailResponse.status, errText)
+    throw new Error(`Resend svarade ${emailResponse.status} - mejlet skickades inte`)
   }
 }
 

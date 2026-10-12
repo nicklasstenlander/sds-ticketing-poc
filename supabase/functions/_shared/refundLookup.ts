@@ -39,6 +39,12 @@ export function extractOrderIdFromSession(session: {
 // sedan STEG 3). Reserv: äldre ordrar som betalades innan kolumnen fanns
 // saknar den för alltid (ingen backfill) - då slås Checkout-sessionen upp
 // via Stripe istället, scopead till connectedAccountId när det är satt.
+//
+// Rättat (ordern "Webhooken: misslyckade händelser måste kunna försökas
+// igen" 2026-10-12, STEG B punkt 4): ett RIKTIGT fel i något av de två
+// uppslagsstegen (databasfel, Stripe-API nere) kastas nu vidare istället
+// för att tystas och tolkas som "ordern finns inte" - bara "inget av
+// stegen hittade något" ger null (en legitim "inget att göra"-utgång).
 export async function findOrderIdForRefund(
   supabase: ReturnType<typeof createAdminClient>,
   stripe: Stripe,
@@ -52,20 +58,15 @@ export async function findOrderIdForRefund(
     .maybeSingle()
 
   if (error) {
-    console.error('findOrderIdForRefund: DB-fel vid uppslag via stripe_payment_intent_id', paymentIntentId, error.message)
+    throw new Error(`Kunde inte slå upp order via stripe_payment_intent_id: ${error.message}`)
   }
   if (byColumn) return byColumn.id
 
-  try {
-    const sessions = await stripe.checkout.sessions.list(
-      { payment_intent: paymentIntentId, limit: 1 },
-      connectedAccountOption(connectedAccountId),
-    )
-    const session = sessions.data[0]
-    if (!session) return null
-    return extractOrderIdFromSession(session)
-  } catch (err) {
-    console.error('findOrderIdForRefund: kunde inte slå upp Checkout Session via Stripe', paymentIntentId, err instanceof Error ? err.message : err)
-    return null
-  }
+  const sessions = await stripe.checkout.sessions.list(
+    { payment_intent: paymentIntentId, limit: 1 },
+    connectedAccountOption(connectedAccountId),
+  )
+  const session = sessions.data[0]
+  if (!session) return null
+  return extractOrderIdFromSession(session)
 }
