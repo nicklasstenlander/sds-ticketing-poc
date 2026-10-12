@@ -353,9 +353,89 @@ function OrdersSection({ orders, onChange }: { orders: AdminOrderRow[]; onChange
   const [pickingReason, setPickingReason] = useState(false)
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  // Sök (ordern "Avbokning, återbetalning, omsändning och köparmeddelanden"
+  // 2026-10-12, STEG 2.3) - ett klientsidigt textfilter på redan hämtade
+  // ordrar för DET HÄR eventet, inte en ny sökendpoint. "Söker bara inom
+  // arrangörens egna event" är redan sant per konstruktion - orders kommer
+  // bara från admin-event-tickets, som redan är scopead till arrangörens
+  // eget event, se filkommentaren där.
+  const [search, setSearch] = useState('')
+  // Skicka biljetter igen (2.1/2.3) - resendOrderId är raden vars
+  // bekräftelseruta är öppen just nu, resendTo det redigerbara
+  // mottagarfältet (förifyllt med köparens egen adress).
+  const [resendOrderId, setResendOrderId] = useState<string | null>(null)
+  const [resendTo, setResendTo] = useState('')
+  const [resendBusyId, setResendBusyId] = useState<string | null>(null)
+  const [resendMessage, setResendMessage] = useState<{ orderId: string; text: string; isError: boolean } | null>(null)
+  // Avboka order (2.2/2.3)
+  const [cancelBusyId, setCancelBusyId] = useState<string | null>(null)
+  const [cancelMessage, setCancelMessage] = useState<{ orderId: string; text: string } | null>(null)
 
-  const visibleOrders = showArchived ? orders : orders.filter((o) => !o.archived_at)
+  const visibleOrders = (showArchived ? orders : orders.filter((o) => !o.archived_at)).filter((o) => {
+    const term = search.trim().toLowerCase()
+    if (!term) return true
+    return (
+      o.buyer_name.toLowerCase().includes(term) ||
+      o.buyer_email.toLowerCase().includes(term) ||
+      o.id.toLowerCase().includes(term)
+    )
+  })
   const selectedActiveIds = [...selected].filter((id) => orders.some((o) => o.id === id && !o.archived_at))
+
+  function openResend(order: AdminOrderRow) {
+    setResendOrderId(order.id)
+    setResendTo(order.buyer_email)
+    setResendMessage(null)
+  }
+
+  async function confirmResend(order: AdminOrderRow) {
+    setResendBusyId(order.id)
+    try {
+      const res = await callFunction<{ result: string; regenerated_qr_count: number }>('admin-resend-tickets', {
+        auth: true,
+        method: 'POST',
+        body: { order_id: order.id, to: resendTo.trim() },
+      })
+      setResendMessage({
+        orderId: order.id,
+        text: res.regenerated_qr_count > 0 ? `Skickat. (${res.regenerated_qr_count} QR-kod(er) genererades om.)` : 'Skickat.',
+        isError: false,
+      })
+      setResendOrderId(null)
+    } catch (err) {
+      setResendMessage({
+        orderId: order.id,
+        text: err instanceof Error ? err.message : 'Kunde inte skicka.',
+        isError: true,
+      })
+    } finally {
+      setResendBusyId(null)
+    }
+  }
+
+  async function handleCancelOrder(order: AdminOrderRow) {
+    if (
+      !window.confirm(
+        `Avboka ordern för ${order.buyer_name}? En eventuell återbetalning görs separat i Stripe - den här åtgärden rör inte Stripe.`,
+      )
+    ) {
+      return
+    }
+    setCancelBusyId(order.id)
+    setCancelMessage(null)
+    try {
+      const res = await callFunction<{ result: string; warning: string | null; already_cancelled?: boolean }>(
+        'admin-cancel-order',
+        { auth: true, method: 'POST', body: { order_id: order.id } },
+      )
+      setCancelMessage({ orderId: order.id, text: res.warning ?? 'Ordern är avbokad.' })
+      await onChange()
+    } catch (err) {
+      setCancelMessage({ orderId: order.id, text: err instanceof Error ? err.message : 'Kunde inte avboka ordern.' })
+    } finally {
+      setCancelBusyId(null)
+    }
+  }
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -430,8 +510,18 @@ function OrdersSection({ orders, onChange }: { orders: AdminOrderRow[]; onChange
 
       {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
 
+      <div className="mb-3">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Sök namn, e-post eller ordernummer…"
+          className="field max-w-sm text-sm"
+        />
+      </div>
+
       {visibleOrders.length === 0 ? (
-        <p className="text-slate-500">Inga ordrar ännu.</p>
+        <p className="text-slate-500">Inga ordrar{search.trim() ? ' matchar sökningen' : ' ännu'}.</p>
       ) : (
         <>
           <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
@@ -443,52 +533,111 @@ function OrdersSection({ orders, onChange }: { orders: AdminOrderRow[]; onChange
                   <th className="px-4 py-2">Status</th>
                   <th className="px-4 py-2">Antal</th>
                   <th className="px-4 py-2">Belopp</th>
+                  <th className="px-4 py-2">Villkor</th>
                   <th className="px-4 py-2">Datum</th>
-                  <th className="px-4 py-2"></th>
+                  <th className="px-4 py-2">Åtgärder</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-2">
-                      {!order.archived_at && (
-                        <input
-                          type="checkbox"
-                          checked={selected.has(order.id)}
-                          onChange={() => toggleSelected(order.id)}
-                          disabled={busyIds.has(order.id)}
-                        />
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <div>{order.buyer_name}</div>
-                      <div className="text-xs text-slate-400">{order.buyer_email}</div>
-                    </td>
-                    <td className="px-4 py-2">{ORDER_STATUS_LABEL[order.status]}</td>
-                    <td className="px-4 py-2">{order.ticket_qty}</td>
-                    <td className="px-4 py-2">{order.total_ore !== null ? `${formatKr(order.total_ore)} kr` : '-'}</td>
-                    <td className="px-4 py-2">
-                      {new Date(order.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}
-                    </td>
-                    <td className="px-4 py-2">
-                      {order.archived_at ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                            Arkiverad ({order.archived_reason === 'test' ? 'testdata' : 'dold'})
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRestore(order)}
+                {visibleOrders.map((order) => {
+                  const canAct = order.status === 'paid' && !order.archived_at
+                  return (
+                    <tr key={order.id} className="border-b border-slate-100 last:border-0 align-top">
+                      <td className="px-4 py-2">
+                        {!order.archived_at && (
+                          <input
+                            type="checkbox"
+                            checked={selected.has(order.id)}
+                            onChange={() => toggleSelected(order.id)}
                             disabled={busyIds.has(order.id)}
-                            className="text-xs underline disabled:opacity-50"
-                          >
-                            {busyIds.has(order.id) ? 'Återställer…' : 'Återställ'}
-                          </button>
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div>{order.buyer_name}</div>
+                        <div className="text-xs text-slate-400">{order.buyer_email}</div>
+                        <div className="text-xs text-slate-300 font-mono">{order.id}</div>
+                      </td>
+                      <td className="px-4 py-2">{ORDER_STATUS_LABEL[order.status]}</td>
+                      <td className="px-4 py-2">{order.ticket_qty}</td>
+                      <td className="px-4 py-2">{order.total_ore !== null ? `${formatKr(order.total_ore)} kr` : '-'}</td>
+                      <td className="px-4 py-2">{order.terms_version ?? '–'}</td>
+                      <td className="px-4 py-2">
+                        {new Date(order.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col gap-1">
+                          {order.archived_at ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                                Arkiverad ({order.archived_reason === 'test' ? 'testdata' : 'dold'})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRestore(order)}
+                                disabled={busyIds.has(order.id)}
+                                className="text-xs underline disabled:opacity-50"
+                              >
+                                {busyIds.has(order.id) ? 'Återställer…' : 'Återställ'}
+                              </button>
+                            </div>
+                          ) : canAct ? (
+                            resendOrderId === order.id ? (
+                              <div className="flex flex-col gap-1.5 max-w-[220px]">
+                                <input
+                                  type="email"
+                                  value={resendTo}
+                                  onChange={(e) => setResendTo(e.target.value)}
+                                  className="field text-xs py-1"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => confirmResend(order)}
+                                    disabled={resendBusyId === order.id}
+                                    className="text-xs underline disabled:opacity-50"
+                                  >
+                                    {resendBusyId === order.id ? 'Skickar…' : 'Bekräfta'}
+                                  </button>
+                                  <button type="button" onClick={() => setResendOrderId(null)} className="text-xs underline">
+                                    Avbryt
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex gap-3">
+                                <button type="button" onClick={() => openResend(order)} className="text-xs underline">
+                                  Skicka biljetter igen
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelOrder(order)}
+                                  disabled={cancelBusyId === order.id}
+                                  className="text-xs underline text-red-600 disabled:opacity-50"
+                                >
+                                  {cancelBusyId === order.id ? 'Avbokar…' : 'Avboka order'}
+                                </button>
+                              </div>
+                            )
+                          ) : null}
+                          {/* Meddelanden visas OBEROENDE av canAct - en
+                              avbokning gör ju att ordern slutar vara
+                              "paid" vid nästa omladdning (onChange), och
+                              Stripe-varningen är precis det admin behöver
+                              se KVAR efter att avbokningen lyckats. */}
+                          {resendMessage?.orderId === order.id && (
+                            <span className={`text-xs ${resendMessage.isError ? 'text-red-600' : 'text-green-700'}`}>
+                              {resendMessage.text}
+                            </span>
+                          )}
+                          {cancelMessage?.orderId === order.id && (
+                            <span className="text-xs text-amber-700">{cancelMessage.text}</span>
+                          )}
                         </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

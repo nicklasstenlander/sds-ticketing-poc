@@ -90,6 +90,11 @@ export interface AdminOrderRow {
   archived_at: string | null
   archived_by: string | null
   archived_reason: ArchivedReason | null
+  // Villkorsspåret (ordern "Köpvillkor godkända, gå live" 2026-10-12) -
+  // vilken version av köpvillkoren som gällde vid köpet, bestämt av
+  // servern. Null för ordrar utan villkorskrav, eller gjorda innan
+  // fältet fanns.
+  terms_version: number | null
 }
 
 export interface TicketTypeRow {

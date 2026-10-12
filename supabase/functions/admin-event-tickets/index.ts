@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
   const { data: orders, error: ordersError } = await supabase
     .from('orders')
     .select(
-      'id, buyer_name, buyer_email, status, created_at, total_ore, price_ore, qty, archived_at, archived_by, archived_reason, order_items(qty)',
+      'id, buyer_name, buyer_email, status, created_at, total_ore, price_ore, qty, archived_at, archived_by, archived_reason, terms_version, order_items(qty)',
     )
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
