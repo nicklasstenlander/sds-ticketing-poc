@@ -23,6 +23,20 @@
 //     betalningar. Kräver att webhook-endpointen i Stripe Dashboard har
 //     "Listen to events on Connected accounts" ikryssad, annars kommer
 //     dessa events aldrig fram (se README avsnitt 8b).
+//   charge.refunded - en betalning återbetalades, helt eller delvis
+//     (ordern "Avbokning, återbetalning, omsändning och köparmeddelanden"
+//     2026-10-12, STEG 3). Full återbetalning: avbokar ordern via EXAKT
+//     samma delade logik som admin-cancel-order (_shared/cancelOrder.ts) -
+//     ingen separat kod för "avbokad av admin" vs "avbokad via Stripe-
+//     återbetalning". Delvis återbetalning: ändrar ingenting, loggar bara
+//     order-id och belopp. Gratisordrar (0 kr) har aldrig någon Stripe-
+//     charge alls och når därför aldrig denna hanterare - det är
+//     avsiktligt, inte en lucka. Måste läggas till som händelse i Stripe
+//     Dashboard separat (se README avsnitt 8/8b): på PLATTFORMS-
+//     destinationen för payment_mode='direct'-arrangörer (SDS), på
+//     CONNECT-destinationen för payment_mode='connect'-arrangörer
+//     (Testscenen, Accepteas) - precis som för checkout.session.* resp.
+//     account.updated ovan.
 //
 // Idempotens: Stripe kan leverera samma event flera gånger (retries). Vi
 // försöker INSERT:a (provider, provider_event_id) i webhook_events INNAN vi
@@ -45,6 +59,8 @@ import { generateTicketCode } from '../_shared/base32.ts'
 // inkluderad, istället för en egen kopia.
 import { sendConfirmationEmail, fetchPaymentMethodType } from '../_shared/sendConfirmationEmail.ts'
 import { shouldReleaseAfterExpiryUpdate } from './expiryGuard.ts'
+import { cancelPaidOrder } from '../_shared/cancelOrder.ts'
+import { isFullRefund, findOrderIdForRefund } from '../_shared/refundLookup.ts'
 // @deno-types="npm:@types/qrcode@1"
 import QRCode from 'npm:qrcode@1.5.3'
 import type Stripe from 'npm:stripe@17'
@@ -147,9 +163,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   const paidAt = new Date().toISOString()
+  // stripe_payment_intent_id (ordern "Avbokning, återbetalning,
+  // omsändning och köparmeddelanden" 2026-10-12, STEG 3 punkt 1) - sparas
+  // här så att en senare charge.refunded kan slå upp ordern direkt,
+  // istället för att behöva fråga Stripe efter Checkout-sessionen igen.
+  // session.payment_intent kan i teorin vara en expanderad PaymentIntent-
+  // instans istället för bara id:t (samma typmässiga osäkerhet som
+  // fetchPaymentMethodType redan hanterar nedanför), därför samma
+  // typeof-kontroll här.
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null
   const { error: updateOrderError } = await supabase
     .from('orders')
-    .update({ status: 'paid', paid_at: paidAt })
+    .update({ status: 'paid', paid_at: paidAt, stripe_payment_intent_id: paymentIntentId })
     .eq('id', order.id)
     .eq('status', 'pending') // extra skydd mot dubbelbearbetning vid race
 
@@ -341,6 +367,55 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   }
 }
 
+// charge.refunded (STEG 3, se filkommentaren högst upp). connectedAccountId
+// är event.account från Stripe-eventet - satt för Connect-scopade
+// leveranser (payment_mode='connect'-arrangörer), null för
+// plattformsleveranser (payment_mode='direct', t.ex. SDS). Behövs bara för
+// reservuppslaget (findOrderIdForRefund) - stripe_payment_intent_id-
+// kolumnen är kontofri, den är redan vår egen rad.
+async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: string | null) {
+  const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+  if (!paymentIntentId) {
+    console.error('charge.refunded utan payment_intent', charge.id)
+    return
+  }
+
+  const supabase = createAdminClient()
+  const stripe = createStripeClient()
+  const orderId = await findOrderIdForRefund(supabase, stripe, paymentIntentId, connectedAccountId)
+
+  if (!orderId) {
+    console.error('Hittade ingen order för återbetald charge', charge.id, paymentIntentId)
+    return
+  }
+
+  if (!isFullRefund(charge)) {
+    // Delvis återbetalning (STEG 3 punkt 3) - ändra ingenting, bara
+    // logga. Inga personuppgifter i loggraden, bara order-id och belopp.
+    console.log('charge.refunded (delvis) - ingen avbokning', orderId, charge.amount_refunded, '/', charge.amount, 'öre')
+    return
+  }
+
+  // Full återbetalning - EXAKT samma delade avbokningslogik som
+  // admin-cancel-order. cancel_paid_order är själv idempotent
+  // (status='paid'-villkorat), så en redan avbokad order (manuellt
+  // avbokad sedan innan, eller samma charge.refunded-event levererat
+  // igen av Stripe) ger cancelled:false här - ingen dubbel frigörning av
+  // kapacitet.
+  try {
+    const result = await cancelPaidOrder(supabase, orderId)
+    console.log(
+      'charge.refunded (full) ->',
+      orderId,
+      result.cancelled
+        ? `avbokad, ${result.voidedTicketCount} biljett(er) void`
+        : 'redan avbokad (eller inte längre paid) sedan innan - inget gjort',
+    )
+  } catch (err) {
+    console.error('Kunde inte avboka order efter full återbetalning', orderId, err instanceof Error ? err.message : err)
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -425,8 +500,10 @@ Deno.serve(async (req: Request) => {
       await handleCheckoutExpired(event.data.object as Stripe.Checkout.Session)
     } else if (event.type === 'account.updated') {
       await handleAccountUpdated(event.data.object as Stripe.Account)
+    } else if (event.type === 'charge.refunded') {
+      await handleChargeRefunded(event.data.object as Stripe.Charge, event.account ?? null)
     }
-    // Övriga eventtyper (vi prenumererar bara på dessa två i Stripe Dashboard,
+    // Övriga eventtyper (vi prenumererar bara på dessa i Stripe Dashboard,
     // men om fler skulle skickas ändå kvitterar vi dem tyst med 200).
   } catch (err) {
     // Vi har redan skrivit webhook_events-raden, så en Stripe-retry skulle
