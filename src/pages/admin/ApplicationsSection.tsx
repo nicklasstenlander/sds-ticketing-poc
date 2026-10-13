@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { callFunction } from '../../lib/functionsApi'
+import { confirmDialog } from '../../lib/confirmDialog'
 
 interface ApplicationBase {
   id: string
@@ -57,7 +58,7 @@ export function ApplicationsSection() {
   }, [])
 
   async function handleApprove(application: PendingApplication) {
-    if (!window.confirm(`Godkänn ansökan från ${application.organizer_name}? En inbjudan skickas direkt till ${application.contact_email}.`)) {
+    if (!await confirmDialog(`Godkänn ansökan från ${application.organizer_name}? En inbjudan skickas direkt till ${application.contact_email}.`)) {
       return
     }
     setActingId(application.id)
@@ -80,7 +81,7 @@ export function ApplicationsSection() {
   }
 
   async function handleReject(application: PendingApplication) {
-    if (!window.confirm(`Avslå ansökan från ${application.organizer_name}? Inget mail skickas till den sökande.`)) {
+    if (!await confirmDialog(`Avslå ansökan från ${application.organizer_name}? Inget mail skickas till den sökande.`)) {
       return
     }
     setActingId(application.id)
@@ -100,17 +101,17 @@ export function ApplicationsSection() {
     }
   }
 
-  if (loadError) return <p className="text-red-600 text-sm mb-4">{loadError}</p>
+  if (loadError) return <p className="text-[var(--danger)] text-sm mb-4">{loadError}</p>
   if (pending === null) return <p className="text-[var(--text-muted)] text-sm mb-4">Laddar ansökningar…</p>
 
   return (
     <div className="space-y-4 mb-6">
-      {confirmation && <p className="text-green-700 text-sm">{confirmation}</p>}
-      {actionError && <p className="text-red-600 text-sm">{actionError}</p>}
+      {confirmation && <p className="text-[var(--success-ink)] text-sm">{confirmation}</p>}
+      {actionError && <p className="text-[var(--danger)] text-sm">{actionError}</p>}
 
       {pending.length > 0 && (
         <section className="card">
-          <h2 className="font-semibold mb-4 text-[var(--text)]">Väntande ansökningar</h2>
+          <h2 className="text-lg font-extrabold mb-4 text-[var(--text)]">Väntande ansökningar</h2>
           <ul className="space-y-4">
             {pending.map((application) => (
               <li key={application.id} className="pb-4 border-b border-[var(--border)] last:border-0 last:pb-0">
@@ -137,7 +138,7 @@ export function ApplicationsSection() {
                       type="button"
                       onClick={() => handleReject(application)}
                       disabled={actingId === application.id}
-                      className="text-red-600 hover:text-red-800 underline text-sm disabled:opacity-40"
+                      className="text-[var(--danger)] hover:underline underline text-sm disabled:opacity-40"
                     >
                       Avslå
                     </button>
@@ -172,8 +173,8 @@ export function ApplicationsSection() {
                   <span
                     className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${
                       application.status === 'approved'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
+                        ? 'bg-[var(--success-soft)] text-[var(--success-ink)]'
+                        : 'bg-red-100 text-[var(--danger)]'
                     }`}
                   >
                     {application.status === 'approved' ? 'Godkänd' : 'Avslagen'}

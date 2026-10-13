@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { callFunction } from '../../lib/functionsApi'
+import { confirmDialog } from '../../lib/confirmDialog'
 
 interface OrganizerMember {
   id: string
@@ -103,7 +104,7 @@ export function OrganizerMembersSection() {
   }
 
   async function handleRemove(member: OrganizerMember) {
-    if (!window.confirm(`Ta bort ${member.email} från arrangören?`)) return
+    if (!await confirmDialog(`Ta bort ${member.email} från arrangören?`, { danger: true, confirmLabel: 'Ta bort' })) return
     setRemovingId(member.id)
     setRemoveError(null)
     try {
@@ -124,14 +125,15 @@ export function OrganizerMembersSection() {
 
   return (
     <div className="space-y-6">
-      {loadError && <p className="text-red-600 text-sm">{loadError}</p>}
+      {loadError && <p className="text-[var(--danger)] text-sm">{loadError}</p>}
 
       <section className="card">
-        <h2 className="font-semibold mb-4 text-[var(--text)]">Arrangörens namn</h2>
+        <h2 className="text-lg font-extrabold mb-4 text-[var(--text)]">Arrangörens namn</h2>
         <form onSubmit={handleSaveName} className="flex items-end gap-3">
           <div className="flex-1">
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</span>
+              <input
               required
               value={nameInput}
               onChange={(e) => {
@@ -141,18 +143,19 @@ export function OrganizerMembersSection() {
               className="field"
               placeholder={organizerName ?? undefined}
             />
+            </label>
           </div>
           <button type="submit" disabled={savingName || nameInput === organizerName} className="btn-primary">
             {savingName ? 'Sparar…' : 'Spara'}
           </button>
         </form>
-        {nameSaved && <p className="text-green-700 text-sm mt-2">Sparat. Syns direkt på publika event-kort.</p>}
-        {nameError && <p className="text-red-600 text-sm mt-2">{nameError}</p>}
+        {nameSaved && <p className="text-[var(--success-ink)] text-sm mt-2">Sparat. Syns direkt på publika event-kort.</p>}
+        {nameError && <p className="text-[var(--danger)] text-sm mt-2">{nameError}</p>}
       </section>
 
       <section className="card">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-[var(--text)]">Medlemmar</h2>
+          <h2 className="text-lg font-extrabold text-[var(--text)]">Medlemmar</h2>
           {!showInviteForm && (
             <button
               type="button"
@@ -167,14 +170,15 @@ export function OrganizerMembersSection() {
           )}
         </div>
 
-        {inviteConfirmation && <p className="text-green-700 text-sm mb-3">{inviteConfirmation}</p>}
-        {removeError && <p className="text-red-600 text-sm mb-3">{removeError}</p>}
+        {inviteConfirmation && <p className="text-[var(--success-ink)] text-sm mb-3">{inviteConfirmation}</p>}
+        {removeError && <p className="text-[var(--danger)] text-sm mb-3">{removeError}</p>}
 
         {showInviteForm && (
           <form onSubmit={handleInvite} className="space-y-4 mb-4 pb-4 border-b border-[var(--border)]">
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">E-post</label>
-              <input
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">E-post</span>
+                <input
                 type="email"
                 required
                 value={inviteEmail}
@@ -183,12 +187,13 @@ export function OrganizerMembersSection() {
                 placeholder="kollega@arrangor.se"
                 autoFocus
               />
+              </label>
               <p className="text-xs text-[var(--text-muted)] mt-1">
                 En inbjudan skickas hit direkt - mottagaren sätter sitt eget lösenord via länken och hamnar
                 i samma arrangörs workspace.
               </p>
             </div>
-            {inviteError && <p className="text-red-600 text-sm">{inviteError}</p>}
+            {inviteError && <p className="text-[var(--danger)] text-sm">{inviteError}</p>}
             <div className="flex gap-3">
               <button type="submit" disabled={inviting} className="btn-primary">
                 {inviting ? 'Skickar inbjudan…' : 'Skicka inbjudan'}
@@ -233,7 +238,7 @@ export function OrganizerMembersSection() {
                   <div className="flex items-center gap-3 shrink-0">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
-                        member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        member.status === 'active' ? 'bg-[var(--success-soft)] text-[var(--success-ink)]' : 'bg-[var(--warning-soft)] text-[var(--warning-ink)]'
                       }`}
                     >
                       {member.status === 'active' ? 'Aktiv' : 'Inbjuden'}
@@ -243,7 +248,7 @@ export function OrganizerMembersSection() {
                       onClick={() => handleRemove(member)}
                       disabled={disabledReason !== null || removingId === member.id}
                       title={disabledReason ?? undefined}
-                      className="text-red-600 hover:text-red-800 underline disabled:opacity-40 disabled:text-[var(--text-muted)] disabled:no-underline"
+                      className="text-[var(--danger)] hover:underline underline disabled:opacity-40 disabled:text-[var(--text-muted)] disabled:no-underline"
                     >
                       {removingId === member.id ? 'Tar bort…' : 'Ta bort'}
                     </button>

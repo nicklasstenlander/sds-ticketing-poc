@@ -103,20 +103,19 @@ export function AdminWelcomePage() {
   return (
     <Layout>
       <div className="card max-w-sm mx-auto">
-        <div className="eyebrow mb-3">{APP_NAME}</div>
         <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Välkommen</h1>
 
         {stage === 'checking' && <p className="text-[var(--text-muted)] text-sm">Verifierar inbjudan…</p>}
 
         {stage === 'invalid-link' && (
-          <p className="text-red-600 text-sm">
+          <p className="text-[var(--danger)] text-sm">
             Ogiltig eller ofullständig inbjudningslänk. Be den som bjöd in dig att skicka en ny
             inbjudan.
           </p>
         )}
 
         {stage === 'session-error' && (
-          <p className="text-red-600 text-sm">
+          <p className="text-[var(--danger)] text-sm">
             Länken har gått ut eller redan använts ({sessionError}). Be den som bjöd in dig att
             skicka en ny inbjudan.
           </p>
@@ -128,8 +127,9 @@ export function AdminWelcomePage() {
               Sätt ett lösenord för att komma igång med ditt {APP_NAME}-workspace.
             </p>
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Lösenord</label>
-              <input
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">Lösenord</span>
+                <input
                 type="password"
                 required
                 minLength={8}
@@ -139,10 +139,12 @@ export function AdminWelcomePage() {
                 className="field"
                 autoFocus
               />
+              </label>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Bekräfta lösenord</label>
-              <input
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">Bekräfta lösenord</span>
+                <input
                 type="password"
                 required
                 minLength={8}
@@ -151,8 +153,9 @@ export function AdminWelcomePage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="field"
               />
+              </label>
             </div>
-            {formError && <p className="text-red-600 text-sm">{formError}</p>}
+            {formError && <p className="text-[var(--danger)] text-sm">{formError}</p>}
             <button type="submit" disabled={stage === 'setting-password'} className="btn-primary w-full">
               {stage === 'setting-password' ? 'Sparar…' : 'Sätt lösenord och fortsätt'}
             </button>

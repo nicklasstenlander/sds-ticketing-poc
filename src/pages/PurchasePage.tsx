@@ -5,7 +5,6 @@ import { supabase } from '../lib/supabaseClient'
 import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
-import { APP_NAME } from '../lib/constants'
 import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/salesState'
 import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
@@ -402,15 +401,15 @@ export function PurchasePage() {
 
   if (loadError) {
     return (
-      <Layout termsSlug={organizerSlug}>
-        <p className="text-red-600">Kunde inte hämta eventet: {loadError}</p>
+      <Layout termsSlug={organizerSlug} dark>
+        <p className="text-[var(--danger)]">Kunde inte hämta eventet: {loadError}</p>
       </Layout>
     )
   }
 
   if (notFound) {
     return (
-      <Layout termsSlug={organizerSlug}>
+      <Layout termsSlug={organizerSlug} dark>
         <p className="text-[var(--text-muted)]">Eventet hittades inte, eller är inte publicerat.</p>
       </Layout>
     )
@@ -418,7 +417,7 @@ export function PurchasePage() {
 
   if (!event || ticketTypes === null) {
     return (
-      <Layout termsSlug={organizerSlug}>
+      <Layout termsSlug={organizerSlug} dark>
         <p className="text-[var(--text-muted)]">Laddar…</p>
       </Layout>
     )
@@ -426,60 +425,46 @@ export function PurchasePage() {
 
   if (ticketTypes.length === 0) {
     return (
-      <Layout termsSlug={organizerSlug}>
+      <Layout termsSlug={organizerSlug} dark>
         <p className="text-[var(--text-muted)]">Det här eventet har inga biljetter till salu ännu.</p>
       </Layout>
     )
   }
 
   return (
-    <Layout termsSlug={organizerSlug}>
-      {/* Hero-affisch (Tilläggsordern 2026-08-05, utökad med portrait-
-          reserv i ordern "Små ändringar i frontend" 2026-10-10, punkt 2):
-          landscape FÖRST (passar en bred hero-yta bäst, object-cover ger
-          minimal beskärning av en bild som redan är liggande). Saknas
-          landscape men portrait finns: portrait visas istället, i sin
-          EGNA 2:3-proportion med object-fit:contain (en stående bild
-          skulle beskäras hårt av aspect-video/object-cover) - höjden
-          begränsad så den inte dominerar sidan. Saknas båda: oförändrat,
-          ingen bild alls. */}
-      {event.poster_landscape_url ? (
-        <img
-          src={event.poster_landscape_url}
-          alt=""
-          className="w-full aspect-video object-cover rounded-[var(--radius-sm)] mb-6 border border-[var(--border)]"
-        />
-      ) : (
-        event.poster_portrait_url && (
-          <img
-            src={event.poster_portrait_url}
-            alt=""
-            className="w-full max-h-[400px] object-contain rounded-[var(--radius-sm)] mb-6 border border-[var(--border)] bg-[var(--accent-soft)]"
-          />
-        )
-      )}
-      <div className="eyebrow mb-3">{APP_NAME}</div>
-      <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">{event.title}</h1>
-      <p className={`text-[var(--text-muted)] ${soldOut || lowStock ? 'mb-1' : 'mb-8'}`}>
-        {/* starts_at är null bara för ett ännu opublicerat dublicerat
-            event (Tilläggsordern 2026-08-05) - RLS gör att den här sidan
-            i praktiken aldrig når hit för ett sådant event, men typen
-            tillåter null så vi faller tillbaka defensivt. */}
-        {event.starts_at
-          ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
-            formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })
-          : ''}
-        {event.venue ? ` · ${event.venue}` : ''}
-        {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
-      </p>
-      {/* Exakt antal platser visas INTE längre (önskemål 2026-10-04) - bara
-          "Slutsålt" eller "Få biljetter kvar" under 10% kvar. Inget extra
-          visas alls vid normal tillgång, samma princip som public-embed/
-          public-events redan följer (aldrig sold_count/capacity i klartext). */}
-      {(soldOut || lowStock) && (
-        <p className="text-[var(--text-muted)] mb-8">{soldOut ? 'Slutsålt' : 'Få biljetter kvar'}</p>
-      )}
-
+    <Layout
+      termsSlug={organizerSlug}
+      dark
+      heroCompact
+      hero={
+        <div className={`hero-split ${event.poster_landscape_url ? 'hero-split-wide' : ''}`}>
+          <div className="min-w-0">
+            <h1 className="page-title">{event.title}</h1>
+            <p className="hero-meta">
+              {event.starts_at && (
+                <span>{formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })}</span>
+              )}
+              {event.venue && <span>{event.venue}</span>}
+              {organizer?.name && <span>Arrangör: {organizer.name}</span>}
+            </p>
+            {/* Exakt antal platser visas INTE (önskemål 2026-10-04) - bara
+                "Slutsålt" eller "Få biljetter kvar" under 10% kvar. */}
+            {(soldOut || lowStock) && (
+              <div className={`badge ${soldOut ? 'badge-neutral' : 'badge-warning'}`}>{soldOut ? 'Slutsålt' : 'Få biljetter kvar'}</div>
+            )}
+          </div>
+          {/* Affisch i heron: portrait först (fast 2:3, aldrig beskuren),
+              annars landscape. Saknas båda visas ingen bild. */}
+          {(event.poster_landscape_url || event.poster_portrait_url) && (
+            <div className={`arch hero-poster ${event.poster_landscape_url ? 'arch-wide' : ''}`}>
+              <div className={`poster ${event.poster_landscape_url ? 'poster-landscape' : 'poster-portrait'}`}>
+                <img src={(event.poster_landscape_url ?? event.poster_portrait_url)!} alt={`Affisch: ${event.title}`} />
+              </div>
+            </div>
+          )}
+        </div>
+      }
+    >
       {upcoming && event.sales_open_at ? (
         <div className="card text-center">
           <span className="inline-block text-sm px-3 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] mb-5">
@@ -669,12 +654,12 @@ export function PurchasePage() {
                 valet bryter mot reglerna, inte bara en inaktiverad knapp
                 utan förklaring. */}
             {!freeTicketCheck.ok && (
-              <p className="text-sm text-amber-700 bg-amber-50 rounded-[var(--radius-sm)] px-3 py-2">
+              <p className="text-sm text-[var(--warning-ink)] bg-[var(--warning-soft)] rounded-[var(--radius-sm)] px-3 py-2">
                 {freeTicketCheck.error}
               </p>
             )}
 
-            {formError && <p className="text-red-600 text-sm">{formError}</p>}
+            {formError && <p className="text-[var(--danger)] text-sm">{formError}</p>}
 
             <button
               type="submit"

@@ -100,7 +100,7 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
   return (
     <section className="card">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold text-[var(--text)]">Rabattkoder</h2>
+        <h2 className="text-lg font-extrabold text-[var(--text)]">Rabattkoder</h2>
         <button
           type="button"
           onClick={() => setShowForm((s) => !s)}
@@ -110,23 +110,25 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
         </button>
       </div>
 
-      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      {error && <p className="text-[var(--danger)] text-sm mb-3">{error}</p>}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-4 mb-6 border-b border-[var(--border)] pb-6">
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Kod</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Kod</span>
+              <input
               required
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               placeholder="t.ex. SOMMAR25"
               className="field"
             />
+            </label>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Typ</label>
+            <div className="block text-sm font-medium mb-2 text-[var(--text)]" id="grp-Typ">Typ</div>
             <div className="flex gap-6 text-sm">
               <label className="flex items-center gap-1.5">
                 <input
@@ -148,10 +150,11 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">
               Värde {discountType === 'percent' ? '(%)' : '(kr)'}
-            </label>
-            <input
+            </span>
+              <input
               type="number"
               min={discountType === 'percent' ? 1 : 0}
               max={discountType === 'percent' ? 100 : undefined}
@@ -161,11 +164,13 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
               onChange={(e) => setValue(Number(e.target.value))}
               className="field"
             />
+            </label>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Gäller</label>
-            <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="field">
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Gäller</span>
+              <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="field">
               <option value="">Alla event</option>
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
@@ -173,12 +178,14 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
                 </option>
               ))}
             </select>
+            </label>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Max antal (valfritt)</label>
-              <input
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">Max antal (valfritt)</span>
+                <input
                 type="number"
                 min={1}
                 value={maxUses}
@@ -186,19 +193,22 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
                 placeholder="Obegränsat"
                 className="field"
               />
+              </label>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Giltig till (valfritt)</label>
-              <input
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">Giltig till (valfritt)</span>
+                <input
                 type="datetime-local"
                 value={validUntil}
                 onChange={(e) => setValidUntil(e.target.value)}
                 className="field"
               />
+              </label>
             </div>
           </div>
 
-          {formError && <p className="text-red-600 text-sm">{formError}</p>}
+          {formError && <p className="text-[var(--danger)] text-sm">{formError}</p>}
           <button type="submit" disabled={submitting} className="btn-primary">
             {submitting ? 'Skapar…' : 'Skapa rabattkod'}
           </button>
@@ -238,7 +248,7 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
                   <td className="py-2 pr-3">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
-                        c.active ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'
+                        c.active ? 'bg-[var(--success-soft)] text-[var(--success-ink)]' : 'bg-[#ececea] text-[var(--text-muted)]'
                       }`}
                     >
                       {c.active ? 'Aktiv' : 'Inaktiv'}
@@ -248,7 +258,7 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
                     <button
                       type="button"
                       onClick={() => handleToggleActive(c)}
-                      className="text-slate-600 hover:text-slate-900 underline"
+                      className="text-[var(--text-muted)] hover:text-[var(--text)] underline"
                     >
                       {c.active ? 'Inaktivera' : 'Aktivera'}
                     </button>

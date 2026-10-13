@@ -92,7 +92,7 @@ export function ConfirmationPage() {
 
   if (!orderId) {
     return (
-      <Layout termsSlug={organizerSlug}>
+      <Layout termsSlug={organizerSlug} dark>
         <p className="text-[var(--text-muted)] mb-4">
           Vi hittar ingen orderinformation att visa (sidan öppnades förmodligen direkt, utan att
           gå via köpflödet).
@@ -107,14 +107,14 @@ export function ConfirmationPage() {
   }
 
   return (
-    <Layout termsSlug={organizerSlug}>
+    <Layout termsSlug={organizerSlug} dark>
       <div className="card mb-6">
         <div className="text-sm text-[var(--text-muted)] mb-2">Ordernummer</div>
         <div className="font-mono text-sm break-all text-[var(--text)]">{orderId}</div>
       </div>
 
       {wasCancelled && status !== 'paid' && (
-        <p className="text-amber-800 bg-amber-50 rounded-[var(--radius-sm)] p-4 mb-6 text-sm">
+        <p className="text-[var(--warning-ink)] bg-[var(--warning-soft)] rounded-[var(--radius-sm)] p-4 mb-6 text-sm">
           Betalningen avbröts. Din plats släpps automatiskt inom kort - du kan försöka igen direkt.
         </p>
       )}
@@ -126,7 +126,7 @@ export function ConfirmationPage() {
             Vi bekräftar din betalning - det brukar bara ta några sekunder. Lämna gärna sidan
             öppen.
           </p>
-          {pollError && <p className="text-red-600 text-sm mt-3">{pollError}</p>}
+          {pollError && <p className="text-[var(--danger)] text-sm mt-3">{pollError}</p>}
         </div>
       )}
 

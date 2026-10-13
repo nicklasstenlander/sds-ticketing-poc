@@ -172,7 +172,7 @@ export function CreateEventWizard({
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="font-semibold text-[var(--text)]">Nytt event</h2>
+        <h2 className="text-lg font-extrabold text-[var(--text)]">Nytt event</h2>
         <button type="button" onClick={onClose} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
           Avbryt
         </button>
@@ -208,8 +208,9 @@ export function CreateEventWizard({
       {step === 1 && (
         <form onSubmit={goNext} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</span>
+              <input
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -217,29 +218,37 @@ export function CreateEventWizard({
               className="field"
               autoFocus
             />
+            </label>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</span>
+              <input
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
               placeholder="t.ex. Aulan"
               className="field"
             />
+            </label>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum</label>
-              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="field" />
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">Datum</span>
+                <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="field" />
+              </label>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text)]">Tid</label>
-              <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="field" />
+              <label className="block">
+                <span className="block text-sm font-medium mb-2 text-[var(--text)]">Tid</span>
+                <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="field" />
+              </label>
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Platsantal</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Platsantal</span>
+              <input
               type="number"
               min={1}
               required
@@ -247,6 +256,7 @@ export function CreateEventWizard({
               onChange={(e) => setCapacity(Number(e.target.value))}
               className="field"
             />
+            </label>
             <p className="text-xs text-[var(--text-muted)] mt-1">
               Lokalens totala platser - en delad pott som alla biljettyper i steg 2 tar från.
             </p>
@@ -254,7 +264,7 @@ export function CreateEventWizard({
 
           {/* Schemalagt biljettsläpp (ordern 2026-10-03). */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Släpp biljetter</label>
+            <div className="block text-sm font-medium mb-2 text-[var(--text)]" id="grp-release">Släpp biljetter</div>
             <div className="flex gap-4 mb-3">
               <label className="flex items-center gap-2 text-sm text-[var(--text)]">
                 <input
@@ -278,24 +288,28 @@ export function CreateEventWizard({
             {releaseMode === 'scheduled' && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Datum</label>
-                  <input
+                  <label className="block">
+                    <span className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Datum</span>
+                    <input
                     type="date"
                     required
                     value={salesOpenDate}
                     onChange={(e) => setSalesOpenDate(e.target.value)}
                     className="field"
                   />
+                  </label>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Tid</label>
-                  <input
+                  <label className="block">
+                    <span className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Tid</span>
+                    <input
                     type="time"
                     required
                     value={salesOpenTime}
                     onChange={(e) => setSalesOpenTime(e.target.value)}
                     className="field"
                   />
+                  </label>
                 </div>
               </div>
             )}
@@ -321,25 +335,28 @@ export function CreateEventWizard({
                   <button
                     type="button"
                     onClick={() => removeTicketType(t.key)}
-                    className="text-xs text-red-600 hover:text-red-800 underline"
+                    className="text-xs text-[var(--danger)] hover:underline underline"
                   >
                     Ta bort
                   </button>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</label>
-                <input
+                <label className="block">
+                  <span className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</span>
+                  <input
                   required
                   value={t.name}
                   onChange={(e) => updateTicketType(t.key, { name: e.target.value })}
                   placeholder="t.ex. Ordinarie, Barn, Student"
                   className="field"
                 />
+                </label>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</label>
-                <input
+                <label className="block">
+                  <span className="block text-sm font-medium mb-2 text-[var(--text)]">Pris (kr)</span>
+                  <input
                   type="number"
                   min={0}
                   step="0.01"
@@ -347,10 +364,12 @@ export function CreateEventWizard({
                   onChange={(e) => updateTicketType(t.key, { priceKr: Number(e.target.value) })}
                   className="field"
                 />
+                </label>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</label>
-                <select
+                <label className="block">
+                  <span className="block text-sm font-medium mb-2 text-[var(--text)]">Momssats</span>
+                  <select
                   value={t.vatRate}
                   onChange={(e) => updateTicketType(t.key, { vatRate: Number(e.target.value) })}
                   className="field"
@@ -361,6 +380,7 @@ export function CreateEventWizard({
                     </option>
                   ))}
                 </select>
+                </label>
               </div>
             </div>
           ))}
@@ -421,7 +441,7 @@ export function CreateEventWizard({
             ))}
           </div>
           {error && (
-            <p className="text-red-600 text-sm">
+            <p className="text-[var(--danger)] text-sm">
               {error}
               {error.includes('Stripe') && (
                 <>

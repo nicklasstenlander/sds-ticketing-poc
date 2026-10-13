@@ -58,7 +58,7 @@ export function TermsPage() {
       </div>
 
       {content.DRAFT && (
-        <div className="print:hidden mb-6 rounded-[var(--radius-sm)] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="print:hidden mb-6 rounded-[var(--radius-sm)] border border-[#ecd28c] bg-[var(--warning-soft)] px-4 py-3 text-sm text-[var(--warning-ink)]">
           <strong>UTKAST</strong> – inte juridiskt granskat. Visas inte för kunder.
         </div>
       )}

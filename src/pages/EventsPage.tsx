@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
-import { APP_NAME } from '../lib/constants'
 import { computeSalesState } from '../lib/salesState'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
@@ -13,17 +12,150 @@ interface EventWithTicketTypes extends EventRow {
   organizers: EventOrganizerRelation | EventOrganizerRelation[] | null
 }
 
-// /evenemang - listar alla publicerade event. RLS begränsar redan anon-
-// SELECT på events till status='published' (se migrationen från
-// 2026-01-01), så ingen extra statusfiltrering behövs i frågan här.
-// ticket_types hämtas i samma anrop via PostgREST-embedding (samma RLS-
-// mönster: anon ser bara typer kopplade till ett publicerat event).
-// capacity/sold_count ligger direkt på eventet (delad kapacitetspool,
-// se rättelseordern 2026-08-05) - ingen summering över ticket_types
-// behövs för det, bara för prisspannet.
+// En föreställning (samma titel/plats) visas som EN affischruta med en
+// knapp per speltid - varje speltid är fortfarande ett eget event med eget
+// pris, eget säljläge och egen köplänk.
+function groupShows(events: EventWithTicketTypes[]): EventWithTicketTypes[][] {
+  const groups = new Map<string, EventWithTicketTypes[]>()
+  for (const e of events) {
+    const key = [e.title, e.venue ?? ''].join('|')
+    groups.set(key, [...(groups.get(key) ?? []), e])
+  }
+  return [...groups.values()]
+}
+
+// Prisspann över ALLA biljettyper, gratis inkluderat (Nicklas 2026-10-10).
+function priceLabel(shows: EventWithTicketTypes[]): string {
+  const prices = shows.flatMap((e) => (e.ticket_types ?? []).map((t) => t.price_ore))
+  if (prices.length === 0) return ''
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  if (min === max) return min === 0 ? 'Gratis' : `${formatKr(min)} kr`
+  return `${formatKr(min)}–${formatKr(max)} kr`
+}
+
+const stockholm = (iso: string, o: Intl.DateTimeFormatOptions) => formatStockholmDateTimeLocale(iso, o)
+
+// "5–6 dec" / "5 dec" / "30 nov–2 dec" - datumet är det första en besökare söker.
+function dateRange(shows: EventWithTicketTypes[]): string {
+  const dated = shows.filter((e) => e.starts_at).map((e) => e.starts_at as string)
+  if (dated.length === 0) return ''
+  const first = dated[0]
+  const last = dated[dated.length - 1]
+  const day = (iso: string) => stockholm(iso, { day: 'numeric' })
+  const month = (iso: string) => stockholm(iso, { month: 'short' }).replace('.', '')
+  if (day(first) === day(last) && month(first) === month(last)) return `${day(first)} ${month(first)}`
+  if (month(first) === month(last)) return `${day(first)}–${day(last)} ${month(last)}`
+  return `${day(first)} ${month(first)}–${day(last)} ${month(last)}`
+}
+
+// Liggande affisch är förstahandsval (bred, 16:9); stående används bara om den
+// liggande saknas. Aldrig beskuren.
+function Poster({ shows, prefer = 'landscape' }: { shows: EventWithTicketTypes[]; prefer?: 'landscape' | 'portrait' }) {
+  const first = shows[0]
+  const landscape = shows.find((e) => e.poster_landscape_url)?.poster_landscape_url
+  const portrait = shows.find((e) => e.poster_portrait_url)?.poster_portrait_url
+  const useLandscape = prefer === 'landscape' ? Boolean(landscape) : !portrait && Boolean(landscape)
+  const src = useLandscape ? landscape : (portrait ?? landscape)
+  if (src) {
+    return (
+      <div className={`poster ${useLandscape ? 'poster-landscape' : 'poster-portrait'}`}>
+        <img src={src} alt={`Affisch: ${first.title}`} loading="lazy" />
+      </div>
+    )
+  }
+  // Ingen affisch uppladdad: en typografisk affisch i varumärkets färger,
+  // så rutnätet inte får ett tomt hål.
+  return (
+    <div className={`poster ${prefer === 'portrait' ? 'poster-portrait' : 'poster-landscape'} poster-fallback`} aria-hidden="true">
+      <span>{first.title}</span>
+    </div>
+  )
+}
+
+function Showtime({ event }: { event: EventWithTicketTypes }) {
+  const types = event.ticket_types ?? []
+  const salesState = computeSalesState({
+    salesOpenAt: event.sales_open_at,
+    soldCount: event.sold_count,
+    capacity: event.capacity,
+  })
+  const label = event.starts_at
+    ? `${stockholm(event.starts_at, { weekday: 'short' }).replace('.', '')} ${stockholm(event.starts_at, { day: 'numeric', month: 'short' }).replace('.', '')} · ${stockholm(event.starts_at, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`
+    : 'Datum saknas'
+  if (salesState === 'sold_out' || types.length === 0) {
+    return (
+      <li>
+        <span className="time-chip time-chip-off">
+          <span className="first-letter:uppercase">{label}</span>
+          <small>{types.length === 0 ? 'Ej till salu ännu' : 'Slutsålt'}</small>
+        </span>
+      </li>
+    )
+  }
+  if (salesState === 'upcoming') {
+    return (
+      <li>
+        <span className="time-chip time-chip-off">
+          <span className="first-letter:uppercase">{label}</span>
+        </span>
+      </li>
+    )
+  }
+  // Exakt antal sålda visas inte för besökare (önskemål 2026-10-04) - bara
+  // "Få biljetter kvar" under 10% kvar.
+  const lowStock = event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
+  return (
+    <li>
+      <Link to={`/kop/${event.slug}`} className="time-chip">
+        <span className="first-letter:uppercase">{label}</span>
+        {lowStock && <small>Få biljetter kvar</small>}
+      </Link>
+    </li>
+  )
+}
+
+function Feature({ group }: { group: EventWithTicketTypes[] }) {
+  const first = group[0]
+  const organizer = Array.isArray(first.organizers) ? first.organizers[0] : first.organizers
+  const allUpcoming = group.every(
+    (e) => computeSalesState({ salesOpenAt: e.sales_open_at, soldCount: e.sold_count, capacity: e.capacity }) === 'upcoming',
+  )
+  const opens = group
+    .map((e) => e.sales_open_at)
+    .filter((x): x is string => Boolean(x))
+    .sort()[0]
+  const price = priceLabel(group)
+  return (
+    <div className="feature">
+      <div className="feature-head">
+        <h2 className="feature-title">{first.title}</h2>
+        <div className="feature-line">
+          <span className="show-date">{dateRange(group)}</span>
+          <span className="feature-meta">{[first.venue, organizer?.name].filter(Boolean).join(' · ')}</span>
+          {price && <span className="show-price">{price}</span>}
+        </div>
+      </div>
+      <div className="arch arch-wide">
+        <Poster shows={group} />
+      </div>
+      <div className="feature-times">
+        {allUpcoming && opens && (
+          <div className="badge badge-spotlight">Biljetterna släpps {formatStockholmDateTime(opens)}</div>
+        )}
+        <ul className="time-chips">
+          {group.map((event) => (
+            <Showtime key={event.id} event={event} />
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 export function EventsPage() {
   const [events, setEvents] = useState<EventWithTicketTypes[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -33,7 +165,7 @@ export function EventsPage() {
         .select('*, ticket_types(*), organizers(name)')
         .order('starts_at', { ascending: true })
       if (cancelled) return
-      if (error) setError(error.message)
+      if (error) setError(true)
       else setEvents(data as unknown as EventWithTicketTypes[])
     }
     load()
@@ -42,180 +174,71 @@ export function EventsPage() {
     }
   }, [])
 
+  const shows = groupShows(events ?? [])
+  const [featured, ...rest] = shows
+
   return (
-    <Layout>
-      <div className="eyebrow mb-3">{APP_NAME}</div>
-      <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Kommande föreställningar</h1>
-      <p className="text-[var(--text-muted)] mb-8">
-        Välj en föreställning och köp biljett på under en minut.
-      </p>
-
-      {error && <p className="text-red-600">Kunde inte hämta events: {error}</p>}
-      {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
-      {events !== null && events.length === 0 && (
-        <p className="text-[var(--text-muted)]">Inga publicerade events ännu. Skapa ett i admin.</p>
-      )}
-
-      <ul className="space-y-4">
-        {events?.map((event) => {
-          const types = event.ticket_types ?? []
-          const salesState = computeSalesState({
-            salesOpenAt: event.sales_open_at,
-            soldCount: event.sold_count,
-            capacity: event.capacity,
-          })
-          const soldOut = salesState === 'sold_out'
-          const upcoming = salesState === 'upcoming'
-          // Exakt antal/andel sålda visas INTE längre för besökare (önskemål
-          // 2026-10-04, samma princip som köpsidan) - bara "Få biljetter
-          // kvar" under 10% kvar. "Slutsålt" hanteras redan separat nedan
-          // (höger badge), oberoende av detta.
-          const lowStock = !soldOut && event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
-          // Prisintervall (Nicklas 2026-10-10, efter att ha testat "Från X
-          // kr" + en separat "Barn 0-3 år: gratis"-rad: "Detta kan vi ta
-          // bort och istället ha 0-200kr") - ETT tal om alla typer har
-          // samma pris, annars MIN-MAX över ALLA typer (gratis räknas med
-          // i spannet, inte en egen rad längre). Gäller bara /evenemang -
-          // API-kontraktet (from_price_ore/free_ticket_names i public-
-          // embed/public-events, docs/PUBLIC_EMBED_API.md) är oförändrat,
-          // CORE-appen och widgeten läser fortfarande de fälten som de är.
-          const prices = types.map((t) => t.price_ore)
-          const minPriceOre = prices.length > 0 ? Math.min(...prices) : null
-          const maxPriceOre = prices.length > 0 ? Math.max(...prices) : null
-          const singlePrice = new Set(prices).size <= 1
-          const organizer = Array.isArray(event.organizers) ? event.organizers[0] : event.organizers
-          // Affisch (ordern "Små ändringar i frontend" 2026-10-10, punkt
-          // 1): portrait är FÖRSTAVALET för kortlistans miniatyr (fast
-          // 2:3, object-fit:contain - aldrig beskuren/sträckt). Saknas
-          // portrait men landscape finns: landscape visas som en hero
-          // ÖVERST på kortet istället (inte klämd in i miniatyrplatsen -
-          // en liggande bild skulle beskäras hårt i en stående 2:3-ruta).
-          // Saknas båda: samma diagonalrandiga platshållare som förut,
-          // bara i miniatyrens nya 2:3-proportion istället för kvadratisk.
-          const hasPortrait = Boolean(event.poster_portrait_url)
-          const hasLandscape = Boolean(event.poster_landscape_url)
-          const showLandscapeHero = !hasPortrait && hasLandscape
-
-          return (
-            <li key={event.id} className="card">
-              {/* Två flex-items i YTTRE raden: posterGruppen (bild+text
-                  ihop) och prisblocket - INTE tre separata (bild, text,
-                  pris). Med tre separata items klämde flex-1 (basis:0%)
-                  textkolumnen i smal vy (se historik nedan), och att byta
-                  till flex-auto löste klämningen men fick posterbilden att
-                  hamna på en EGEN rad ovanför texten när priset wrappade -
-                  korrekt bredd, men onödigt höga kort (Nicklas rapporterade
-                  det 2026-10-10 efter den fixen gått i drift). Genom att
-                  gruppera bild+text i en EGEN inre flex-rad blir de EN
-                  enhet i den yttre radens wrap-bedömning - de stannar ihop
-                  på första raden, bara prisblocket wrappar ner när det
-                  inte får plats, precis som innan höjd-regressionen. */}
-              {/* Landscape-hero (punkt 1) - bara när portrait saknas men
-                  landscape finns. Full kortbredd, ovanför resten av
-                  kortet (inte i miniatyrplatsen - skulle beskäras hårt
-                  i en stående 2:3-ruta). Samma aspect-video/object-cover
-                  som köpsidans hero (PurchasePage.tsx). */}
-              {showLandscapeHero && (
-                <img
-                  src={event.poster_landscape_url!}
-                  alt=""
-                  className="w-full aspect-video object-cover rounded-xl mb-4 border border-[var(--border)]"
-                />
-              )}
-              <div className="flex items-center gap-5 flex-wrap">
-                <div className="flex items-center gap-5 min-w-0 flex-auto">
-                  {/* Affisch-miniatyr (punkt 1): portrait i fast 2:3,
-                      object-fit:contain (ALDRIG beskuren/sträckt - en
-                      bakgrundsfärg bakom bilden fyller ev. mellanrum om
-                      den riktiga bildens proportion avviker lite från
-                      2:3). 96px smal vy, 128px bred (sm: och uppåt).
-                      Ingen miniatyr alls när landscape-heron ovan redan
-                      visas (showLandscapeHero) - annars samma
-                      diagonalrandiga platshållare som förut, nu i 2:3
-                      istället för kvadratisk, så kort helt utan affisch
-                      inte ser trasiga/ofärdiga ut. */}
-                  {hasPortrait ? (
-                    <div className="w-24 sm:w-32 aspect-[2/3] shrink-0 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--accent-soft)]">
-                      <img src={event.poster_portrait_url!} alt="" className="w-full h-full object-contain" />
-                    </div>
-                  ) : !showLandscapeHero ? (
-                    <div
-                      className="w-24 sm:w-32 aspect-[2/3] shrink-0 rounded-xl border border-[var(--border)]"
-                      style={{
-                        background:
-                          'repeating-linear-gradient(45deg, var(--accent-soft), var(--accent-soft) 8px, var(--surface) 8px, var(--surface) 16px)',
-                      }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  {/* flex-auto (inte flex-1): flex-1 sätter flex-basis:0%,
-                      vilket gör att den här kolumnen INTE räknas med alls
-                      när flex-wrap avgör om GRUPPEN (bild+text) får plats
-                      bredvid prisblocket - kolumnen klämdes ner till
-                      enstaka pixlar i smal vy (upptäckt vid 360px, ordern
-                      2026-10-10 - fanns redan innan den ordern, aldrig
-                      testat vid just 360px tidigare). flex-auto (flex:1 1
-                      auto) låter kolumnens egna innehåll räknas med i den
-                      bedömningen - samma "stapla innan krymp"-princip som
-                      embed.js (ordern 2026-10-06). */}
-                  <div className="min-w-0 flex-auto">
-                    <div className="font-semibold text-[var(--text)]">{event.title}</div>
-                    <div className="text-sm text-[var(--text-muted)] mb-3">
-                      {/* starts_at är null bara för ett ännu opublicerat
-                          dublicerat event (Tilläggsordern 2026-08-05) - RLS
-                          (status = 'published') gör att den här listan i
-                          praktiken aldrig innehåller ett sådant event, men
-                          typen tillåter null så vi faller tillbaka defensivt. */}
-                      {event.starts_at
-                        ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
-                          formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
-                        : ''}
-                      {event.venue ? ` · ${event.venue}` : ''}
-                      {organizer?.name ? ` · Arrangör: ${organizer.name}` : ''}
-                    </div>
-                    {lowStock && <div className="text-sm text-[var(--text-muted)]">Få biljetter kvar</div>}
+    <Layout
+      wide="xl"
+      dark
+      hero={
+        <>
+          <h1 className="sr-only">Kommande föreställningar</h1>
+          {error && (
+            <p role="alert" className="text-[var(--danger)] text-lg">
+              Vi kunde inte hämta föreställningarna just nu. Försök igen om en stund.
+            </p>
+          )}
+          {events === null && !error && <p className="text-[var(--text-muted)] text-lg">Hämtar föreställningar…</p>}
+          {events !== null && events.length === 0 && (
+            <p className="feature-title">Inga föreställningar just nu. Titta in igen snart.</p>
+          )}
+          {featured && <Feature group={featured} />}
+        </>
+      }
+    >
+      {rest.length > 0 && (
+        <section aria-labelledby="more-shows">
+          <h2 id="more-shows" className="more-title">
+            Fler föreställningar
+          </h2>
+          <ul className="show-grid">
+            {rest.map((group) => {
+              const first = group[0]
+              const organizer = Array.isArray(first.organizers) ? first.organizers[0] : first.organizers
+              const allUpcoming = group.every(
+                (e) => computeSalesState({ salesOpenAt: e.sales_open_at, soldCount: e.sold_count, capacity: e.capacity }) === 'upcoming',
+              )
+              const opens = group
+                .map((e) => e.sales_open_at)
+                .filter((x): x is string => Boolean(x))
+                .sort()[0]
+              const price = priceLabel(group)
+              return (
+                <li key={first.id} className="show-tile">
+                  <Poster shows={group} prefer="portrait" />
+                  <div className="show-body">
+                    <div className="show-date">{dateRange(group)}</div>
+                    <h3 className="show-title">{first.title}</h3>
+                    <p className="show-meta">
+                      {[first.venue, organizer?.name].filter(Boolean).join(' · ')}
+                      {price && <span className="show-price">{price}</span>}
+                    </p>
+                    {allUpcoming && opens && (
+                      <div className="badge badge-spotlight">Biljetterna släpps {formatStockholmDateTime(opens)}</div>
+                    )}
+                    <ul className="time-chips">
+                      {group.map((event) => (
+                        <Showtime key={event.id} event={event} />
+                      ))}
+                    </ul>
                   </div>
-                </div>
-                {/* Pris, gratisrad och knapp/chip på SAMMA rad (Nicklas
-                    2026-10-10: "för att inte få den lika hög") - en flex-
-                    rad istället för tre staplade block, så kortet bara blir
-                    högre när raden faktiskt inte får plats (flex-wrap
-                    bryter då av DELAR av raden, inte allt på förhand). Höger-
-                    justerad som grupp (justify-end) även när den bryter till
-                    fler rader. ml-auto: när HELA den här raden inte får
-                    plats bredvid bild+text-gruppen (yttre flex-wrap ovan)
-                    hamnar den på en egen rad, höger-justerad - samma
-                    "stapla innan krympning"-princip som används i embed.js
-                    (ordern 2026-10-06). */}
-                <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0 ml-auto max-w-full">
-                  <span className="font-semibold text-[var(--text)]">
-                    {types.length === 0 || minPriceOre === null || maxPriceOre === null
-                      ? '–'
-                      : singlePrice
-                        ? minPriceOre === 0
-                          ? 'Gratis'
-                          : `${formatKr(minPriceOre)} kr`
-                        : `${formatKr(minPriceOre)}–${formatKr(maxPriceOre)} kr`}
-                  </span>
-                  {upcoming && event.sales_open_at ? (
-                    <span className="text-sm px-2 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] inline-block">
-                      Släpps {formatStockholmDateTime(event.sales_open_at)}
-                    </span>
-                  ) : types.length === 0 || soldOut ? (
-                    <span className="text-sm text-[var(--text-muted)]">
-                      {types.length === 0 ? 'Ej till salu ännu' : 'Slutsålt'}
-                    </span>
-                  ) : (
-                    <Link to={`/kop/${event.slug}`} className="btn-primary text-sm">
-                      Köp biljett
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
     </Layout>
   )
 }

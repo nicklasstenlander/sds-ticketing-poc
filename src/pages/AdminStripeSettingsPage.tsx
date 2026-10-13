@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { AdminNav } from '../components/AdminNav'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import { getActiveOrganizerId, setActiveOrganizerId } from '../lib/organizerContext'
-import { APP_NAME } from '../lib/constants'
 
 interface OrganizerSummary {
   id: string
@@ -136,15 +136,14 @@ export function AdminStripeSettingsPage() {
 
   return (
     <Layout wide>
-      <div className="flex items-center justify-between mb-1">
-        <div className="eyebrow">{APP_NAME} Admin</div>
-        <div className="flex items-center gap-4">
+      <AdminNav
+        actions={
+          <>
           {isPlatformAdmin && organizers && organizers.length > 0 && (
             <select
               value={activeOrgId ?? ''}
               onChange={(e) => handleSwitchOrganizer(e.target.value)}
-              className="field text-sm"
-              style={{ width: 'auto', padding: '6px 10px' }}
+              className="field field-sm"
               aria-label="Välj workspace"
             >
               <option value="">Alla arrangörer</option>
@@ -155,24 +154,13 @@ export function AdminStripeSettingsPage() {
               ))}
             </select>
           )}
-          <Link to="/admin" className="text-sm link-accent">
-            Events
-          </Link>
-          <Link to="/admin/dashboard" className="text-sm link-accent">
-            Dashboard
-          </Link>
-          <Link to="/admin/organizers" className="text-sm link-accent">
-            Arrangörer
-          </Link>
-          <Link to="/admin/embed" className="text-sm link-accent">
-            Bädda in
-          </Link>
-          <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
+          <button onClick={handleLogout} className="admin-logout">
             Logga ut
           </button>
-        </div>
-      </div>
-      <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Stripe-inställningar</h1>
+          </>
+        }
+      />
+      <h1 className="page-title mb-6">Stripe-inställningar</h1>
 
       {!orgCheckReady && <p className="text-[var(--text-muted)] text-sm">Laddar…</p>}
 
@@ -189,13 +177,13 @@ export function AdminStripeSettingsPage() {
 
       {orgCheckReady && hasSelectableOrganizer && (
         <section className="card max-w-xl">
-          {statusError && <p className="text-red-600 text-sm mb-3">{statusError}</p>}
+          {statusError && <p className="text-[var(--danger)] text-sm mb-3">{statusError}</p>}
 
           {status === null && !statusError && <p className="text-[var(--text-muted)] text-sm">Laddar status…</p>}
 
           {status !== null && status.stripe_onboarding_complete && (
             <div>
-              <p className="text-green-700 font-medium mb-1">Anslutet ✓</p>
+              <p className="text-[var(--success-ink)] font-medium mb-1">Anslutet ✓</p>
               <p className="text-[var(--text-muted)] text-sm">
                 Kontot tar emot betalningar. Ingen ytterligare åtgärd behövs.
               </p>
@@ -212,7 +200,7 @@ export function AdminStripeSettingsPage() {
               <button type="button" onClick={handleConnect} disabled={connecting} className="btn-primary">
                 {connecting ? 'Öppnar Stripe…' : 'Anslut Stripe-konto'}
               </button>
-              {connectError && <p className="text-red-600 text-sm mt-3">{connectError}</p>}
+              {connectError && <p className="text-[var(--danger)] text-sm mt-3">{connectError}</p>}
             </div>
           )}
         </section>

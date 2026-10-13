@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
-import { callFunction, downloadAdminFile } from '../lib/functionsApi'
+import { AdminNav } from '../components/AdminNav'
+import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import { getActiveOrganizerId, setActiveOrganizerId } from '../lib/organizerContext'
 import type { AdminEventRow } from '../lib/types'
-import { APP_NAME } from '../lib/constants'
 import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
+import { LoginForm } from './admin/AdminLoginForm'
+import { ExportSection } from './admin/ExportSection'
+import { PlatformRevenueExportSection } from './admin/PlatformRevenueExportSection'
 import {
   stockholmWallClockToUtcIso,
   utcIsoToStockholmWallClock,
@@ -18,7 +21,7 @@ import {
   formatStockholmDateTimeLocale,
 } from '../lib/stockholmTime'
 import { computeSalesState } from '../lib/salesState'
-import { formatKr } from '../lib/formatPrice'
+import { confirmDialog } from '../lib/confirmDialog'
 
 interface AdminEventsResponse {
   events: AdminEventRow[]
@@ -84,70 +87,6 @@ export function AdminPage() {
     <Layout wide>
       <AdminDashboard onLogout={() => setAuthed(false)} />
     </Layout>
-  )
-}
-
-// Riktig Supabase Auth-inloggning (e-post + lösenord) - ersätter den
-// delade admin-PIN-koden (Tilläggsordern 2026-08-05, "Flera arrangörer:
-// riktiga inloggningar och dataisolering"). Ingen arrangörsväljare här:
-// vilken arrangör användaren tillhör härleds uteslutande server-side via
-// organizer_members (se _shared/organizerAuth.ts), aldrig valt i UI:t.
-function LoginForm({ onSuccess }: { onSuccess: () => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInError) {
-      setError('Fel e-postadress eller lösenord.')
-      setLoading(false)
-      return
-    }
-    onSuccess()
-    setLoading(false)
-  }
-
-  return (
-    <div className="card max-w-sm mx-auto">
-      <div className="eyebrow mb-3">{APP_NAME}</div>
-      <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Admin - logga in</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2 text-[var(--text)]">E-post</label>
-          <input
-            type="email"
-            required
-            autoComplete="username"
-            placeholder="namn@arrangor.se"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="field"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Lösenord</label>
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            placeholder="Lösenord"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="field"
-          />
-        </div>
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? 'Loggar in…' : 'Logga in'}
-        </button>
-      </form>
-    </div>
   )
 }
 
@@ -339,7 +278,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     // ska inte trigga en varning i onödan.
     const isNewSalesOpenAt = salesOpenAt !== null && salesOpenAt !== editingEvent?.sales_open_at
     if (isNewSalesOpenAt && (editingEvent?.sold_count ?? 0) > 0 && salesOpenAt) {
-      const confirmed = window.confirm(
+      const confirmed = await confirmDialog(
         `Försäljningen stängs tillfälligt fram till ${formatStockholmDateTime(salesOpenAt)}. Redan sålda biljetter påverkas inte.`,
       )
       if (!confirmed) return
@@ -394,7 +333,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function handleDelete(event: AdminEventRow) {
-    if (!window.confirm('Radera eventet permanent? Det går inte att ångra.')) return
+    if (!await confirmDialog('Radera eventet permanent? Det går inte att ångra.', { danger: true, confirmLabel: 'Radera' })) return
 
     setDeletingId(event.id)
     setRowError(null)
@@ -421,7 +360,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   async function handleArchiveEvent(event: AdminEventRow, reason: 'test' | 'hidden') {
     const reasonLabel = reason === 'test' ? 'testdata (utesluts ur bokföringsexporten)' : 'dold (ligger kvar i bokföringsexporten)'
     const orderNote = event.order_count > 0 ? ` Eventets ${event.order_count} order${event.order_count === 1 ? '' : 'ar'} arkiveras samtidigt.` : ''
-    if (!window.confirm(`Arkivera "${event.title}" som ${reasonLabel}?${orderNote} Går att återställa senare.`)) {
+    if (!await confirmDialog(`Arkivera "${event.title}" som ${reasonLabel}?${orderNote} Går att återställa senare.`)) {
       return
     }
     setArchiveActionId(event.id)
@@ -493,15 +432,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <div className="eyebrow">{APP_NAME} Admin</div>
-        <div className="flex items-center gap-4">
+      <AdminNav
+        actions={
+          <>
           {isPlatformAdmin && organizers && organizers.length > 0 && (
             <select
               value={activeOrgId ?? ''}
               onChange={(e) => handleSwitchOrganizer(e.target.value)}
-              className="field text-sm"
-              style={{ width: 'auto', padding: '6px 10px' }}
+              className="field field-sm"
               aria-label="Välj workspace"
             >
               {organizers.map((org) => (
@@ -511,42 +449,31 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ))}
             </select>
           )}
-          <Link to="/admin/dashboard" className="text-sm link-accent">
-            Dashboard
-          </Link>
-          <Link to="/admin/organizers" className="text-sm link-accent">
-            Arrangörer
-          </Link>
-          <Link to="/admin/stripe-installning" className="text-sm link-accent">
-            Stripe
-          </Link>
-          <Link to="/admin/embed" className="text-sm link-accent">
-            Bädda in
-          </Link>
-          <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
+          <button onClick={handleLogout} className="admin-logout">
             Logga ut
           </button>
-        </div>
-      </div>
-      <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Admin</h1>
+          </>
+        }
+      />
+      <h1 className="page-title mb-6">Events</h1>
 
       {events && events.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="card p-4">
-            <div className="text-xs text-[var(--text-muted)] mb-1">Publicerade events</div>
-            <div className="text-2xl font-extrabold text-[var(--text)]">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <div className="stat-card">
+            <div className="stat-label">Publicerade events</div>
+            <div className="stat-value">
               {events.filter((e) => e.status === 'published').length}
             </div>
           </div>
-          <div className="card p-4">
-            <div className="text-xs text-[var(--text-muted)] mb-1">Sålda biljetter totalt</div>
-            <div className="text-2xl font-extrabold text-[var(--text)]">
+          <div className="stat-card">
+            <div className="stat-label">Sålda biljetter totalt</div>
+            <div className="stat-value">
               {events.reduce((sum, e) => sum + e.sold_count, 0)}
             </div>
           </div>
-          <div className="card p-4">
-            <div className="text-xs text-[var(--text-muted)] mb-1">Snittbeläggning</div>
-            <div className="text-2xl font-extrabold text-[var(--text)]">
+          <div className="stat-card">
+            <div className="stat-label">Snittbeläggning</div>
+            <div className="stat-value">
               {(() => {
                 const withCap = events.filter((e) => e.capacity > 0)
                 if (withCap.length === 0) return '–'
@@ -561,15 +488,15 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <section className="order-1">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-[var(--text)]">Befintliga events</h2>
+            <h2 className="text-lg font-extrabold text-[var(--text)]">Befintliga events</h2>
             <label className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
               <input type="checkbox" checked={showArchived} onChange={handleToggleShowArchived} />
               Visa arkiverade
             </label>
           </div>
-          {error && <p className="text-red-600">{error}</p>}
+          {error && <p className="text-[var(--danger)]">{error}</p>}
           {rowError && (
-            <p className="text-red-600 mb-2">
+            <p className="text-[var(--danger)] mb-2">
               {rowError}
               {rowError.includes('Stripe') && (
                 <>
@@ -603,7 +530,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   key={event.id}
                   className={`card p-4 transition-colors ${
                     isEditing
-                      ? 'border-l-4 border-l-[#dd5c86] bg-rose-50'
+                      ? 'is-editing'
                       : cancelled
                         ? 'opacity-70'
                         : ''
@@ -629,26 +556,26 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         {event.sold_count} / {event.capacity} sålda
                       </div>
                       <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
+                        className={`badge ${
                           cancelled
-                            ? 'bg-slate-200 text-slate-600'
+                            ? 'badge-neutral'
                             : event.status === 'published'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-amber-100 text-amber-700'
+                              ? 'badge-success'
+                              : 'badge-warning'
                         }`}
                       >
                         {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
                       </span>
                       {event.archived_at && (
                         <div className="mt-1">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-white">
+                          <span className="badge badge-dark">
                             Arkiverad ({event.archived_reason === 'test' ? 'testdata' : 'dold'})
                           </span>
                         </div>
                       )}
                       {isUpcoming && event.sales_open_at && (
                         <div className="mt-1">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)]">
+                          <span className="badge badge-spotlight">
                             Släpps {formatStockholmDateTime(event.sales_open_at)}
                           </span>
                         </div>
@@ -742,9 +669,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         <div className="order-2 lg:sticky lg:top-4 space-y-6" ref={formSectionRef}>
           {editingEventId ? (
-            <section className="card border-l-4 border-l-[#dd5c86]">
+            <section className="card is-editing">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-[var(--text)]">
+                <h2 className="text-lg font-extrabold text-[var(--text)]">
                   Redigerar: {editingEvent?.title ?? ''}
                 </h2>
                 <button type="button" onClick={resetForm} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
@@ -753,41 +680,49 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
               <form onSubmit={handleSubmitForm} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</label>
-                  <input required value={title} onChange={(e) => setTitle(e.target.value)} className="field" />
+                  <label className="block">
+                    <span className="block text-sm font-medium mb-2 text-[var(--text)]">Titel</span>
+                    <input required value={title} onChange={(e) => setTitle(e.target.value)} className="field" />
+                  </label>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</label>
-                  <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field" />
+                  <label className="block">
+                    <span className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</span>
+                    <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field" />
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</label>
-                    <input
+                    <label className="block">
+                      <span className="block text-sm font-medium mb-2 text-[var(--text)]">Datum &amp; tid</span>
+                      <input
                       type="datetime-local"
                       required
                       value={startsAt}
                       onChange={(e) => setStartsAt(e.target.value)}
                       className="field"
                     />
+                    </label>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-[var(--text)]">
+                    <label className="block">
+                      <span className="block text-sm font-medium mb-2 text-[var(--text)]">
                       Platsantal
                       {editingEvent && (
                         <span className="font-normal text-[var(--text-muted)]"> ({editingEvent.sold_count} sålda)</span>
                       )}
-                    </label>
-                    <input
+                    </span>
+                      <input
                       type="number"
                       min={0}
                       required
                       value={capacity}
                       onChange={(e) => setCapacity(Number(e.target.value))}
-                      className={`field ${capacityTooLow ? 'border-red-400' : ''}`}
+                      className={`field ${capacityTooLow ? 'border-[var(--danger)]' : ''}`}
                     />
+                    </label>
                     {capacityTooLow && (
-                      <p className="text-red-600 text-xs mt-1">
+                      <p className="text-[var(--danger)] text-xs mt-1">
                         Kan inte vara lägre än antal sålda biljetter ({editingEvent?.sold_count}).
                       </p>
                     )}
@@ -796,7 +731,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
                 {/* Schemalagt biljettsläpp (ordern 2026-10-03). */}
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Släpp biljetter</label>
+                  <div className="block text-sm font-medium mb-2 text-[var(--text)]" id="grp-release">Släpp biljetter</div>
                   <div className="flex gap-4 mb-3">
                     <label className="flex items-center gap-2 text-sm text-[var(--text)]">
                       <input
@@ -820,24 +755,28 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   {releaseMode === 'scheduled' && (
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Datum</label>
-                        <input
+                        <label className="block">
+                          <span className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Datum</span>
+                          <input
                           type="date"
                           required
                           value={salesOpenDate}
                           onChange={(e) => setSalesOpenDate(e.target.value)}
                           className="field"
                         />
+                        </label>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Tid</label>
-                        <input
+                        <label className="block">
+                          <span className="block text-xs font-medium mb-1 text-[var(--text-muted)]">Tid</span>
+                          <input
                           type="time"
                           required
                           value={salesOpenTime}
                           onChange={(e) => setSalesOpenTime(e.target.value)}
                           className="field"
                         />
+                        </label>
                       </div>
                     </div>
                   )}
@@ -854,7 +793,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </Link>
                 </p>
 
-                {createError && <p className="text-red-600 text-sm">{createError}</p>}
+                {createError && <p className="text-[var(--danger)] text-sm">{createError}</p>}
                 <button type="submit" disabled={creating || capacityTooLow} className="btn-primary">
                   {creating ? 'Sparar…' : 'Spara ändringar'}
                 </button>
@@ -889,289 +828,5 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
     </div>
-  )
-}
-
-type ExportScope = 'day' | 'range' | 'event'
-
-// Exportknappar för bokföring (CSV och SIE4). Läggs som en egen sektion i
-// admin-dashboarden - se supabase/functions/export-sales/index.ts för hur
-// filerna byggs (alltid från ordrarnas egen pris/moms-ögonblicksbild, inte
-// ticket_types nuvarande värden).
-function ExportSection({ events }: { events: AdminEventRow[] }) {
-  const today = new Date().toISOString().slice(0, 10)
-
-  const [scope, setScope] = useState<ExportScope>('day')
-  const [date, setDate] = useState(today)
-  const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
-  const [eventId, setEventId] = useState(events[0]?.id ?? '')
-  const [downloading, setDownloading] = useState<'csv' | 'sie' | null>(null)
-  const [exportError, setExportError] = useState<string | null>(null)
-  // Arkiv (ordern 2026-10-12, DEL 2 punkt 2) - "en rad med antal och
-  // summa för uteslutna testordrar" i exportvyn, satt efter varje lyckad
-  // nedladdning (null innan första nedladdningen - visa inget förrän
-  // något faktiskt laddats ner).
-  const [excludedTestNotice, setExcludedTestNotice] = useState<{ count: number; totalOre: number } | null>(null)
-
-  function buildQuery(format: 'csv' | 'sie'): string | null {
-    const params = new URLSearchParams({ format, scope })
-    if (scope === 'day') {
-      if (!date) return null
-      params.set('date', date)
-    } else if (scope === 'range') {
-      if (!from || !to) return null
-      params.set('from', from)
-      params.set('to', to)
-    } else {
-      if (!eventId) return null
-      params.set('event_id', eventId)
-    }
-    return `export-sales?${params.toString()}`
-  }
-
-  async function handleDownload(format: 'csv' | 'sie') {
-    const query = buildQuery(format)
-    if (!query) {
-      setExportError('Fyll i datum/period/event innan export.')
-      return
-    }
-    setDownloading(format)
-    setExportError(null)
-    try {
-      const result = await downloadAdminFile(query, `forsaljning.${format === 'csv' ? 'csv' : 'se'}`)
-      setExcludedTestNotice({ count: result.excludedTestCount, totalOre: result.excludedTestTotalOre })
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Export misslyckades.')
-    } finally {
-      setDownloading(null)
-    }
-  }
-
-  return (
-    <section className="card">
-      <h2 className="font-semibold mb-2 text-[var(--text)]">Exportera försäljning</h2>
-      <p className="text-sm text-[var(--text-muted)] mb-4">
-        CSV för kalkylark, SIE4 för bokföring (Fortnox m.fl.). Läser endast betalda ordrar och
-        använder alltid priset/momsen som gällde vid köptillfället, inte biljettypens nuvarande
-        värden.{' '}
-        <strong>Granska den första SIE-filen med en redovisningskonsult innan skarp import.</strong>
-      </p>
-
-      <div className="flex flex-wrap gap-4 mb-4 text-sm">
-        <label className="flex items-center gap-1.5">
-          <input
-            type="radio"
-            checked={scope === 'day'}
-            onChange={() => setScope('day')}
-          />
-          Dagens datum
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="radio"
-            checked={scope === 'range'}
-            onChange={() => setScope('range')}
-          />
-          Period
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input
-            type="radio"
-            checked={scope === 'event'}
-            onChange={() => setScope('event')}
-          />
-          Helt evenemang
-        </label>
-      </div>
-
-      {scope === 'day' && (
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="field"
-          />
-        </div>
-      )}
-
-      {scope === 'range' && (
-        <div className="flex gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Från</label>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="field"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Till</label>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="field"
-            />
-          </div>
-        </div>
-      )}
-
-      {scope === 'event' && (
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Event</label>
-          <select
-            value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-            className="field"
-          >
-            {events.length === 0 && <option value="">Inga events</option>}
-            {events.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.title}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {exportError && <p className="text-red-600 text-sm mb-3">{exportError}</p>}
-
-      <div className="flex gap-4">
-        <button type="button" onClick={() => handleDownload('csv')} disabled={downloading !== null} className="btn-primary">
-          {downloading === 'csv' ? 'Laddar ner…' : 'Ladda ner CSV'}
-        </button>
-        <button type="button" onClick={() => handleDownload('sie')} disabled={downloading !== null} className="btn-secondary">
-          {downloading === 'sie' ? 'Laddar ner…' : 'Ladda ner SIE'}
-        </button>
-      </div>
-
-      {excludedTestNotice && (
-        <p className="mt-3 text-sm text-[var(--text-muted)]">
-          {excludedTestNotice.count === 0
-            ? 'Inga arkiverade testordrar uteslutna ur den här exporten.'
-            : `${excludedTestNotice.count} arkiverad${excludedTestNotice.count === 1 ? '' : 'e'} testorder${excludedTestNotice.count === 1 ? '' : 'ar'} (${formatKr(excludedTestNotice.totalOre)} kr) uteslutna ur den här exporten.`}
-        </p>
-      )}
-    </section>
-  )
-}
-
-type PlatformExportScope = 'day' | 'range'
-
-// Plattformsintäkt (Tilläggsordern 2026-08-07, avsnitt 5) - Childproof ABs
-// EGEN bokföring av plattformsavgiften (application_fee_amount), TVÄRS
-// ÖVER alla arrangörer. Uttryckligen INTE samma sak som ExportSection
-// ovan (som är en enskild arrangörs egen biljettförsäljning) - egen
-// backend-funktion (platform-export-revenue), egna SIE-konton
-// (PLATFORM_SIE_ACCOUNT_*), egen 25%-momssats. Samma tre-periods-UI-mönster
-// som ExportSection, minus "helt evenemang" (plattformsavgiften är inte
-// event-bunden på samma sätt - en period täcker per definition alla
-// arrangörers event).
-function PlatformRevenueExportSection() {
-  const today = new Date().toISOString().slice(0, 10)
-
-  const [scope, setScope] = useState<PlatformExportScope>('day')
-  const [date, setDate] = useState(today)
-  const [from, setFrom] = useState(today)
-  const [to, setTo] = useState(today)
-  const [downloading, setDownloading] = useState<'csv' | 'sie' | null>(null)
-  const [exportError, setExportError] = useState<string | null>(null)
-  const [excludedTestNotice, setExcludedTestNotice] = useState<{ count: number; totalOre: number } | null>(null)
-
-  function buildQuery(format: 'csv' | 'sie'): string | null {
-    const params = new URLSearchParams({ format, scope })
-    if (scope === 'day') {
-      if (!date) return null
-      params.set('date', date)
-    } else {
-      if (!from || !to) return null
-      params.set('from', from)
-      params.set('to', to)
-    }
-    return `platform-export-revenue?${params.toString()}`
-  }
-
-  async function handleDownload(format: 'csv' | 'sie') {
-    const query = buildQuery(format)
-    if (!query) {
-      setExportError('Fyll i datum/period innan export.')
-      return
-    }
-    setDownloading(format)
-    setExportError(null)
-    try {
-      const result = await downloadAdminFile(query, `plattformsintakt.${format === 'csv' ? 'csv' : 'se'}`)
-      setExcludedTestNotice({ count: result.excludedTestCount, totalOre: result.excludedTestTotalOre })
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Export misslyckades.')
-    } finally {
-      setDownloading(null)
-    }
-  }
-
-  return (
-    <section className="card border-2 border-[var(--accent)]">
-      <h2 className="font-semibold mb-2 text-[var(--text)]">Plattformsintäkt (Childproof AB)</h2>
-      <p className="text-sm text-[var(--text-muted)] mb-4">
-        Egna siffror för Childproof AB - plattformsavgiften som togs ut från VARJE arrangörs
-        försäljning, inte en enskild arrangörs egen omsättning. Läser tvärs över alla arrangörer,
-        med arrangörens namn per rad. 25% moms (teknisk tjänst), separat från arrangörernas 6% på
-        biljetter - blanda aldrig dessa i samma bokföring.
-      </p>
-
-      <div className="flex flex-wrap gap-4 mb-4 text-sm">
-        <label className="flex items-center gap-1.5">
-          <input type="radio" checked={scope === 'day'} onChange={() => setScope('day')} />
-          Dagens datum
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input type="radio" checked={scope === 'range'} onChange={() => setScope('range')} />
-          Period
-        </label>
-      </div>
-
-      {scope === 'day' && (
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2 text-[var(--text)]">Datum</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="field" />
-        </div>
-      )}
-
-      {scope === 'range' && (
-        <div className="flex gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Från</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="field" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Till</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="field" />
-          </div>
-        </div>
-      )}
-
-      {exportError && <p className="text-red-600 text-sm mb-3">{exportError}</p>}
-
-      <div className="flex gap-4">
-        <button type="button" onClick={() => handleDownload('csv')} disabled={downloading !== null} className="btn-primary">
-          {downloading === 'csv' ? 'Laddar ner…' : 'Ladda ner CSV'}
-        </button>
-        <button type="button" onClick={() => handleDownload('sie')} disabled={downloading !== null} className="btn-secondary">
-          {downloading === 'sie' ? 'Laddar ner…' : 'Ladda ner SIE'}
-        </button>
-      </div>
-
-      {excludedTestNotice && (
-        <p className="mt-3 text-sm text-[var(--text-muted)]">
-          {excludedTestNotice.count === 0
-            ? 'Inga arkiverade testordrar uteslutna ur den här exporten.'
-            : `${excludedTestNotice.count} arkiverad${excludedTestNotice.count === 1 ? '' : 'e'} testorder${excludedTestNotice.count === 1 ? '' : 'ar'} (${formatKr(excludedTestNotice.totalOre)} kr) uteslutna ur den här exporten.`}
-        </p>
-      )}
-    </section>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { callFunction } from '../../lib/functionsApi'
+import { confirmDialog } from '../../lib/confirmDialog'
 
 interface OrganizerListItem {
   id: string
@@ -116,7 +117,7 @@ export function OrganizersSection() {
   // redan innan klick (se render nedan) så den här grenen når bara
   // arrangörer utan event.
   async function handleDelete(org: OrganizerListItem) {
-    if (!window.confirm(`Radera arrangören ${org.name} permanent?`)) return
+    if (!await confirmDialog(`Radera arrangören ${org.name} permanent?`, { danger: true, confirmLabel: 'Radera' })) return
 
     setDeletingId(org.id)
     setError(null)
@@ -137,7 +138,7 @@ export function OrganizersSection() {
   return (
     <section className="card">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold text-[var(--text)]">Arrangörer</h2>
+        <h2 className="text-lg font-extrabold text-[var(--text)]">Arrangörer</h2>
         {!showForm && (
           <button
             type="button"
@@ -152,24 +153,27 @@ export function OrganizersSection() {
         )}
       </div>
 
-      {confirmation && <p className="text-green-700 text-sm mb-3">{confirmation}</p>}
-      {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+      {confirmation && <p className="text-[var(--success-ink)] text-sm mb-3">{confirmation}</p>}
+      {error && <p className="text-[var(--danger)] text-sm mb-3">{error}</p>}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-4 mb-4 pb-4 border-b border-[var(--border)]">
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Namn</span>
+              <input
               required
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               className="field"
               autoFocus
             />
+            </label>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Slug</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Slug</span>
+              <input
               required
               value={slug}
               onChange={(e) => {
@@ -178,13 +182,15 @@ export function OrganizersSection() {
               }}
               className="field"
             />
+            </label>
             <p className="text-xs text-[var(--text-muted)] mt-1">
               Auto-genererad från namnet, redigerbar. Bara a-ö, 0-9 och bindestreck.
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text)]">Kontakt-e-post</label>
-            <input
+            <label className="block">
+              <span className="block text-sm font-medium mb-2 text-[var(--text)]">Kontakt-e-post</span>
+              <input
               type="email"
               required
               value={contactEmail}
@@ -192,11 +198,12 @@ export function OrganizersSection() {
               className="field"
               placeholder="kontakt@arrangor.se"
             />
+            </label>
             <p className="text-xs text-[var(--text-muted)] mt-1">
               En inbjudan skickas hit direkt - mottagaren sätter sitt eget lösenord via länken.
             </p>
           </div>
-          {formError && <p className="text-red-600 text-sm">{formError}</p>}
+          {formError && <p className="text-[var(--danger)] text-sm">{formError}</p>}
           <div className="flex gap-3">
             <button type="submit" disabled={submitting} className="btn-primary">
               {submitting ? 'Skickar inbjudan…' : 'Skicka inbjudan'}
@@ -230,7 +237,7 @@ export function OrganizersSection() {
               <div className="flex items-center gap-2 shrink-0">
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
-                    org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                    org.status === 'active' ? 'bg-[var(--success-soft)] text-[var(--success-ink)]' : 'bg-[var(--warning-soft)] text-[var(--warning-ink)]'
                   }`}
                 >
                   {org.status === 'active' ? 'Aktiv' : 'Inbjuden'}
@@ -247,7 +254,7 @@ export function OrganizersSection() {
                     type="button"
                     onClick={() => handleDelete(org)}
                     disabled={deletingId === org.id}
-                    className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                    className="text-xs text-[var(--danger)] hover:text-[var(--danger)] disabled:opacity-50"
                   >
                     {deletingId === org.id ? 'Raderar…' : 'Radera'}
                   </button>

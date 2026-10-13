@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { AdminNav } from '../components/AdminNav'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import type { AdminOrderRow, EventRow, TicketRow, TicketTypeRow } from '../lib/types'
 import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
+import { confirmDialog } from '../lib/confirmDialog'
 
 interface AdminEventTicketsResponse {
   event: EventRow
@@ -29,9 +31,9 @@ const STATUS_LABEL: Record<TicketRow['status'], string> = {
 }
 
 const STATUS_STYLE: Record<TicketRow['status'], string> = {
-  valid: 'bg-slate-100 text-slate-700',
-  checked_in: 'bg-green-100 text-green-700',
-  void: 'bg-red-100 text-red-700',
+  valid: 'bg-[#ececea] text-[var(--text)]',
+  checked_in: 'bg-[var(--success-soft)] text-[var(--success-ink)]',
+  void: 'bg-red-100 text-[var(--danger)]',
 }
 
 const VAT_OPTIONS = [
@@ -73,17 +75,18 @@ export function AdminEventPage() {
 
   return (
     <Layout>
-      <Link to="/admin" className="text-sm text-slate-500 hover:text-slate-800">
+      <AdminNav />
+      <Link to="/admin" className="footer-link !px-0 !min-h-0 mb-2">
         &larr; Tillbaka till admin
       </Link>
 
-      {error && <p className="text-red-600 mt-4">{error}</p>}
-      {!data && !error && <p className="text-slate-500 mt-4">Laddar…</p>}
+      {error && <p className="text-[var(--danger)] mt-4">{error}</p>}
+      {!data && !error && <p className="text-[var(--text-muted)] mt-4">Laddar…</p>}
 
       {data && (
         <div className="mt-4">
-          <h1 className="text-2xl font-bold">{data.event.title}</h1>
-          <p className="text-slate-500 mb-1">
+          <h1 className="page-title">{data.event.title}</h1>
+          <p className="text-[var(--text-muted)] mb-1">
             {data.event.starts_at
               ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
                 formatStockholmDateTimeLocale(data.event.starts_at, { dateStyle: 'long', timeStyle: 'short' })
@@ -93,7 +96,7 @@ export function AdminEventPage() {
           {/* Kapaciteten är en delad pott för HELA eventet (rättelseordern
               2026-08-05) - visas här en gång, inte upprepad per
               biljettyp. Redigeras från admin-huvudsidan (AdminPage.tsx). */}
-          <p className="text-slate-500 mb-8">
+          <p className="text-[var(--text-muted)] mb-8">
             {data.event.sold_count} / {data.event.capacity} sålda totalt
           </p>
 
@@ -104,7 +107,7 @@ export function AdminEventPage() {
               (AdminPage.tsx), inte här - undviker två olika ställen med
               samma knapp. */}
           {data.event.archived_at && (
-            <p className="mb-6 rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+            <p className="mb-6 rounded-lg border border-[var(--border)] bg-[#ececea] px-4 py-3 text-sm text-[var(--text)]">
               Det här eventet är arkiverat (orsak: {data.event.archived_reason === 'test' ? 'testdata' : 'dold'}).
               Återställ det från adminlistan för att redigera igen.
             </p>
@@ -121,14 +124,14 @@ export function AdminEventPage() {
 
           <OrdersSection orders={data.orders} tickets={data.tickets} onChange={load} />
 
-          <h2 className="font-semibold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
+          <h2 className="text-lg font-extrabold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
           {data.tickets.length === 0 ? (
-            <p className="text-slate-500">Inga biljetter sålda ännu.</p>
+            <p className="text-[var(--text-muted)]">Inga biljetter sålda ännu.</p>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto border border-[var(--border)] rounded-lg bg-white">
+              <table className="w-full min-w-[620px] text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <tr className="border-b border-[var(--border)] text-left text-[var(--text-muted)]">
                     <th className="px-4 py-2">Kod</th>
                     <th className="px-4 py-2">Biljettyp</th>
                     <th className="px-4 py-2">Innehavare</th>
@@ -140,7 +143,7 @@ export function AdminEventPage() {
                   {data.tickets.map((ticket) => {
                     const ticketType = data.ticket_types.find((t) => t.id === ticket.ticket_type_id)
                     return (
-                      <tr key={ticket.id} className="border-b border-slate-100 last:border-0">
+                      <tr key={ticket.id} className="border-b border-[var(--border)] last:border-0">
                         <td className="px-4 py-2 font-mono">{ticket.ticket_code}</td>
                         <td className="px-4 py-2">{ticketType?.name ?? '-'}</td>
                         <td className="px-4 py-2">{ticket.holder_name ?? '-'}</td>
@@ -221,7 +224,7 @@ function PostersSection({
 }) {
   return (
     <section className="mb-8">
-      <h2 className="font-semibold mb-3">Affischer</h2>
+      <h2 className="text-lg font-extrabold mb-3">Affischer</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <PosterUploadField
           eventId={eventId}
@@ -312,18 +315,18 @@ function PosterUploadField({
   }
 
   return (
-    <div className="border border-slate-200 rounded-lg p-4 bg-white">
-      <label className="block text-sm font-medium mb-2">
+    <div className="border border-[var(--border)] rounded-lg p-4 bg-white">
+      <div className="block text-sm font-semibold mb-2">
         Affisch ({spec.label})
-      </label>
+      </div>
       {currentUrl && (
         <img
           src={currentUrl}
           alt={`${spec.label}-affisch`}
           className={
             orientation === 'landscape'
-              ? 'w-full aspect-video object-cover rounded mb-3 border border-slate-200'
-              : 'w-32 aspect-[9/16] object-cover rounded mb-3 border border-slate-200'
+              ? 'w-full aspect-video object-cover rounded mb-3 border border-[var(--border)]'
+              : 'w-32 aspect-[9/16] object-cover rounded mb-3 border border-[var(--border)]'
           }
         />
       )}
@@ -332,10 +335,11 @@ function PosterUploadField({
         accept="image/jpeg,image/png,image/webp"
         onChange={handleFileChange}
         disabled={uploading}
-        className="text-sm"
+        aria-label={`Välj fil: affisch (${spec.label})`}
+        className="file-input"
       />
-      {uploading && <p className="text-slate-500 text-xs mt-2">Laddar upp…</p>}
-      {error && <p className="text-red-600 text-xs mt-2">{error}</p>}
+      {uploading && <p className="text-[var(--text-muted)] text-xs mt-2">Laddar upp…</p>}
+      {error && <p className="text-[var(--danger)] text-xs mt-2">{error}</p>}
     </div>
   )
 }
@@ -434,7 +438,7 @@ function OrdersSection({
         ? `\n\nOBS: ${checkedInCount} biljett${checkedInCount === 1 ? '' : 'er'} på den här ordern är redan incheckad${checkedInCount === 1 ? '' : 'e'}.`
         : ''
     if (
-      !window.confirm(
+      !await confirmDialog(
         `Avboka ordern för ${order.buyer_name}? En eventuell återbetalning görs separat i Stripe - den här åtgärden rör inte Stripe.${checkedInWarning}`,
       )
     ) {
@@ -468,7 +472,7 @@ function OrdersSection({
   async function handleArchiveSelected(reason: 'test' | 'hidden') {
     if (selectedActiveIds.length === 0) return
     const reasonLabel = reason === 'test' ? 'testdata (utesluts ur bokföringsexporten)' : 'dold (ligger kvar i bokföringsexporten)'
-    if (!window.confirm(`Arkivera ${selectedActiveIds.length} order${selectedActiveIds.length === 1 ? '' : 'ar'} som ${reasonLabel}? Går att återställa senare.`)) {
+    if (!await confirmDialog(`Arkivera ${selectedActiveIds.length} order${selectedActiveIds.length === 1 ? '' : 'ar'} som ${reasonLabel}? Går att återställa senare.`)) {
       return
     }
     setPickingReason(false)
@@ -513,8 +517,8 @@ function OrdersSection({
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">Ordrar ({orders.length})</h2>
-        <label className="flex items-center gap-1.5 text-sm text-slate-500">
+        <h2 className="text-lg font-extrabold">Ordrar ({orders.length})</h2>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
           <input
             type="checkbox"
             checked={showArchived}
@@ -527,7 +531,7 @@ function OrdersSection({
         </label>
       </div>
 
-      {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
+      {error && <p className="text-[var(--danger)] text-sm mb-2">{error}</p>}
 
       <div className="mb-3">
         <input
@@ -540,13 +544,13 @@ function OrdersSection({
       </div>
 
       {visibleOrders.length === 0 ? (
-        <p className="text-slate-500">Inga ordrar{search.trim() ? ' matchar sökningen' : ' ännu'}.</p>
+        <p className="text-[var(--text-muted)]">Inga ordrar{search.trim() ? ' matchar sökningen' : ' ännu'}.</p>
       ) : (
         <>
-          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto border border-[var(--border)] rounded-lg bg-white">
+            <table className="w-full min-w-[620px] text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
+                <tr className="border-b border-[var(--border)] text-left text-[var(--text-muted)]">
                   <th className="px-4 py-2"></th>
                   <th className="px-4 py-2">Köpare</th>
                   <th className="px-4 py-2">Status</th>
@@ -561,7 +565,7 @@ function OrdersSection({
                 {visibleOrders.map((order) => {
                   const canAct = order.status === 'paid' && !order.archived_at
                   return (
-                    <tr key={order.id} className="border-b border-slate-100 last:border-0 align-top">
+                    <tr key={order.id} className="border-b border-[var(--border)] last:border-0 align-top">
                       <td className="px-4 py-2">
                         {!order.archived_at && (
                           <input
@@ -588,7 +592,7 @@ function OrdersSection({
                         <div className="flex flex-col gap-1">
                           {order.archived_at ? (
                             <div className="flex items-center gap-2">
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-[#ececea] text-[var(--text-muted)]">
                                 Arkiverad ({order.archived_reason === 'test' ? 'testdata' : 'dold'})
                               </span>
                               <button
@@ -632,7 +636,7 @@ function OrdersSection({
                                   type="button"
                                   onClick={() => handleCancelOrder(order)}
                                   disabled={cancelBusyId === order.id}
-                                  className="text-xs underline text-red-600 disabled:opacity-50"
+                                  className="text-xs underline text-[var(--danger)] disabled:opacity-50"
                                 >
                                   {cancelBusyId === order.id ? 'Avbokar…' : 'Avboka order'}
                                 </button>
@@ -645,12 +649,12 @@ function OrdersSection({
                               Stripe-varningen är precis det admin behöver
                               se KVAR efter att avbokningen lyckats. */}
                           {resendMessage?.orderId === order.id && (
-                            <span className={`text-xs ${resendMessage.isError ? 'text-red-600' : 'text-green-700'}`}>
+                            <span className={`text-xs ${resendMessage.isError ? 'text-[var(--danger)]' : 'text-[var(--success-ink)]'}`}>
                               {resendMessage.text}
                             </span>
                           )}
                           {cancelMessage?.orderId === order.id && (
-                            <span className="text-xs text-amber-700">{cancelMessage.text}</span>
+                            <span className="text-xs text-[var(--warning-ink)]">{cancelMessage.text}</span>
                           )}
                         </div>
                       </td>
@@ -664,7 +668,7 @@ function OrdersSection({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {pickingReason ? (
               <>
-                <span className="text-sm text-slate-700">Arkivera {selectedActiveIds.length} valda som:</span>
+                <span className="text-sm text-[var(--text)]">Arkivera {selectedActiveIds.length} valda som:</span>
                 <button type="button" onClick={() => handleArchiveSelected('test')} className="admin-action-btn">
                   Testdata (uteslut ur export)
                 </button>
@@ -794,7 +798,7 @@ function TicketTypesSection({
   }
 
   async function handleDelete(t: TicketTypeRow) {
-    if (!window.confirm(`Radera biljettypen "${t.name}"?`)) return
+    if (!await confirmDialog(`Radera biljettypen "${t.name}"?`, { danger: true, confirmLabel: 'Radera' })) return
     setDeletingId(t.id)
     setRowError(null)
     try {
@@ -812,30 +816,33 @@ function TicketTypesSection({
   }
 
   return (
-    <section>
+    <section className="mb-10">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">Biljettyper</h2>
+        <h2 className="text-lg font-extrabold">Biljettyper</h2>
         <button
           type="button"
           onClick={() => setShowAddForm((s) => !s)}
-          className="text-sm text-slate-600 hover:text-slate-900 underline"
+          className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] underline"
         >
           {showAddForm ? 'Avbryt' : 'Lägg till biljettyp +'}
         </button>
       </div>
 
-      {rowError && <p className="text-red-600 text-sm mb-3">{rowError}</p>}
+      {rowError && <p className="text-[var(--danger)] text-sm mb-3">{rowError}</p>}
 
       {showAddForm && (
-        <form onSubmit={handleAdd} className="border border-slate-200 rounded-lg p-4 mb-4 space-y-4 bg-white">
+        <form onSubmit={handleAdd} className="border border-[var(--border)] rounded-lg p-4 mb-4 space-y-4 bg-white">
           <div>
-            <label className="block text-sm font-medium mb-2">Namn</label>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="field" />
+            <label className="block">
+              <span className="block text-sm font-medium mb-2">Namn</span>
+              <input required value={name} onChange={(e) => setName(e.target.value)} className="field" />
+            </label>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Pris (kr)</label>
-              <input
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Pris (kr)</span>
+                <input
                 type="number"
                 min={0}
                 step="0.01"
@@ -843,19 +850,22 @@ function TicketTypesSection({
                 onChange={(e) => setPriceKr(Number(e.target.value))}
                 className="field"
               />
+              </label>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Moms</label>
-              <select value={vatRate} onChange={(e) => setVatRate(Number(e.target.value))} className="field">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Moms</span>
+                <select value={vatRate} onChange={(e) => setVatRate(Number(e.target.value))} className="field">
                 {VAT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
               </select>
+              </label>
             </div>
           </div>
-          {formError && <p className="text-red-600 text-sm">{formError}</p>}
+          {formError && <p className="text-[var(--danger)] text-sm">{formError}</p>}
           <button type="submit" disabled={submitting} className="btn-primary">
             {submitting ? 'Sparar…' : 'Lägg till'}
           </button>
@@ -863,14 +873,14 @@ function TicketTypesSection({
       )}
 
       {ticketTypes.length === 0 ? (
-        <p className="text-slate-500 text-sm mb-2">
+        <p className="text-[var(--text-muted)] text-sm mb-2">
           Inga biljettyper ännu. Eventet kan inte publiceras förrän minst en finns.
         </p>
       ) : (
-        <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto border border-[var(--border)] rounded-lg bg-white">
+          <table className="w-full min-w-[620px] text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
+              <tr className="border-b border-[var(--border)] text-left text-[var(--text-muted)]">
                 <th className="px-4 py-2">Namn</th>
                 <th className="px-4 py-2">Pris</th>
                 <th className="px-4 py-2">Moms</th>
@@ -881,16 +891,19 @@ function TicketTypesSection({
             <tbody>
               {ticketTypes.map((t) =>
                 editingId === t.id ? (
-                  <tr key={t.id} className="border-b border-slate-100 last:border-0 bg-rose-50">
+                  <tr key={t.id} className="border-b border-[var(--border)] last:border-0 bg-[var(--editing-soft)]">
                     <td colSpan={5} className="px-4 py-3">
                       <form onSubmit={handleSaveEdit} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                         <div>
-                          <label className="block text-xs font-medium mb-1">Namn</label>
-                          <input required value={editName} onChange={(e) => setEditName(e.target.value)} className="field" />
+                          <label className="block">
+                            <span className="block text-xs font-medium mb-1">Namn</span>
+                            <input required value={editName} onChange={(e) => setEditName(e.target.value)} className="field" />
+                          </label>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium mb-1">Pris (kr)</label>
-                          <input
+                          <label className="block">
+                            <span className="block text-xs font-medium mb-1">Pris (kr)</span>
+                            <input
                             type="number"
                             min={0}
                             step="0.01"
@@ -898,16 +911,19 @@ function TicketTypesSection({
                             onChange={(e) => setEditPriceKr(Number(e.target.value))}
                             className="field"
                           />
+                          </label>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium mb-1">Moms</label>
-                          <select value={editVatRate} onChange={(e) => setEditVatRate(Number(e.target.value))} className="field">
+                          <label className="block">
+                            <span className="block text-xs font-medium mb-1">Moms</span>
+                            <select value={editVatRate} onChange={(e) => setEditVatRate(Number(e.target.value))} className="field">
                             {VAT_OPTIONS.map((o) => (
                               <option key={o.value} value={o.value}>
                                 {o.label}
                               </option>
                             ))}
                           </select>
+                          </label>
                         </div>
                         <div className="flex gap-2">
                           <button type="submit" disabled={savingEdit} className="btn-primary text-sm px-3 py-1.5">
@@ -921,12 +937,12 @@ function TicketTypesSection({
                             Avbryt
                           </button>
                         </div>
-                        {editError && <p className="text-red-600 text-xs col-span-full">{editError}</p>}
+                        {editError && <p className="text-[var(--danger)] text-xs col-span-full">{editError}</p>}
                       </form>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={t.id} className="border-b border-slate-100 last:border-0">
+                  <tr key={t.id} className="border-b border-[var(--border)] last:border-0">
                     <td className="px-4 py-2 font-medium">{t.name}</td>
                     <td className="px-4 py-2">
                       {(t.price_ore / 100).toLocaleString('sv-SE', { minimumFractionDigits: 2 })} kr
@@ -937,7 +953,7 @@ function TicketTypesSection({
                       <button
                         type="button"
                         onClick={() => startEdit(t)}
-                        className="text-slate-600 hover:text-slate-900 underline text-xs mr-3"
+                        className="text-[var(--text-muted)] hover:text-[var(--text)] underline text-xs mr-3"
                       >
                         Redigera
                       </button>
@@ -945,7 +961,7 @@ function TicketTypesSection({
                         type="button"
                         onClick={() => handleDelete(t)}
                         disabled={deletingId === t.id}
-                        className="text-red-600 hover:text-red-800 underline text-xs disabled:opacity-50"
+                        className="text-[var(--danger)] hover:underline underline text-xs disabled:opacity-50"
                       >
                         {deletingId === t.id ? 'Raderar…' : 'Radera'}
                       </button>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { APP_NAME } from '../lib/constants'
@@ -10,7 +11,7 @@ interface LayoutProps {
   // blir trång i den vanliga 672px-breda publika containern. `wide`
   // breddar bara containern - själva tvåkolumnsstrukturen i AdminPage.tsx
   // rörs inte.
-  wide?: boolean
+  wide?: boolean | 'xl'
   // Köpvillkor-länk i footern (ordern "Köpvillkor som egen sida i Rideau"
   // 2026-10-07, punkt 3) - bara satt av de publika sidorna som ska visa
   // den (köpsida, bekräftelsesida), inte adminsidorna. Värdet är
@@ -22,10 +23,25 @@ interface LayoutProps {
   // 2026-10-07, punkt 1: "@media print: ingen header/knappar"). Opt-in,
   // bara TermsPage sätter den - ändrar inget för övriga sidors utskrift.
   hideChromeInPrint?: boolean
+  // Kant-till-kant-scen överst (bara eventlistan): toppbalken och heron delar
+  // EN yta, så logotypen ligger direkt på scenen utan skarv.
+  hero?: ReactNode
+  // Lägre hero med mindre rubrik (köpsidan) - samma scen, mindre ytan.
+  heroCompact?: boolean
+  // Heron lämnar plats så att innehållet (affischerna) kan hänga över dess nederkant.
+  heroOverlap?: boolean
+  // Mörk scen för de publika sidorna: tokens byts på <html> (så även ytan bakom
+  // sidan blir mörk). Admin och villkorssidan förblir ljusa.
+  dark?: boolean
 }
 
-export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false }: LayoutProps) {
-  const widthClass = wide ? 'max-w-4xl' : 'max-w-2xl'
+export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false }: LayoutProps) {
+  useEffect(() => {
+    if (!dark) return
+    document.documentElement.classList.add('theme-dark')
+    return () => document.documentElement.classList.remove('theme-dark')
+  }, [dark])
+  const widthClass = wide === 'xl' ? 'max-w-6xl' : wide ? 'max-w-4xl' : 'max-w-2xl'
   const printHiddenClass = hideChromeInPrint ? 'print:hidden' : ''
   const showTermsLink = shouldShowTermsLink(termsSlug, TERMS_BY_SLUG)
   return (
@@ -35,8 +51,9 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
           svep). Admin-länken flyttad till sidfoten (ordern 2026-10-04) -
           diskret för en vanlig besökare, inte en framträdande huvudmeny-
           punkt. */}
-      <header className={`bg-[var(--accent)] shadow-[var(--shadow-card)] ${printHiddenClass}`}>
-        <div className={`mx-auto ${widthClass} px-4 py-4 flex items-center justify-between`}>
+      <div className={`stage ${hero ? 'has-hero' : ''} ${heroCompact ? 'stage-compact' : ''} ${heroOverlap ? 'stage-overlap' : ''} ${dark ? 'stage-dark' : ''} ${printHiddenClass}`}>
+      <header className={`site-header ${printHiddenClass}`}>
+        <div className={`mx-auto ${widthClass} px-4 py-5 flex items-center justify-between`}>
           <Link to="/" aria-label={APP_NAME}>
             {/* import.meta.env.BASE_URL, inte en hårdkodad "/" - Vite
                 skriver bara om länkar i index.html för "base" (se
@@ -44,26 +61,32 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
             <img
               src={`${import.meta.env.BASE_URL}rideau-logo-inverse.svg`}
               alt={APP_NAME}
-              className="h-8 w-auto"
+              className="h-9 w-auto"
             />
           </Link>
         </div>
       </header>
-      <main className={`flex-1 mx-auto w-full ${widthClass} px-4 py-8`}>{children}</main>
+        {hero && (
+          <div className="stage-hero">
+            <div className={`mx-auto ${widthClass} px-4`}>{hero}</div>
+          </div>
+        )}
+      </div>
+      <main className={`flex-1 mx-auto w-full ${widthClass} px-4 pt-10 pb-12`}>{children}</main>
       <footer
-        className={`mx-auto w-full ${widthClass} px-4 py-6 flex items-center justify-center gap-4 ${printHiddenClass}`}
+        className={`mx-auto w-full ${widthClass} px-4 pb-8 pt-2 flex items-center justify-center gap-2 ${printHiddenClass}`}
       >
         {showTermsLink && (
           <Link
             to={`/villkor/${termsSlug}`}
-            className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline underline-offset-2"
+            className="footer-link"
           >
             Köpvillkor
           </Link>
         )}
         <Link
           to="/admin"
-          className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline underline-offset-2"
+          className="footer-link"
         >
           Admin
         </Link>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { AdminNav } from '../components/AdminNav'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import type { AdminEventRow } from '../lib/types'
-import { APP_NAME } from '../lib/constants'
 import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 
 interface AdminEventsResponse {
@@ -46,31 +46,15 @@ export function AdminDashboardPage() {
 
   return (
     <Layout wide>
-      <div className="flex items-center justify-between mb-1">
-        <div className="eyebrow">{APP_NAME}</div>
-        <div className="flex items-center gap-4">
-          <Link to="/admin" className="text-sm link-accent">
-            ← Till admin
-          </Link>
-          <Link to="/admin/organizers" className="text-sm link-accent">
-            Arrangörer
-          </Link>
-          <Link to="/admin/stripe-installning" className="text-sm link-accent">
-            Stripe
-          </Link>
-          <Link to="/admin/embed" className="text-sm link-accent">
-            Bädda in
-          </Link>
-        </div>
-      </div>
-      <h1 className="text-2xl font-bold mb-2 text-[var(--text)]">Dashboard</h1>
-      <p className="text-[var(--text-muted)] text-sm mb-8">Överblick över dina föreställningar.</p>
+      <AdminNav />
+      <h1 className="page-title mb-2">Dashboard</h1>
+      <p className="page-lede mb-8">Överblick över dina föreställningar.</p>
 
-      {error && <p className="text-red-600 mb-6">{error}</p>}
+      {error && <p className="text-[var(--danger)] mb-6">{error}</p>}
 
-      <div className="card p-6 mb-6 max-w-xs">
-        <div className="text-[var(--text-muted)] text-sm mb-2">Sålda biljetter totalt</div>
-        <div className="text-3xl font-extrabold text-[var(--text)]">{totalSold}</div>
+      <div className="stat-card mb-8 max-w-xs">
+        <div className="stat-label">Sålda biljetter totalt</div>
+        <div className="stat-value">{totalSold}</div>
       </div>
 
       {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
@@ -84,8 +68,8 @@ export function AdminDashboardPage() {
           return (
             <div key={event.id} className="card">
               <div className="flex justify-between items-baseline mb-4">
-                <div className="font-bold text-[var(--text)]">{event.title}</div>
-                <div className="font-bold text-sm" style={{ color: 'var(--accent)' }}>
+                <div className="font-extrabold text-lg text-[var(--text)]">{event.title}</div>
+                <div className="font-extrabold text-lg tabular-nums" style={{ color: 'var(--accent)' }}>
                   {pct}%
                 </div>
               </div>

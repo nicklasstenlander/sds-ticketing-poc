@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { AdminNav } from '../components/AdminNav'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import { getActiveOrganizerId, setActiveOrganizerId } from '../lib/organizerContext'
-import { APP_NAME } from '../lib/constants'
 import { OrganizersSection } from './admin/OrganizersSection'
 import { OrganizerMembersSection } from './admin/OrganizerMembersSection'
 import { ApplicationsSection } from './admin/ApplicationsSection'
@@ -87,15 +87,14 @@ export function AdminOrganizersPage() {
 
   return (
     <Layout wide>
-      <div className="flex items-center justify-between mb-1">
-        <div className="eyebrow">{APP_NAME} Admin</div>
-        <div className="flex items-center gap-4">
+      <AdminNav
+        actions={
+          <>
           {isPlatformAdmin && organizers && organizers.length > 0 && (
             <select
               value={activeOrgId ?? ''}
               onChange={(e) => handleSwitchOrganizer(e.target.value)}
-              className="field text-sm"
-              style={{ width: 'auto', padding: '6px 10px' }}
+              className="field field-sm"
               aria-label="Välj workspace"
             >
               <option value="">Alla arrangörer</option>
@@ -106,24 +105,13 @@ export function AdminOrganizersPage() {
               ))}
             </select>
           )}
-          <Link to="/admin" className="text-sm link-accent">
-            Events
-          </Link>
-          <Link to="/admin/dashboard" className="text-sm link-accent">
-            Dashboard
-          </Link>
-          <Link to="/admin/stripe-installning" className="text-sm link-accent">
-            Stripe
-          </Link>
-          <Link to="/admin/embed" className="text-sm link-accent">
-            Bädda in
-          </Link>
-          <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
+          <button onClick={handleLogout} className="admin-logout">
             Logga ut
           </button>
-        </div>
-      </div>
-      <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Arrangörer</h1>
+          </>
+        }
+      />
+      <h1 className="page-title mb-6">Arrangörer</h1>
 
       {!orgCheckReady && <p className="text-[var(--text-muted)] text-sm">Laddar…</p>}
       {orgCheckReady && (isPlatformAdmin && !activeOrgId ? (

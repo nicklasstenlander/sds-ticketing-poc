@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
+import { AdminNav } from '../components/AdminNav'
 import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import { getActiveOrganizerId, setActiveOrganizerId } from '../lib/organizerContext'
-import { APP_NAME } from '../lib/constants'
 import { formatStockholmDateTime } from '../lib/stockholmTime'
 import type { AdminEventRow } from '../lib/types'
 
@@ -240,15 +240,14 @@ export function AdminEmbedPage() {
 
   return (
     <Layout wide>
-      <div className="flex items-center justify-between mb-1">
-        <div className="eyebrow">{APP_NAME} Admin</div>
-        <div className="flex items-center gap-4">
+      <AdminNav
+        actions={
+          <>
           {isPlatformAdmin && organizers && organizers.length > 0 && (
             <select
               value={activeOrgId ?? ''}
               onChange={(e) => handleSwitchOrganizer(e.target.value)}
-              className="field text-sm"
-              style={{ width: 'auto', padding: '6px 10px' }}
+              className="field field-sm"
               aria-label="Välj workspace"
             >
               <option value="">Alla arrangörer</option>
@@ -259,37 +258,26 @@ export function AdminEmbedPage() {
               ))}
             </select>
           )}
-          <Link to="/admin" className="text-sm link-accent">
-            Events
-          </Link>
-          <Link to="/admin/dashboard" className="text-sm link-accent">
-            Dashboard
-          </Link>
-          <Link to="/admin/organizers" className="text-sm link-accent">
-            Arrangörer
-          </Link>
-          <Link to="/admin/stripe-installning" className="text-sm link-accent">
-            Stripe
-          </Link>
-          <button onClick={handleLogout} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">
+          <button onClick={handleLogout} className="admin-logout">
             Logga ut
           </button>
-        </div>
-      </div>
-      <h1 className="text-2xl font-bold text-[var(--text)] mb-1">Bädda in biljettwidget</h1>
+          </>
+        }
+      />
+      <h1 className="page-title mb-2">Bädda in biljettwidget</h1>
       <p className="text-sm text-[var(--text-muted)] mb-6">
         Klistra in koden nedan i en Code Block på t.ex. Squarespace. Före släppet visas nedräkningen. Vid släpp byts
         den mot Köp biljetter, utan att du ändrar koden.
       </p>
 
-      {loadError && <p className="text-sm text-red-600 mb-4">{loadError}</p>}
+      {loadError && <p className="text-sm text-[var(--danger)] mb-4">{loadError}</p>}
       {!events && !loadError && <p className="text-sm text-[var(--text-muted)]">Laddar…</p>}
 
       {events && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="flex flex-col gap-6">
             <section className="card">
-              <h2 className="font-semibold mb-3">Evenemang</h2>
+              <h2 className="text-lg font-extrabold mb-3">Evenemang</h2>
               {events.length === 0 && (
                 <p className="text-sm text-[var(--text-muted)]">Inga publicerade evenemang ännu.</p>
               )}
@@ -319,7 +307,7 @@ export function AdminEmbedPage() {
             </section>
 
             <section className="card">
-              <h2 className="font-semibold mb-3">Layout</h2>
+              <h2 className="text-lg font-extrabold mb-3">Layout</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {LAYOUTS.map((l) => (
                   <button
@@ -336,7 +324,7 @@ export function AdminEmbedPage() {
 
             {layout === 'showtimes' && (
               <section className="card">
-                <h2 className="font-semibold mb-3">Rubrik (valfri)</h2>
+                <h2 className="text-lg font-extrabold mb-3">Rubrik (valfri)</h2>
                 <input
                   type="text"
                   className="field"
@@ -348,7 +336,7 @@ export function AdminEmbedPage() {
             )}
 
             <section className="card">
-              <h2 className="font-semibold mb-3">Visa</h2>
+              <h2 className="text-lg font-extrabold mb-3">Visa</h2>
               <div className="grid grid-cols-2 gap-2">
                 {SHOW_OPTIONS.map((opt) => (
                   <label key={opt.value} className="flex items-center gap-2 text-sm">
@@ -360,7 +348,7 @@ export function AdminEmbedPage() {
             </section>
 
             <section className="card">
-              <h2 className="font-semibold mb-3">Utseende</h2>
+              <h2 className="text-lg font-extrabold mb-3">Utseende</h2>
               <div className="flex gap-2 mb-3">
                 <button
                   type="button"
@@ -403,7 +391,7 @@ export function AdminEmbedPage() {
           <div className="flex flex-col gap-6">
             <section className="card">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold">Förhandsvisning</h2>
+                <h2 className="text-lg font-extrabold">Förhandsvisning</h2>
                 <div className="flex items-center gap-1 text-sm" role="group" aria-label="Förhandsvisningens bredd">
                   {(
                     [
@@ -442,7 +430,7 @@ export function AdminEmbedPage() {
             </section>
 
             <section className="card">
-              <h2 className="font-semibold mb-3">Kod att klistra in</h2>
+              <h2 className="text-lg font-extrabold mb-3">Kod att klistra in</h2>
               <pre
                 id="rideau-embed-code"
                 className="mono text-xs p-4 rounded-[var(--radius-sm)] overflow-x-auto"
