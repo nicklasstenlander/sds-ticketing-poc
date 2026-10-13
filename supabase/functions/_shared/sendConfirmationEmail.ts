@@ -11,7 +11,6 @@
 // alltid låg, helt oberoende av var sendConfirmationEmail själv bor.
 import { createStripeClient } from './stripe.ts'
 import { buildTicketsPdf, bytesToBase64, MAX_TICKETS_PER_PDF, ticketsPdfFilename } from './ticketPdf.ts'
-import type Stripe from 'npm:stripe@17'
 
 /** "Namn <adress@exempel.se>" -> "adress@exempel.se". Redan bara en
  * adress (inget "<...>"): returneras oförändrad. Används för biljett-
@@ -213,6 +212,13 @@ export async function sendConfirmationEmail(params: {
     </div>
   `
 
+  // AbortSignal.timeout (ordern "Webhooken är för långsam" 2026-10-13,
+  // ny plan punkt 2) - Resend dokumenterar ingen egen timeout för
+  // anropet (kontrollerat i STEG A), så utan ett eget tak kan ett
+  // ovanligt långsamt svar blockera bakgrundsuppgiften på obestämd
+  // tid. 8 s - gott om tid för Resends normala svarstid (anropet
+  // väntar bara på att mejlet KÖAS, inte på faktisk leverans), men ett
+  // tak som faktiskt finns.
   const emailResponse = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -226,6 +232,7 @@ export async function sendConfirmationEmail(params: {
       html,
       ...(pdfAttachment ? { attachments: [pdfAttachment] } : {}),
     }),
+    signal: AbortSignal.timeout(8000),
   })
 
   if (!emailResponse.ok) {
@@ -259,19 +266,32 @@ export async function sendConfirmationEmail(params: {
  * som faktiskt användes, bara vilka som erbjöds, så den riktiga typen
  * måste hämtas från PaymentIntentens senaste charge. Icke-kritiskt för
  * ordern att lyckas - ett fel här loggas bara, kvittot visar då ingen
- * betalsättsrad istället för att krascha hela mailutskicket. Flyttad
- * hit tillsammans med sendConfirmationEmail (STEG 2.1) - används bara
- * av den ORDINARIE vägen (stripe-webhook har redan Session-objektet),
- * admin-resend-tickets har ingen Session att hämta från och skickar
+ * betalsättsrad istället för att krascha hela mailutskicket.
+ *
+ * Tar paymentIntentId direkt (inte hela Session-objektet) sedan ordern
+ * "Webhooken är för långsam" 2026-10-13 - stripe-webhook har redan
+ * extraherat id:t tidigare (för finalize_paid_order) och behöver inte
+ * behålla hela Session-objektet bara för det här anropet. admin-
+ * resend-tickets har ingen session/id att hämta från och skickar
  * därför paymentMethod=null (kvittot visar då ingen betalsättsrad,
- * exakt som för en order utan sellerLegalName). */
-export async function fetchPaymentMethodType(session: Stripe.Checkout.Session): Promise<string | null> {
-  const paymentIntentId =
-    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id
+ * exakt som för en order utan sellerLegalName).
+ *
+ * 5 s timeout - samma motivering som Resend-anropet: ett ovanligt
+ * långsamt Stripe-svar ska inte kunna blockera bakgrundsuppgiften
+ * obegränsat. Stripe-nodens RequestOptions har INGEN `signal`-
+ * egenskap (till skillnad från webbläsarens/Denos fetch) - rättat
+ * efter att en riktig `deno check` (se chatten för hur den
+ * miljöbegränsningen löstes) hittade felet: rätt fält är `timeout`
+ * (millisekunder), inte en AbortSignal. */
+export async function fetchPaymentMethodType(paymentIntentId: string | null): Promise<string | null> {
   if (!paymentIntentId) return null
   try {
     const stripe = createStripeClient()
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] })
+    const pi = await stripe.paymentIntents.retrieve(
+      paymentIntentId,
+      { expand: ['latest_charge'] },
+      { timeout: 5000 },
+    )
     const charge = pi.latest_charge
     return charge && typeof charge !== 'string' ? (charge.payment_method_details?.type ?? null) : null
   } catch (err) {
