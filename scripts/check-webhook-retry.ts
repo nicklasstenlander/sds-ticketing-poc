@@ -189,21 +189,25 @@ function stripSqlComments(sql: string): string {
   const content = read('supabase/functions/stripe-webhook/index.ts')
 
   assertTrue(
-    content.includes('await finalizePaidOrder(supabase, order.id, paymentIntentId, ticketCodes)'),
+    content.includes('await finalizePaidOrder(supabase, orderId, paymentIntentId, ticketCodes)'),
     'handleCheckoutCompleted slutför ordern via den delade, atomära finalizePaidOrder - lägger ingen egen biljett-/statuslogik',
   )
   assertTrue(!content.includes(".from('tickets')\n    .insert("), 'handleCheckoutCompleted gör INTE längre en egen rå tickets.insert (flyttat in i finalize_paid_order)')
 
   // Mejlet måste skickas FÖRE confirmation_email_sent_at sätts - annars
   // skulle ett Resend-fel kunna lämna kolumnen satt utan att mejlet
-  // faktiskt gick iväg.
-  const sendIndex = content.indexOf('await sendConfirmationEmail({')
-  const markSentIndex = content.indexOf(".update({ confirmation_email_sent_at: new Date().toISOString() })")
+  // faktiskt gick iväg. Flyttat (2026-10-13) in i den DELADE
+  // _shared/attemptConfirmationEmail.ts (körs i bakgrunden, efter
+  // svaret) - se check-webhook-svarstid.ts för den filens egna
+  // kontroller av exakt den ordningen.
+  const attemptContent = read('supabase/functions/_shared/attemptConfirmationEmail.ts')
+  const sendIndex = attemptContent.indexOf('await sendConfirmationEmail(')
+  const markSentIndex = attemptContent.indexOf('.update({ confirmation_email_sent_at: new Date().toISOString()')
   assertTrue(sendIndex !== -1 && markSentIndex !== -1 && sendIndex < markSentIndex, 'sendConfirmationEmail anropas FÖRE confirmation_email_sent_at sätts, inte efter')
 
   assertTrue(
-    content.includes('if (order.confirmation_email_sent_at) return'),
-    'En omkörning hoppar över mejlutskicket om det redan skickats (idempotens, STEG B punkt 2)',
+    content.includes('if (result.orderInfo?.confirmationEmailSentAt) return'),
+    'En omkörning hoppar över mejlutskicket om det redan skickats (idempotens, STEG B punkt 2) - confirmation_email_sent_at kommer nu från finalize_paid_order',
   )
 
   // QR-uppladdning: fel ska KASTA, inte tyst "continue" till nästa biljett.
@@ -213,8 +217,13 @@ function stripSqlComments(sql: string): string {
   )
   assertTrue(content.includes('if (uploadError) throw new Error'), 'QR-uppladdningsfelet kastas explicit')
 
-  // Saknad säljarrad (inte bara saknat legal_name) ska kasta.
-  assertTrue(content.includes('if (!organizerRow) throw new Error'), 'En helt saknad arrangörsrad kastar (datafel) - skiljt från "legal_name saknas", som fortfarande är ofarligt')
+  // Saknad order-/event-/arrangörsdata (inte bara saknat legal_name)
+  // ska kasta - nu ETT samlat villkor eftersom alla tre kommer från
+  // samma finalize_paid_order-anrop.
+  assertTrue(
+    content.includes('if (!result.orderInfo || !result.eventInfo || !result.organizerInfo)'),
+    'Saknad order-/event-/arrangörsdata (datafel) kastar - skiljt från "legal_name saknas", som fortfarande är ofarligt (hanteras i sendConfirmationEmail)',
+  )
 
   // handleCheckoutExpired: release-RPC-felet får inte tystas längre.
   assertTrue(

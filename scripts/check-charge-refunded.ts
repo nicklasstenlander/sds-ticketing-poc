@@ -88,7 +88,7 @@ function read(relPath: string): string {
   // SQL-funktionens UPDATE-sats; här räcker det att se att
   // paymentIntentId faktiskt skickas in till den.
   assertTrue(
-    content.includes('await finalizePaidOrder(supabase, order.id, paymentIntentId, ticketCodes)'),
+    content.includes('await finalizePaidOrder(supabase, orderId, paymentIntentId, ticketCodes)'),
     'handleCheckoutCompleted skickar paymentIntentId in till finalizePaidOrder (som sätter stripe_payment_intent_id i SAMMA UPDATE som status=paid, inuti finalize_paid_order)',
   )
   assertTrue(

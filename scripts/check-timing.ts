@@ -92,27 +92,39 @@ function read(relPath: string): string {
     )
   }
 
-  // checkout.session.completed-vägen
+  // checkout.session.completed-vägen (omarbetad 2026-10-13 - färre
+  // DB-anrop, QR parallelliserad, mejlet flyttat till bakgrunden -
+  // tick-etiketterna följer den nya strukturen).
+  // (webhookEventRowId togs bort från handleCheckoutCompleted 2026-10-13
+  // - se check-webhook-svarstid.ts: finalize_paid_order rör inte längre
+  // webhook_events, så handlern behöver inte radens id.)
   assertTrue(
     content.includes('async function handleCheckoutCompleted(session: Stripe.Checkout.Session, tick: Tick = () => {})'),
-    'handleCheckoutCompleted tar emot tick-funktionen',
+    'handleCheckoutCompleted tar emot tick-funktionen (ingen webhookEventRowId längre)',
   )
   assertTrue(
-    content.includes('await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session, tick)'),
+    content.includes('outcome = await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session, tick)'),
     'Dispatchen skickar tick in till handleCheckoutCompleted',
   )
   for (const label of [
+    "tick('order_items-qty-select')",
+    'finalize_paid_order (utvidgad',
+    'qr-parallel (',
+    "tick('schedule-confirmation-email",
+  ]) {
+    assertTrue(content.includes(label), `checkout.session.completed-vägen (förgrunden) har en tick för: ${label}`)
+  }
+  // Mejlet (betalsätt/PDF/Resend/mark-sent) körs numera i bakgrunden,
+  // EFTER svaret - ingen tick behövs/kan ges där (ingen anropare väntar
+  // in resultatet), så de GAMLA etiketterna ska INTE finnas kvar.
+  for (const oldLabel of [
     "tick('order-select')",
-    "tick('order_items-select')",
-    "tick('finalize_paid_order')",
     "tick('event-select')",
     "tick('organizer-select')",
-    'qr-loop (',
     "tick('stripe-payment-method')",
-    'send-email (pdf+resend)',
     "tick('mark-email-sent')",
   ]) {
-    assertTrue(content.includes(label), `checkout.session.completed-vägen har en tick för: ${label}`)
+    assertTrue(!content.includes(oldLabel), `Den gamla etiketten ${oldLabel} finns INTE kvar (flyttad till bakgrunden, utan tick)`)
   }
 
   // charge.refunded-vägen
@@ -136,7 +148,11 @@ function read(relPath: string): string {
     'handleCheckoutExpired/handleAccountUpdated rörs INTE av STEG B0 (bara checkout.session.completed och charge.refunded enligt ordern)',
   )
 
-  // Ingen personuppgift/belopp i någon tick(...)-etikett.
+  // Ingen tick(...)-etikett interpolerar köpar-/beloppsfält - etiketter
+  // är statiska stegnamn (högst en räknare eller eventtyp interpolerad,
+  // t.ex. qr-loop (${result.tickets.length} ...) eller
+  // signature-verify (${event.type})), aldrig buyer_name/buyer_email/
+  // belopp.
   const tickLabels = [...content.matchAll(/tick\(([^)]*)\)/g)].map((m) => m[1])
   assertTrue(tickLabels.length > 0, 'Hittade tick(...)-anrop att kontrollera (sanity på regexen)')
   const leaky = tickLabels.find((l) => /buyer_name|buyer_email|order\.buyer|_ore|amount_refunded|total_ore/i.test(l))
