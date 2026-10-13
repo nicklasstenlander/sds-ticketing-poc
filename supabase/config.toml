@@ -147,3 +147,15 @@ verify_jwt = true
 
 [functions.admin-list-applications]
 verify_jwt = true
+
+# retry-confirmation-emails (ordern "Webhooken är för långsam"
+# 2026-10-13, ny plan punkt 2): statisk CRON_SECRET, SAMMA mönster som
+# release-expired-orders (schemalagt GitHub Actions-jobb, se
+# .github/workflows/retry-confirmation-emails.yml).
+[functions.retry-confirmation-emails]
+verify_jwt = false
+
+# admin-list-stuck-emails: läsning för en inloggad arrangör, SAMMA
+# verify_jwt-resonemang som övriga admin-*-funktioner ovan.
+[functions.admin-list-stuck-emails]
+verify_jwt = true

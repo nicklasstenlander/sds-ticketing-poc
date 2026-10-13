@@ -1,0 +1,41 @@
+name: Retry confirmation emails
+
+# Reservnät för bekräftelsemejl som fastnat (ordern "Webhooken är för
+# långsam" 2026-10-13, ny plan punkt 2) - stripe-webhooks egen
+# bakgrundsuppgift (EdgeRuntime.waitUntil) lyckas i nästan alla fall
+# direkt efter svaret till Stripe, men om funktionsinstansen dör mitt
+# i, eller Resend/Stripe är nere längre än timeout-fönstret, finns
+# annars inget som försöker igen.
+#
+# Samma mönster som release-expired-orders.yml, SAMMA varning gäller:
+# GitHub Actions' "on: schedule" är best effort och har i praktiken
+# observerats dra 2,5-9 timmar mellan körningar (se den filens
+# kommentar), inte det deklarerade intervallet. Acceptabelt HÄR
+# eftersom det är ett reservnät för en kanal som redan lyckas i
+# nästan alla fall, inte en tidskritisk mekanism som release_expired_
+# orders (som fick en pg_cron-lösning istället av exakt den
+# anledningen) - admin-list-stuck-emails ger synlighet oavsett.
+#
+# Kräver samma två repo-secrets som release-expired-orders.yml
+# (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_FUNCTIONS_URL  - t.ex. https://<ref>.supabase.co/functions/v1
+#   CRON_SECRET             - samma värde som satts som Supabase secret
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  retry-confirmation-emails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Anropa retry-confirmation-emails
+        run: |
+          curl -sS -X POST \
+            "${SUPABASE_FUNCTIONS_URL}/retry-confirmation-emails" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --fail-with-body
+        env:
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
