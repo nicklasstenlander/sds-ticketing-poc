@@ -159,3 +159,10 @@ verify_jwt = false
 # verify_jwt-resonemang som övriga admin-*-funktioner ovan.
 [functions.admin-list-stuck-emails]
 verify_jwt = true
+
+# stats-for-core (ordern "Föreställningar-statistik från Rideau till
+# CORE" 2026-10-13, Fas 1b): statisk CORE_STATS_TOKEN, SAMMA mönster
+# som retry-confirmation-emails - anroparen är Cloudflare Workern
+# sds-cogwork-proxy (Fas 2), ingen Supabase-JWT.
+[functions.stats-for-core]
+verify_jwt = false
