@@ -34,12 +34,24 @@
 //
 // Villkor: status='paid', confirmation_email_sent_at is null, paid_at
 // äldre än OLDER_THAN_MINUTES (3 - ger webhookens EGEN bakgrundsuppgift
-// gott om tid att lyckas själv innan denna sveper in),
-// confirmation_email_attempts < MAX_ATTEMPTS (5) - utan den gränsen
-// skulle en order med en permanent trasig e-postadress försökas om i
-// all evighet. Gränsen gäller BARA den här automatiska vägen - en
-// admin som medvetet klickar "skicka om" (admin-resend-tickets,
-// force=true) blockeras aldrig av den.
+// gott om tid att lyckas själv innan denna sveper in) MEN INOM
+// MAX_AGE_HOURS (24), confirmation_email_attempts < MAX_ATTEMPTS (5) -
+// utan den gränsen skulle en order med en permanent trasig e-postadress
+// försökas om i all evighet. Gränsen gäller BARA den här automatiska
+// vägen - en admin som medvetet klickar "skicka om" (admin-resend-
+// tickets, force=true) blockeras aldrig av den.
+//
+// RÄTTAT (incident 2026-10-13): en tidigare version saknade MAX_AGE_
+// HOURS - bara en NEDRE åldersgräns (OLDER_THAN_MINUTES) fanns, ingen
+// ÖVRE. Ett testkört anrop svepte då in 20 gamla testordrar från
+// augusti (betalda långt innan confirmation_email_sent_at-kolumnen/
+// den här funktionen ens fanns, och därför helt naturligt null) och
+// mejlade köparna/testadresserna på nytt. Ordrar äldre än 24 timmar
+// antas vara ur en period innan den här mekanismen fanns eller av
+// annan anledning aldrig avsedda att mejlas automatiskt - de hanteras
+// nu bara manuellt via admin-resend-tickets (force=true, ingen
+// åldersgräns där - en medveten mänsklig handling, inte en automatisk
+// sweep).
 //
 // QR laddades redan upp SYNKRONT i förgrunden av stripe-webhook innan
 // ordern kunde bli 'paid' - ingen regenerering behövs här (till
@@ -54,6 +66,7 @@ import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { attemptConfirmationEmail } from '../_shared/attemptConfirmationEmail.ts'
 
 const OLDER_THAN_MINUTES = 3
+const MAX_AGE_HOURS = 24
 const MAX_ATTEMPTS = 5
 const MAX_PER_RUN = 20 // skydd mot att en enda körning drar iväg för länge om många ordrar fastnat samtidigt
 
@@ -81,6 +94,7 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createAdminClient()
   const cutoff = new Date(Date.now() - OLDER_THAN_MINUTES * 60 * 1000).toISOString()
+  const maxAgeCutoff = new Date(Date.now() - MAX_AGE_HOURS * 60 * 60 * 1000).toISOString()
 
   const { data: stuckOrders, error: stuckError } = await supabase
     .from('orders')
@@ -90,6 +104,11 @@ Deno.serve(async (req: Request) => {
     .eq('status', 'paid')
     .is('confirmation_email_sent_at', null)
     .lt('paid_at', cutoff)
+    // Incident 2026-10-13: ÖVRE åldersgräns - utan den plockar sweepen
+    // upp VARJE gammal order utan confirmation_email_sent_at, oavsett
+    // hur långt tillbaka i tiden (t.ex. ordrar betalda innan den här
+    // kolumnen/funktionen fanns). Se filkommentaren ovan.
+    .gt('paid_at', maxAgeCutoff)
     .lt('confirmation_email_attempts', MAX_ATTEMPTS)
     // Granskning 2026-10-13, uppföljning: 'mark_sent_failed' betyder att
     // Resend REDAN bekräftat leverans - bara confirmation_email_sent_at-

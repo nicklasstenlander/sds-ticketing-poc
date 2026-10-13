@@ -273,6 +273,16 @@ function stripSqlComments(sql: string): string {
     retryFn.includes(".or('confirmation_email_last_error.is.null,confirmation_email_last_error.neq.mark_sent_failed')"),
     "retry-confirmation-emails utesluter mark_sent_failed-ordrar via OR mot IS NULL - inte ett bart .neq() som av misstag skulle exkludera alla null-rader också",
   )
+  // Incident 2026-10-13: en körning utan övre åldersgräns svepte in 20
+  // gamla testordrar från augusti och mejlade om dem. MAX_AGE_HOURS (24)
+  // + .gt('paid_at', maxAgeCutoff) förhindrar att sweepen rör ordrar
+  // äldre än det - de hanteras bara manuellt (admin-resend-tickets).
+  assertTrue(retryFn.includes('const MAX_AGE_HOURS = 24'), 'retry-confirmation-emails har en övre åldersgräns (24 timmar) utöver den nedre (OLDER_THAN_MINUTES)')
+  assertTrue(
+    retryFn.includes("const maxAgeCutoff = new Date(Date.now() - MAX_AGE_HOURS * 60 * 60 * 1000).toISOString()") &&
+      retryFn.includes(".gt('paid_at', maxAgeCutoff)"),
+    'Frågan filtrerar bort ordrar äldre än MAX_AGE_HOURS via .gt på paid_at - inte bara en nedre gräns',
+  )
   assertTrue(
     retryFn.includes("const cronSecret = Deno.env.get('CRON_SECRET')") && retryFn.includes('timingSafeEqual'),
     'retry-confirmation-emails autentiseras med CRON_SECRET, samma mönster som release-expired-orders',
