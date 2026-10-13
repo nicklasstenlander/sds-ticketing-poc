@@ -1127,3 +1127,20 @@ input[type='radio'] {
 }
 
 
+
+/* Ingen lila ridåbåge bakom affischerna - affischen står direkt på det mörka. */
+.arch::before {
+  display: none;
+}
+@layer components {
+  .arch-wide {
+    margin-top: 0;
+  }
+}
+
+@layer components {
+  .theme-dark .poster-fallback {
+    background: #1e2d40;
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
+}
