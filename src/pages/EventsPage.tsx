@@ -128,26 +128,28 @@ function Feature({ group }: { group: EventWithTicketTypes[] }) {
   const price = priceLabel(group)
   return (
     <div className="feature">
-      <div className="feature-head">
-        <h2 className="feature-title">{first.title}</h2>
-        <div className="feature-line">
-          <span className="show-date">{dateRange(group)}</span>
-          <span className="feature-meta">{[first.venue, organizer?.name].filter(Boolean).join(' · ')}</span>
-          {price && <span className="show-price">{price}</span>}
-        </div>
-      </div>
       <div className="arch arch-wide">
         <Poster shows={group} />
       </div>
-      <div className="feature-times">
-        {allUpcoming && opens && (
-          <div className="badge badge-spotlight">Biljetterna släpps {formatStockholmDateTime(opens)}</div>
-        )}
-        <ul className="time-chips">
-          {group.map((event) => (
-            <Showtime key={event.id} event={event} />
-          ))}
-        </ul>
+      <div className="feature-info">
+        <div className="min-w-0">
+          <h2 className="feature-title">{first.title}</h2>
+          <div className="feature-line">
+            <span className="show-date">{dateRange(group)}</span>
+            <span className="feature-meta">{[first.venue, organizer?.name].filter(Boolean).join(' · ')}</span>
+            {price && <span className="show-price">{price}</span>}
+          </div>
+        </div>
+        <div>
+          {allUpcoming && opens && (
+            <div className="badge badge-spotlight">Biljetterna släpps {formatStockholmDateTime(opens)}</div>
+          )}
+          <ul className="time-chips">
+            {group.map((event) => (
+              <Showtime key={event.id} event={event} />
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   )

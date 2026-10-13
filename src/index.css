@@ -1126,23 +1126,4 @@ input[type='radio'] {
   }
 }
 
-@layer components {
-  .feature {
-    gap: 0;
-  }
-  .feature-head {
-    margin-bottom: 8px;
-  }
-  .feature-times {
-    margin-top: 32px;
-  }
-  .feature-times .badge {
-    margin-bottom: 14px;
-  }
-}
 
-@layer components {
-  .feature-head {
-    margin-bottom: 28px;
-  }
-}
