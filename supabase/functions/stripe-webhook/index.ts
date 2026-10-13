@@ -10,9 +10,10 @@
 // Hanterar:
 //   checkout.session.completed - betalning bekräftad: slutför ordern
 //     atomärt via finalize_paid_order (status pending->paid, biljetter,
-//     rabattkodsräkning - EN transaktion, se _shared/finalizeOrder.ts),
-//     skicka sedan bekräftelsemail OM det inte redan skickats
-//     (orders.confirmation_email_sent_at). Se STEG B nedan.
+//     rabattkodsräkning - EN transaktion, se _shared/finalizeOrder.ts
+//     och STEG-kommentaren nedan), ladda upp QR-koderna (parallellt),
+//     svara Stripe, och skicka bekräftelsemejlet EFTER svaret via
+//     EdgeRuntime.waitUntil.
 //   checkout.session.expired - sessionen gick ut utan betalning: markera
 //     ordern expired och återför HELA kundvagnens reserverade kapacitet i
 //     en enda kontroll mot eventets delade pool (se rättelseordern,
@@ -51,19 +52,53 @@
 // svarar 200 - ingen idé att Stripe försöker igen, problemet är inte
 // tekniskt.
 //
-// verify_jwt = false i config.toml (se kommentaren där) - Stripe skickar
-// ingen Supabase-JWT, bara en stripe-signature-header som vi verifierar
-// själva nedan.
+// webhook_events-slutstatusen skrivs ALLTID HÄR i dispatchen, EFTER att
+// handlern returnerat - ALDRIG inuti finalize_paid_order. (En tidigare
+// version av den här ordern lät finalize_paid_order skriva den direkt -
+// det introducerade ett race: raden blev 'done' INNAN QR-uppladdningen
+// och mejlschemaläggningen körts, så om isolatet dog mellan finalize och
+// svaret skulle Stripes omförsök träffa en redan-'done'-rad och aldrig
+// försöka igen - och QR/mejl skulle då ALDRIG köras. Se finalize_paid_
+// order-migrationens kommentar för hela resonemanget.)
+//
+// SVARSTID (ordern "Webhooken är för långsam" 2026-10-13): mätningen
+// visade ~550-700 ms per DB-anrop (fast pris, oavsett datamängd) och
+// ~9 sekventiella anrop (DB + Storage + Stripe) före svaret - därav
+// 4-9 sekunders svarstid. Två ändringar:
+//   1. finalize_paid_order gör nu ALLT i EN transaktion/anrop: statusbyte,
+//      biljetter, rabattkodsräkning (som förr), OCH hämtar allt mejlet
+//      behöver (order/order_items/event/arrangör). 4 DB-anrop totalt
+//      före svaret (webhook_events-insert + order_items-qty-select +
+//      finalize_paid_order + webhook_events-slutuppdatering), från 7.
+//   2. Svaret skickas till Stripe DIREKT efter finalize + QR-
+//      uppladdning (parallelliserad) + webhook_events-markering.
+//      Stripe-betalsättsslaget, PDF-bygget, Resend-anropet och
+//      confirmation_email_sent_at-markeringen görs EFTER svaret via
+//      EdgeRuntime.waitUntil (källa:
+//      https://supabase.com/docs/guides/functions/background-tasks).
+//      QR-uppladdningen ligger KVAR före svaret (INTE i bakgrunden) -
+//      verifierat (2026-10-13) att order-status/ConfirmationPage.tsx
+//      bygger qr_url deterministiskt från Storage-sökvägen så snart
+//      order.status='paid', utan att kontrollera att filen faktiskt
+//      finns - att flytta uppladdningen till bakgrunden hade gett
+//      köparens EGEN biljettsida en trasig bild tills bakgrundsjobbet
+//      var klart.
+//
+//      Mejlet kan ALDRIG skickas två gånger: claim_confirmation_email()
+//      (samma mönster som webhook_events' compare-and-swap, delad logik
+//      i _shared/attemptConfirmationEmail.ts - samma funktion används
+//      av retry-confirmation-emails och admin-resend-tickets) måste
+//      vinnas INNAN utskicket påbörjas. Ett misslyckat/timeout:at
+//      utskick skriver bara ett kort felspår
+//      (confirmation_email_last_error) - kraschar aldrig (bakgrunds-
+//      uppgiften har redan svarat Stripe) och rör ALDRIG
+//      webhook_events.status. Se retry-confirmation-emails för
+//      säkerhetsnätet mot ett mejl som fastnar permanent.
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient } from '../_shared/stripe.ts'
 import { generateTicketCode } from '../_shared/base32.ts'
-// sendConfirmationEmail/fetchPaymentMethodType flyttade till _shared
-// (ordern "Avbokning, återbetalning, omsändning och köparmeddelanden"
-// 2026-10-12, STEG 2.1) - OFÖRÄNDRAD kod, bara flyttad, så att
-// admin-resend-tickets kan återanvända exakt samma funktion, PDF-bilaga
-// inkluderad, istället för en egen kopia.
-import { sendConfirmationEmail, fetchPaymentMethodType } from '../_shared/sendConfirmationEmail.ts'
+import { attemptConfirmationEmail, type ConfirmationEmailAttemptInput } from '../_shared/attemptConfirmationEmail.ts'
 import { shouldReleaseAfterExpiryUpdate } from './expiryGuard.ts'
 import { cancelPaidOrder } from '../_shared/cancelOrder.ts'
 import { isFullRefund, findOrderIdForRefund } from '../_shared/refundLookup.ts'
@@ -105,19 +140,31 @@ async function loadCartItems(
   }
 }
 
-function single<T>(rel: T | T[] | null): T | null {
-  if (Array.isArray(rel)) return rel[0] ?? null
-  return rel
+/** Schemalägger mejlutskicket EFTER svaret (EdgeRuntime.waitUntil - se
+ * filkommentaren högst upp för källa och begränsningar). force:false -
+ * den automatiska vägen, skickar aldrig om mejlet redan gått iväg. Utan
+ * EdgeRuntime (lokal körning utanför Supabase Edge Runtime, t.ex.
+ * `deno test`) körs uppgiften i bakgrunden ändå, men felet fångas
+ * lokalt istället för att bli en unhandled rejection. */
+function scheduleConfirmationEmail(input: Omit<ConfirmationEmailAttemptInput, 'force'>): void {
+  const task = attemptConfirmationEmail({ ...input, force: false })
+  const edgeRuntime = (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } })
+    .EdgeRuntime
+  if (edgeRuntime) {
+    edgeRuntime.waitUntil(task)
+  } else {
+    task.catch((err) => console.error('attemptConfirmationEmail (utan EdgeRuntime):', err))
+  }
 }
 
-// checkout.session.completed (STEG B, se filkommentaren högst upp).
-// Returnerar 'done' (vanliga fallet, eller "inget att göra") eller
+// checkout.session.completed (se filkommentaren högst upp). Returnerar
+// 'done' (vanliga fallet, eller "inget att göra") eller
 // 'needs_attention' (en bekräftad betalning kom in för en order som
-// redan avgjorts åt annat håll - t.ex. 'expired' - och kapaciteten kan
-// redan vara frisläppt, se order-code-webhook-aterforsok.md STEG A
-// punkt 4). Kastar vid ett riktigt fel - Deno.serve markerar då
-// webhook_events-raden 'failed' och svarar 500 så att Stripe försöker
-// igen.
+// redan avgjorts åt annat håll - t.ex. 'expired'). Kastar vid ett
+// riktigt fel - Deno.serve markerar då webhook_events-raden 'failed'
+// och svarar 500 så att Stripe försöker igen. Fel EFTER svaret
+// (mejlutskicket, i bakgrunden) kraschar aldrig, se
+// _shared/attemptConfirmationEmail.ts.
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session, tick: Tick = () => {}): Promise<FinalizeHandlerOutcome> {
   const supabase = createAdminClient()
   const orderId = session.client_reference_id ?? session.metadata?.order_id
@@ -126,186 +173,117 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, tick: T
     return 'done'
   }
 
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .select('id, event_id, buyer_name, buyer_email, total_ore, confirmation_email_sent_at')
-    .eq('id', orderId)
-    .maybeSingle()
-  tick('order-select')
-
-  if (orderError) throw new Error(`Kunde inte hämta order ${orderId}: ${orderError.message}`)
-  if (!order) {
-    console.log('Order saknas - inget att göra', orderId)
-    return 'done'
-  }
-
-  const { data: orderItems, error: orderItemsError } = await supabase
+  // Bara qty behövs här - hur många biljettkoder som ska genereras.
+  // Resten av order_items (med biljettypsnamn) kommer från
+  // finalize_paid_order nedan. Den HÄR frågan går INTE att undvika:
+  // koderna måste finnas INNAN anropet (de genereras i TypeScript, se
+  // finalize_paid_order-migrationens kommentar), så antalet måste
+  // vara känt innan.
+  const { data: orderItemsForCount, error: orderItemsCountError } = await supabase
     .from('order_items')
-    .select('id, ticket_type_id, qty, unit_price_ore, vat_rate, ticket_types(name)')
-    .eq('order_id', order.id)
-  tick('order_items-select')
+    .select('qty')
+    .eq('order_id', orderId)
+  tick('order_items-qty-select')
 
-  if (orderItemsError) throw new Error(`Kunde inte hämta order_items för order ${order.id}: ${orderItemsError.message}`)
-  if (!orderItems || orderItems.length === 0) {
-    throw new Error(`Order ${order.id} saknar order_items - kan inte slutföras`)
+  if (orderItemsCountError) {
+    throw new Error(`Kunde inte hämta order_items för order ${orderId}: ${orderItemsCountError.message}`)
+  }
+  if (!orderItemsForCount || orderItemsForCount.length === 0) {
+    throw new Error(`Order ${orderId} saknar order_items - kan inte slutföras`)
   }
 
-  // stripe_payment_intent_id (STEG 3 punkt 1) - session.payment_intent
-  // kan i teorin vara en expanderad PaymentIntent-instans istället för
-  // bara id:t (samma typmässiga osäkerhet som fetchPaymentMethodType
-  // redan hanterar nedanför), därför samma typeof-kontroll här.
   const paymentIntentId =
     typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null
 
-  // Biljettkoderna genereras HÄR (TypeScript, samma CSPRNG-baserade
-  // Crockford base32-kod som alltid) och skickas in till den atomära
-  // SQL-funktionen - se migrationens kommentar för varför. Kastas bort
-  // ofarligt om finalize_paid_order inte vinner statusbytet (redan
-  // paid/expired/cancelled).
-  const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0)
+  const totalQty = orderItemsForCount.reduce((sum, item) => sum + item.qty, 0)
   const ticketCodes = Array.from({ length: totalQty }, () => generateTicketCode())
 
-  const result = await finalizePaidOrder(supabase, order.id, paymentIntentId, ticketCodes)
-  tick('finalize_paid_order')
+  // Utvidgad (ordern "Webhooken är för långsam" 2026-10-13): gör
+  // statusbyte+biljetter+rabattkod SOM FÖRR, men hämtar också allt
+  // mejlet behöver - allt i SAMMA anrop/transaktion. Se migrationens
+  // kommentar. Skriver INTE webhook_events (se filkommentaren högst
+  // upp för varför).
+  const result = await finalizePaidOrder(supabase, orderId, paymentIntentId, ticketCodes)
+  tick('finalize_paid_order (utvidgad, inkl. mejldata)')
   const handlerOutcome = mapFinalizeOutcome(result.outcome)
 
   if (handlerOutcome === 'not_found') {
-    console.log('Order hittades inte vid slutförande - inget att göra', order.id)
+    console.log('Order hittades inte vid slutförande - inget att göra', orderId)
     return 'done'
   }
   if (handlerOutcome === 'needs_attention') {
-    console.log('Betalning för order i oväntat läge - needs_attention', order.id, result.outcome)
+    console.log('Betalning för order i oväntat läge - needs_attention', orderId, result.outcome)
     return 'needs_attention'
   }
 
   // Från här: 'finalized' (första gången) eller 'already_paid'
-  // (omkörning) - i BÅDA fallen finns biljetterna nu. Mejlet skickas
-  // bara om det inte redan skickats.
-  if (order.confirmation_email_sent_at) return 'done'
+  // (omkörning) - biljetterna finns. confirmation_email_sent_at kommer
+  // nu FRÅN finalize_paid_order - ingen extra DB-fråga för att avgöra
+  // om mejlet redan skickats.
+  if (result.orderInfo?.confirmationEmailSentAt) return 'done'
 
-  const { data: event, error: eventError } = await supabase
-    .from('events')
-    .select('id, slug, title, venue, starts_at, organizer_id')
-    .eq('id', order.event_id)
-    .maybeSingle()
-  tick('event-select')
-
-  if (eventError) throw new Error(`Kunde inte hämta event för order ${order.id}: ${eventError.message}`)
-  if (!event) throw new Error(`Order ${order.id} saknar event ${order.event_id}`)
-
-  // Kvittodel i biljettmailet (ordern 2026-10-01, A5) - säljarens
-  // legal_name/org_number. terms_url (ordern "Före försäljning"
-  // 2026-10-05, 1.3) - samma fält som redan styr köpsidans
-  // villkorskryssruta (create-order), återanvänds här bara för att visa
-  // en länk i mailet. En HELT saknad säljarrad (organizer_id pekar på
-  // en rad som inte finns) är ett datafel - kastas (STEG B punkt 2).
-  // Saknas bara legal_name (arrangören har inte fyllt i det) är det
-  // INTE ett fel - kvittot hoppar då bara över säljarraden, se
-  // sendConfirmationEmail.
-  const { data: organizerRow, error: organizerRowError } = await supabase
-    .from('organizers')
-    .select('legal_name, org_number, terms_url')
-    .eq('id', event.organizer_id)
-    .maybeSingle()
-  tick('organizer-select')
-  if (organizerRowError) throw new Error(`Kunde inte hämta arrangör för order ${order.id}: ${organizerRowError.message}`)
-  if (!organizerRow) throw new Error(`Order ${order.id}: arrangör ${event.organizer_id} saknas`)
-
-  // Biljettypens namn per ticket_type_id - för biljett-PDF:ens
-  // "BILJETTYP"-rad (ordern "Biljett-PDF" 2026-10-05). Samma namnkälla
-  // som kvittots lines nedan (orderItems.ticket_types(name)).
-  const ticketTypeNameById = new Map(orderItems.map((item) => [item.ticket_type_id, single(item.ticket_types)?.name ?? null]))
-
-  // QR-uppladdningen är redan idempotent (upsert:true, sökväg
-  // <order_id>/<ticket_id>.png) - samma biljett-id ger alltid samma
-  // sökväg, så en omkörning skriver bara över samma objekt. Ett fel
-  // här kastas nu (STEG B punkt 2) istället för att tyst hoppa över
-  // just den biljetten.
-  const ticketsWithQr: { ticket_code: string; qrUrl: string; typeName: string | null }[] = []
-  for (const ticket of result.tickets) {
-    const pngBuffer: Uint8Array = await QRCode.toBuffer(ticket.ticket_code, {
-      type: 'png',
-      margin: 2,
-      width: 320,
-      errorCorrectionLevel: 'M',
-    })
-
-    const path = `${order.id}/${ticket.id}.png`
-    const { error: uploadError } = await supabase.storage
-      .from('qr')
-      .upload(path, pngBuffer, { contentType: 'image/png', upsert: true })
-
-    if (uploadError) throw new Error(`Kunde inte ladda upp QR-kod för biljett ${ticket.id}: ${uploadError.message}`)
-
-    const { data: publicUrlData } = supabase.storage.from('qr').getPublicUrl(path)
-    ticketsWithQr.push({
-      ticket_code: ticket.ticket_code,
-      qrUrl: publicUrlData.publicUrl,
-      typeName: ticketTypeNameById.get(ticket.ticket_type_id) ?? null,
-    })
+  if (!result.orderInfo || !result.eventInfo || !result.organizerInfo) {
+    // Datafel (saknat event/arrangör) - kastas så Stripe försöker
+    // igen. Biljetterna/statusbytet är redan säkert committade (se
+    // finalize_paid_order-migrationens kommentar om VARFÖR funktionen
+    // inte själv kastar här) - en omkörning kostar bara en billig
+    // 'already_paid', ingen ny biljett skapas.
+    throw new Error(`Order ${orderId}: saknar order-/event-/arrangörsdata för mejlet`)
   }
-  tick(`qr-loop (${result.tickets.length} biljett(er))`)
 
-  // Mejlet AWAITAS nu synkront (till skillnad från tidigare, då det
-  // köades via EdgeRuntime.waitUntil för att inte fördröja svaret till
-  // Stripe) - confirmation_email_sent_at får bara sättas EFTER att
-  // Resend bekräftat, och det kräver att vi väntar in svaret innan
-  // webhooken svarar. Ett Resend-fel kastar nu (se
-  // _shared/sendConfirmationEmail.ts) och gör att HELA den här
-  // körningen räknas som failed - en omkörning hoppar över redan
-  // skapade biljetter (finalize_paid_order ger 'already_paid') och
-  // försöker bara skicka mejlet igen.
-  const paymentMethod = await fetchPaymentMethodType(session)
-  tick('stripe-payment-method')
-  await sendConfirmationEmail({
-    buyerName: order.buyer_name,
-    buyerEmail: order.buyer_email,
-    eventTitle: event.title,
-    eventVenue: event.venue,
-    eventStartsAt: event.starts_at,
-    orderId: order.id,
-    // orders.paid_at FRÅN finalize_paid_order - den FAKTISKA
-    // betalningstidpunkten, inte tidpunkten för det här anropet. Rättat
-    // (STEG B-granskningen 2026-10-12, fråga 1a): den gamla koden
-    // återanvände explicit samma tidsstämpel för DB-skrivningen och
-    // mejlet - en "new Date()" här hade visat dagens datum på kvittot
-    // vid en omkörning (outcome='already_paid'), inte köpdatumet.
-    // result.paidAt är null bara för 'expired'/'cancelled'/'not_found',
-    // som redan returnerat innan den här punkten - fallbacket är alltså
-    // bara defensivt, ska aldrig faktiskt användas.
-    paidAt: result.paidAt ?? new Date().toISOString(),
-    tickets: ticketsWithQr,
-    termsUrl: organizerRow.terms_url,
-    receipt: {
-      sellerLegalName: organizerRow.legal_name,
-      sellerOrgNumber: organizerRow.org_number,
-      totalOre: order.total_ore ?? 0,
-      paymentMethod,
-      lines: orderItems.map((item) => ({
-        name: single(item.ticket_types)?.name ?? 'Biljett',
-        qty: item.qty,
-        unitPriceOre: item.unit_price_ore,
-        vatRate: item.vat_rate,
-      })),
-    },
+  const ticketTypeNameById = new Map(result.orderItems.map((item) => [item.ticketTypeId, item.typeName]))
+
+  // QR-generering+uppladdning MÅSTE ske FÖRE svaret, INTE i bakgrunden
+  // - se filkommentaren högst upp (bekräftelsesidans qr_url är
+  // deterministisk så snart order.status='paid', oavsett om filen
+  // faktiskt laddats upp än). Parallelliserad (Promise.all) - var en
+  // sekventiell for-loop innan (ordern 2026-10-13, punkt 3).
+  const ticketsWithQr: ConfirmationEmailAttemptInput['ticketsWithQr'] = await Promise.all(
+    result.tickets.map(async (ticket) => {
+      const pngBuffer: Uint8Array = await QRCode.toBuffer(ticket.ticket_code, {
+        type: 'png',
+        margin: 2,
+        width: 320,
+        errorCorrectionLevel: 'M',
+      })
+
+      const path = `${orderId}/${ticket.id}.png`
+      const { error: uploadError } = await supabase.storage
+        .from('qr')
+        .upload(path, pngBuffer, { contentType: 'image/png', upsert: true })
+      if (uploadError) throw new Error(`Kunde inte ladda upp QR-kod för biljett ${ticket.id}: ${uploadError.message}`)
+
+      const { data: publicUrlData } = supabase.storage.from('qr').getPublicUrl(path)
+      return {
+        ticket_code: ticket.ticket_code,
+        qrUrl: publicUrlData.publicUrl,
+        typeName: ticketTypeNameById.get(ticket.ticket_type_id) ?? null,
+      }
+    }),
+  )
+  tick(`qr-parallel (${result.tickets.length} biljett(er))`)
+
+  // Resten (Stripe-betalsätt, PDF, Resend, confirmation_email_sent_at)
+  // görs EFTER svaret - se scheduleConfirmationEmail/filkommentaren.
+  // Ingen av dessa behövs av bekräftelsesidan.
+  scheduleConfirmationEmail({
+    supabase,
+    orderId,
+    paymentIntentId,
+    paidAt: result.paidAt,
+    buyerName: result.orderInfo.buyerName,
+    buyerEmail: result.orderInfo.buyerEmail,
+    totalOre: result.orderInfo.totalOre,
+    eventTitle: result.eventInfo.title,
+    eventVenue: result.eventInfo.venue,
+    eventStartsAt: result.eventInfo.startsAt,
+    organizerLegalName: result.organizerInfo.legalName,
+    organizerOrgNumber: result.organizerInfo.orgNumber,
+    organizerTermsUrl: result.organizerInfo.termsUrl,
+    orderItems: result.orderItems,
+    ticketsWithQr,
   })
-  tick('send-email (pdf+resend)')
-
-  // Villkorat (is .is('confirmation_email_sent_at', null)) som ett
-  // extra skydd mot en osannolik samtidig dubbelkörning för SAMMA
-  // order - men till skillnad från biljetterna/rabattkoden (som är
-  // skyddade av finalize_paid_orders transaktion) är konsekvensen av
-  // att FÖRLORA den här racet bara att två processer båda lyckades
-  // skicka mejlet, inte att data blir fel. Kastas inte vid 0 träffade
-  // rader - mejlet skickades trots allt, bara markeringen blev en
-  // no-op.
-  const { error: markSentError } = await supabase
-    .from('orders')
-    .update({ confirmation_email_sent_at: new Date().toISOString() })
-    .eq('id', order.id)
-    .is('confirmation_email_sent_at', null)
-  tick('mark-email-sent')
-  if (markSentError) throw new Error(`Kunde inte markera mejl som skickat för order ${order.id}: ${markSentError.message}`)
+  tick('schedule-confirmation-email (waitUntil, utan att invänta)')
 
   return 'done'
 }
@@ -581,10 +559,7 @@ Deno.serve(async (req: Request) => {
     // med t.ex. en manuell "Resend" i Stripe Dashboard medan någon
     // felsöker en failed-rad) skulle annars BÅDA läsa samma rad, BÅDA
     // besluta "retry", och BÅDA anropa handlern samtidigt för samma
-    // order - vilket kan ge ett dubbelt mejlutskick (se
-    // handleCheckoutCompleted: confirmation_email_sent_at läses i
-    // BÖRJAN av körningen, innan mejlet skickas, så två samtidiga
-    // körningar kan båda hinna läsa null och båda skicka).
+    // order.
     //
     // Fixen är en optimistisk lås (compare-and-swap): UPDATE:en
     // villkoras på att raden FORTFARANDE har den status vi just läste
@@ -652,6 +627,10 @@ Deno.serve(async (req: Request) => {
     return textResponse('Internt fel - försök igen.', 500)
   }
 
+  // Skrivs ALLTID här, EFTER att handlern returnerat - för
+  // checkout.session.completed betyder det EFTER att QR-uppladdningen
+  // och mejlschemaläggningen redan lyckats (se filkommentaren högst
+  // upp för racet detta undviker).
   const { error: finalStatusError } = await supabase
     .from('webhook_events')
     .update({ status: outcome, processed_at: new Date().toISOString(), last_error: null })
