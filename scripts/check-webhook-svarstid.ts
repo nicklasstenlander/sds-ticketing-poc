@@ -283,6 +283,13 @@ function stripSqlComments(sql: string): string {
       retryFn.includes(".gt('paid_at', maxAgeCutoff)"),
     'Frågan filtrerar bort ordrar äldre än MAX_AGE_HOURS via .gt på paid_at - inte bara en nedre gräns',
   )
+  // Uppföljning 2026-10-13, punkt 3: utesluter BÅDA archived_reason
+  // ('test' och 'hidden') via archived_at is not null - ingen egen
+  // filtrering på event.status (draft/published), se filkommentaren.
+  assertTrue(
+    retryFn.includes(".is('archived_at', null)"),
+    'retry-confirmation-emails utesluter arkiverade ordrar (archived_at is not null) - täcker både test- och hidden-arkiverade, ingen filtrering på event-status',
+  )
   assertTrue(
     retryFn.includes("const cronSecret = Deno.env.get('CRON_SECRET')") && retryFn.includes('timingSafeEqual'),
     'retry-confirmation-emails autentiseras med CRON_SECRET, samma mönster som release-expired-orders',

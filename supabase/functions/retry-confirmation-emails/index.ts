@@ -53,6 +53,21 @@
 // åldersgräns där - en medveten mänsklig handling, inte en automatisk
 // sweep).
 //
+// UTESLUTER OCKSÅ archived_at is not null (granskning 2026-10-13,
+// uppföljning punkt 3) - BÅDA archived_reason ('test' - ingen riktig
+// betalning, ska aldrig mejlas automatiskt - OCH 'hidden' - en riktig
+// betalning, men en arrangör har MEDVETET valt att dölja just den
+// ordern, se 20261012010000_archive.sql). En automatisk sweep ska inte
+// gå bakom den avsikten - en riktig köpare i ett 'hidden'-fall kan
+// fortfarande få sitt mejl via admin-resend-tickets (force=true, en
+// medveten mänsklig handling). INGEN filtrering på event.status
+// (draft/published) - ett event kan backas till draft (pausad
+// försäljning) efter att en riktig order redan betalats, helt
+// orelaterat till om just den ordern är legitim; att arkivera ett
+// event KASKADERAR redan till dess ordrars egen archived_at
+// (admin-archive-event), så arkiverade event täcks in ändå, utan att
+// behöva en egen join mot events här.
+//
 // QR laddades redan upp SYNKRONT i förgrunden av stripe-webhook innan
 // ordern kunde bli 'paid' - ingen regenerering behövs här (till
 // skillnad från admin-resend-tickets, som är ett bredare "något kan
@@ -103,6 +118,7 @@ Deno.serve(async (req: Request) => {
     )
     .eq('status', 'paid')
     .is('confirmation_email_sent_at', null)
+    .is('archived_at', null)
     .lt('paid_at', cutoff)
     // Incident 2026-10-13: ÖVRE åldersgräns - utan den plockar sweepen
     // upp VARJE gammal order utan confirmation_email_sent_at, oavsett
