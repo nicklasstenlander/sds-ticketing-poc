@@ -69,6 +69,7 @@ import { cancelPaidOrder } from '../_shared/cancelOrder.ts'
 import { isFullRefund, findOrderIdForRefund } from '../_shared/refundLookup.ts'
 import { finalizePaidOrder, mapFinalizeOutcome, type FinalizeHandlerOutcome } from '../_shared/finalizeOrder.ts'
 import { decideRetryAction, type WebhookEventStatus } from './webhookEventRetry.ts'
+import { startTimer, type Tick } from './timing.ts'
 // @deno-types="npm:@types/qrcode@1"
 import QRCode from 'npm:qrcode@1.5.3'
 import type Stripe from 'npm:stripe@17'
@@ -117,7 +118,7 @@ function single<T>(rel: T | T[] | null): T | null {
 // punkt 4). Kastar vid ett riktigt fel - Deno.serve markerar då
 // webhook_events-raden 'failed' och svarar 500 så att Stripe försöker
 // igen.
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<FinalizeHandlerOutcome> {
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session, tick: Tick = () => {}): Promise<FinalizeHandlerOutcome> {
   const supabase = createAdminClient()
   const orderId = session.client_reference_id ?? session.metadata?.order_id
   if (!orderId) {
@@ -130,6 +131,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .select('id, event_id, buyer_name, buyer_email, total_ore, confirmation_email_sent_at')
     .eq('id', orderId)
     .maybeSingle()
+  tick('order-select')
 
   if (orderError) throw new Error(`Kunde inte hämta order ${orderId}: ${orderError.message}`)
   if (!order) {
@@ -141,6 +143,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .from('order_items')
     .select('id, ticket_type_id, qty, unit_price_ore, vat_rate, ticket_types(name)')
     .eq('order_id', order.id)
+  tick('order_items-select')
 
   if (orderItemsError) throw new Error(`Kunde inte hämta order_items för order ${order.id}: ${orderItemsError.message}`)
   if (!orderItems || orderItems.length === 0) {
@@ -163,6 +166,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   const ticketCodes = Array.from({ length: totalQty }, () => generateTicketCode())
 
   const result = await finalizePaidOrder(supabase, order.id, paymentIntentId, ticketCodes)
+  tick('finalize_paid_order')
   const handlerOutcome = mapFinalizeOutcome(result.outcome)
 
   if (handlerOutcome === 'not_found') {
@@ -184,6 +188,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .select('id, slug, title, venue, starts_at, organizer_id')
     .eq('id', order.event_id)
     .maybeSingle()
+  tick('event-select')
 
   if (eventError) throw new Error(`Kunde inte hämta event för order ${order.id}: ${eventError.message}`)
   if (!event) throw new Error(`Order ${order.id} saknar event ${order.event_id}`)
@@ -202,6 +207,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .select('legal_name, org_number, terms_url')
     .eq('id', event.organizer_id)
     .maybeSingle()
+  tick('organizer-select')
   if (organizerRowError) throw new Error(`Kunde inte hämta arrangör för order ${order.id}: ${organizerRowError.message}`)
   if (!organizerRow) throw new Error(`Order ${order.id}: arrangör ${event.organizer_id} saknas`)
 
@@ -238,6 +244,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
       typeName: ticketTypeNameById.get(ticket.ticket_type_id) ?? null,
     })
   }
+  tick(`qr-loop (${result.tickets.length} biljett(er))`)
 
   // Mejlet AWAITAS nu synkront (till skillnad från tidigare, då det
   // köades via EdgeRuntime.waitUntil för att inte fördröja svaret till
@@ -249,6 +256,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   // skapade biljetter (finalize_paid_order ger 'already_paid') och
   // försöker bara skicka mejlet igen.
   const paymentMethod = await fetchPaymentMethodType(session)
+  tick('stripe-payment-method')
   await sendConfirmationEmail({
     buyerName: order.buyer_name,
     buyerEmail: order.buyer_email,
@@ -281,6 +289,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
       })),
     },
   })
+  tick('send-email (pdf+resend)')
 
   // Villkorat (is .is('confirmation_email_sent_at', null)) som ett
   // extra skydd mot en osannolik samtidig dubbelkörning för SAMMA
@@ -295,6 +304,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     .update({ confirmation_email_sent_at: new Date().toISOString() })
     .eq('id', order.id)
     .is('confirmation_email_sent_at', null)
+  tick('mark-email-sent')
   if (markSentError) throw new Error(`Kunde inte markera mejl som skickat för order ${order.id}: ${markSentError.message}`)
 
   return 'done'
@@ -392,7 +402,7 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session): Promise<
 // plattformsleveranser (payment_mode='direct', t.ex. SDS). Behövs bara för
 // reservuppslaget (findOrderIdForRefund) - stripe_payment_intent_id-
 // kolumnen är kontofri, den är redan vår egen rad.
-async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: string | null): Promise<void> {
+async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: string | null, tick: Tick = () => {}): Promise<void> {
   const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
   if (!paymentIntentId) {
     console.log('charge.refunded utan payment_intent - inget att göra', charge.id)
@@ -403,7 +413,11 @@ async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: s
   const stripe = createStripeClient()
   // findOrderIdForRefund kastar numera vid ett riktigt fel i något av
   // uppslagsstegen (STEG B punkt 4) - bara "inget hittades" ger null.
+  // Ett DB-anrop (orders.stripe_payment_intent_id) + ETT villkorat
+  // Stripe-API-anrop (checkout.sessions.list) bara för ordrar som
+  // saknar kolumnen (före STEG 3) - för en ny order görs bara DB-slaget.
   const orderId = await findOrderIdForRefund(supabase, stripe, paymentIntentId, connectedAccountId)
+  tick('find-order-id-for-refund')
 
   if (!orderId) {
     console.log('Ingen order hittad för återbetald charge - inget att göra', charge.id)
@@ -426,6 +440,7 @@ async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: s
   // - låter det nu propagera (STEG B punkt 4) istället för att svälja
   // det här.
   const result = await cancelPaidOrder(supabase, orderId)
+  tick('cancel_paid_order')
   console.log('charge.refunded (full) ->', orderId, result.cancelled ? 'avbokad' : 'redan avbokad/fel status sedan innan')
 }
 
@@ -436,6 +451,13 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return textResponse('Metoden stöds inte.', 405)
   }
+
+  // DEBUG_TIMING (ordern "Webhooken är för långsam" 2026-10-13,
+  // STEG B0) - no-op om miljövariabeln inte är satt. En tick-funktion
+  // per begäran, given vidare till checkout.session.completed/
+  // charge.refunded-handlarna så HELA kedjan (inte bara dispatchens
+  // egna steg) syns som en sammanhängande stegvis logg.
+  const tick = startTimer()
 
   const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
   if (!webhookSecret) {
@@ -488,8 +510,15 @@ Deno.serve(async (req: Request) => {
       return textResponse(`Ogiltig signatur: ${message}`, 400)
     }
   }
+  tick(`signature-verify (${event.type})`)
 
   const supabase = createAdminClient()
+  // createAdminClient() gör INGET nätverksanrop (bara ett klientobjekt)
+  // - denna tick markerar bara "precis innan det FÖRSTA DB-anropet",
+  // så nästa tick (webhook_events-bookkeeping) isolerar just den första
+  // kontakten med databasen (anslutningsetablering + själva frågan)
+  // separat från alla efterföljande anrop.
+  tick('db-client-created')
 
   // STEG B (se filkommentaren högst upp): webhook_events har nu en
   // statuskolumn. Försök INSERT:a en NY rad ('received'). Krockar den
@@ -588,17 +617,18 @@ Deno.serve(async (req: Request) => {
     eventRowId = insertedRow.id
     attempts = insertedRow.attempts
   }
+  tick('webhook_events-bookkeeping')
 
   let outcome: FinalizeHandlerOutcome = 'done'
   try {
     if (event.type === 'checkout.session.completed') {
-      outcome = await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session)
+      outcome = await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session, tick)
     } else if (event.type === 'checkout.session.expired') {
       await handleCheckoutExpired(event.data.object as Stripe.Checkout.Session)
     } else if (event.type === 'account.updated') {
       await handleAccountUpdated(event.data.object as Stripe.Account)
     } else if (event.type === 'charge.refunded') {
-      await handleChargeRefunded(event.data.object as Stripe.Charge, event.account ?? null)
+      await handleChargeRefunded(event.data.object as Stripe.Charge, event.account ?? null, tick)
     }
     // Övriga eventtyper (vi prenumererar bara på dessa i Stripe Dashboard,
     // men om fler skulle skickas ändå kvitterar vi dem tyst med 200/'done').
@@ -614,6 +644,7 @@ Deno.serve(async (req: Request) => {
       .from('webhook_events')
       .update({ status: 'failed', last_error: message.slice(0, 500) })
       .eq('id', eventRowId)
+    tick('failed-status-update')
     if (failError) {
       console.error('webhook_events: kunde inte markera rad som failed', event.id, failError.message)
     }
@@ -625,6 +656,7 @@ Deno.serve(async (req: Request) => {
     .from('webhook_events')
     .update({ status: outcome, processed_at: new Date().toISOString(), last_error: null })
     .eq('id', eventRowId)
+  tick('final-status-update')
   if (finalStatusError) {
     console.error('webhook_events: kunde inte markera rad som', outcome, event.id, finalStatusError.message)
   }

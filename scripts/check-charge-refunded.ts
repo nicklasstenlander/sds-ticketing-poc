@@ -93,12 +93,14 @@ function read(relPath: string): string {
   )
   assertTrue(
     content.includes("else if (event.type === 'charge.refunded')") &&
-      content.includes('await handleChargeRefunded(event.data.object as Stripe.Charge, event.account ?? null)'),
-    'Deno.serve-dispatchen hanterar charge.refunded och trådar igenom event.account (Connect-scopning)',
+      content.includes('await handleChargeRefunded(event.data.object as Stripe.Charge, event.account ?? null, tick)'),
+    'Deno.serve-dispatchen hanterar charge.refunded och trådar igenom event.account (Connect-scopning) - samt tick (STEG B0, DEBUG_TIMING)',
   )
   assertTrue(
-    content.includes('async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: string | null)'),
-    'handleChargeRefunded finns med rätt signatur',
+    content.includes(
+      'async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: string | null, tick: Tick = () => {})',
+    ),
+    'handleChargeRefunded finns med rätt signatur (inkl. den valfria tick-parametern från STEG B0)',
   )
   {
     const partialRefundCheckIndex = content.indexOf('if (!isFullRefund(charge))')
