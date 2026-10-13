@@ -91,6 +91,16 @@ Deno.serve(async (req: Request) => {
     .is('confirmation_email_sent_at', null)
     .lt('paid_at', cutoff)
     .lt('confirmation_email_attempts', MAX_ATTEMPTS)
+    // Granskning 2026-10-13, uppföljning: 'mark_sent_failed' betyder att
+    // Resend REDAN bekräftat leverans - bara confirmation_email_sent_at-
+    // skrivningen misslyckades (se _shared/attemptConfirmationEmail.ts).
+    // Ett automatiskt återförsök här skulle bara ge ett dubblettmejl, inte
+    // rätta till bokföringen. Måste skrivas som en OR mot IS NULL - ett
+    // vanligt .neq() (SQL "<>") skulle annars exkludera ALLA rader där
+    // last_error är null (den vanliga, friska vägen) eftersom NULL <> x
+    // är UNKNOWN i SQL, inte true, och PostgREST/Postgres filtrerar bort
+    // en UNKNOWN-rad precis som en false-rad.
+    .or('confirmation_email_last_error.is.null,confirmation_email_last_error.neq.mark_sent_failed')
     .order('paid_at', { ascending: true })
     .limit(MAX_PER_RUN)
 

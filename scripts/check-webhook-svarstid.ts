@@ -263,6 +263,16 @@ function stripSqlComments(sql: string): string {
     retryFn.includes(".lt('confirmation_email_attempts', MAX_ATTEMPTS)") && retryFn.includes('const MAX_ATTEMPTS = 5'),
     'retry-confirmation-emails har en gräns på antal automatiska försök (5) - en permanent trasig adress försöks inte om i all evighet',
   )
+  // Uppföljning 2026-10-13: mark_sent_failed betyder att Resend REDAN
+  // bekräftat leverans - ett automatiskt återförsök skulle bara ge ett
+  // dubblettmejl. Måste vara en OR mot IS NULL (inte ett bart .neq()),
+  // annars exkluderas av misstag ALLA rader med last_error=null (NULL
+  // <> x är UNKNOWN i SQL, inte true - den vanliga, friska raden skulle
+  // då aldrig plockas upp av sweepen).
+  assertTrue(
+    retryFn.includes(".or('confirmation_email_last_error.is.null,confirmation_email_last_error.neq.mark_sent_failed')"),
+    "retry-confirmation-emails utesluter mark_sent_failed-ordrar via OR mot IS NULL - inte ett bart .neq() som av misstag skulle exkludera alla null-rader också",
+  )
   assertTrue(
     retryFn.includes("const cronSecret = Deno.env.get('CRON_SECRET')") && retryFn.includes('timingSafeEqual'),
     'retry-confirmation-emails autentiseras med CRON_SECRET, samma mönster som release-expired-orders',
