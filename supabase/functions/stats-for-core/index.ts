@@ -66,5 +66,27 @@ Deno.serve(async (req: Request) => {
     return statsResponse({ error: 'stats_failed' }, 500)
   }
 
-  return statsResponse({ generated_at: new Date().toISOString(), events: data ?? [] }, 200)
+  return statsResponse(
+    {
+      generated_at: new Date().toISOString(),
+      // Granskning 2026-10-13, beslut punkt 1: core_event_stats
+      // kan INTE dra av partiella återbetalningar (se migrationens
+      // egen kommentar - beloppet persisteras ingenstans i schemat
+      // idag). Snarare än att tyst kalla revenue_ore "netto" när det
+      // inte är det för det fallet, flaggas läget explicit här så
+      // CORE kan märka siffran i UI:t (Fas 3). Byts till
+      // 'net_after_partial_refunds' den dagen refunded_ore faktiskt
+      // finns och dras av (planerat efter 2 nov, se beslutet).
+      revenue_basis: 'gross_before_partial_refunds',
+      // Granskning 2026-10-13, beslut punkt 3: order_items.unit_price_ore
+      // (grunden för revenue_ore) är redan priset KUNDEN BETALADE,
+      // dvs inklusive moms (samma princip som export-sales/kvittot -
+      // moms läggs aldrig på separat, bara extraheras ur beloppet för
+      // bokföring). Flaggas explicit här så CORE aldrig av misstag
+      // lägger på moms en gång till.
+      revenue_includes_vat: true,
+      events: data ?? [],
+    },
+    200,
+  )
 })

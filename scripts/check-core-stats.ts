@@ -157,6 +157,19 @@ function stripSqlComments(sql: string): string {
 
   assertTrue(content.includes("'Cache-Control': 'no-store'"), 'Svaret har Cache-Control: no-store (cachning sker ett steg bort, i Fas 2)')
 
+  // Granskning 2026-10-13, beslut punkt 1+3: svaret flaggar
+  // explicit vilken grund revenue_ore vilar på (brutto, inte netto,
+  // för partiella återbetalningar) och att beloppet är inkl. moms -
+  // så CORE aldrig antar fel om siffrans betydelse.
+  assertTrue(
+    content.includes("revenue_basis: 'gross_before_partial_refunds'"),
+    "Svaret flaggar revenue_basis: 'gross_before_partial_refunds' - CORE kan märka siffran istället för att anta netto",
+  )
+  assertTrue(
+    content.includes('revenue_includes_vat: true'),
+    'Svaret flaggar revenue_includes_vat: true - CORE lägger aldrig på moms en gång till',
+  )
+
   // Inga PII-fält i svarsformningen.
   for (const forbidden of ['buyer_name', 'buyer_email', 'order_id', 'phone']) {
     assertTrue(!content.includes(forbidden), `index.ts hanterar aldrig ${forbidden} - bara vidarebefordrar core_event_stats egna aggregat`)
