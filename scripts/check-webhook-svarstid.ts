@@ -152,6 +152,14 @@ function stripSqlComments(sql: string): string {
     codeOnly.includes("confirmation_email_claimed_at < now() - interval '2 minutes'"),
     'claimed_at-spärren (2 minuter, samma tröskel som webhook_events) gäller OAVSETT force',
   )
+  // Granskning 2026-10-13, fråga 2c: force=true ska INTE räkna upp
+  // confirmation_email_attempts - annars kan medvetna admin-
+  // ombegäranden själva knuffa räknaren till gränsen (5) och blockera
+  // DEN AUTOMATISKA vägen (retry-confirmation-emails) från egna försök.
+  assertTrue(
+    codeOnly.includes('confirmation_email_attempts + case when p_force then 0 else 1 end'),
+    'confirmation_email_attempts räknas BARA upp vid force=false - en admins medvetna ombegäranden äter inte av den automatiska vägens försöksbudget',
+  )
   assertTrue(
     migration.includes('grant execute on function claim_confirmation_email(uuid, boolean) to service_role'),
     'EXECUTE beviljas explicit till service_role, för signaturen med force-parametern',
@@ -215,6 +223,23 @@ function stripSqlComments(sql: string): string {
     'Ett fel skriver ett kort spår (shortEmailErrorCode) till confirmation_email_last_error',
   )
   assertTrue(!content.includes('throw'), 'attemptConfirmationEmail kastar ALDRIG vidare - try/catch runt hela utskicket, ingen unhandled rejection i bakgrunden')
+
+  // Granskning 2026-10-13, fråga 2b: om Resend lyckas men markeringen
+  // (confirmation_email_sent_at) misslyckas, görs ETT omförsök av
+  // samma UPDATE innan vi ger upp - och ger upp skriver vi en EGEN,
+  // greppbar felkod ('mark_sent_failed') istället för att bara logga
+  // tyst. sent:true oavsett (mejlet gick verkligen iväg).
+  const firstMarkIndex = content.indexOf("confirmation_email_sent_at: new Date().toISOString()")
+  const secondMarkIndex = content.indexOf("confirmation_email_sent_at: new Date().toISOString()", firstMarkIndex + 1)
+  assertTrue(
+    firstMarkIndex !== -1 && secondMarkIndex !== -1,
+    'Markeringen av confirmation_email_sent_at görs TVÅ gånger (ett omförsök) innan den ger upp',
+  )
+  assertTrue(
+    content.includes("confirmation_email_last_error: 'mark_sent_failed'"),
+    "Ger den ändå upp (två misslyckade försök) skrivs en egen felkod 'mark_sent_failed' - synlig i admin-list-stuck-emails",
+  )
+  assertTrue(content.includes('return { sent: true }'), 'Returnerar ALLTID sent:true efter ett lyckat Resend-anrop, oavsett om markeringen lyckades - mejlet gick verkligen iväg')
 }
 
 // --- admin-resend-tickets: force=true, retry-confirmation-emails: force=false ---

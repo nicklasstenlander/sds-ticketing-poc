@@ -91,12 +91,43 @@ export async function attemptConfirmationEmail(input: ConfirmationEmailAttemptIn
       },
     })
 
-    const { error: markSentError } = await input.supabase
-      .from('orders')
-      .update({ confirmation_email_sent_at: new Date().toISOString(), confirmation_email_last_error: null })
-      .eq('id', input.orderId)
+    // Granskning 2026-10-13, fråga 2b: Resend har redan bekräftat
+    // leverans här - ett fel i DENNA skrivning får ALDRIG göra att vi
+    // rapporterar sent:false (mejlet gick trots allt iväg). Ett enkelt
+    // omförsök (vanlig transient DB-blipp) innan vi ger upp - "minsta
+    // rimliga åtgärd", ingen stor idempotensmekanism mot Resend här.
+    let markSentError = (
+      await input.supabase
+        .from('orders')
+        .update({ confirmation_email_sent_at: new Date().toISOString(), confirmation_email_last_error: null })
+        .eq('id', input.orderId)
+    ).error
     if (markSentError) {
-      console.error('Kunde inte markera mejl som skickat', input.orderId, markSentError.message)
+      markSentError = (
+        await input.supabase
+          .from('orders')
+          .update({ confirmation_email_sent_at: new Date().toISOString(), confirmation_email_last_error: null })
+          .eq('id', input.orderId)
+      ).error
+    }
+    if (markSentError) {
+      // KÄND LUCKA (granskning 2026-10-13, fråga 2b): confirmation_
+      // email_sent_at förblir null trots att mejlet faktiskt skickades.
+      // Nästa försök (den automatiska vägen, efter att claimed_at åldrats
+      // ut - se claim_confirmation_email) ser sent_at=null och skickar
+      // OM - ett dubblettmejl är möjligt, inte uteslutet av den här
+      // ändringen. Det vi gör här är bara att göra luckan SYNLIG (en
+      // egen felkod, grepbar i admin-list-stuck-emails/loggar) istället
+      // för tyst - en riktig fix (t.ex. en Resend-idempotensnyckel) är
+      // en separat, större åtgärd.
+      console.error('Kunde inte markera mejl som skickat (två försök) - dubblettrisk vid nästa omförsök', input.orderId, markSentError.message)
+      const { error: traceError } = await input.supabase
+        .from('orders')
+        .update({ confirmation_email_last_error: 'mark_sent_failed' })
+        .eq('id', input.orderId)
+      if (traceError) {
+        console.error('Kunde inte ens skriva mark_sent_failed-felspåret', input.orderId, traceError.message)
+      }
     }
     return { sent: true }
   } catch (err) {

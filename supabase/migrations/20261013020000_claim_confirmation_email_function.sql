@@ -41,6 +41,15 @@
 -- gräns tänkt för att stoppa en förmodat trasig adress från att
 -- försökas om i all evighet AUTOMATISKT.
 --
+-- RÄTTAT (granskning 2026-10-13, fråga 2c): confirmation_email_attempts
+-- räknas nu BARA upp när p_force är false. Tidigare räknades den upp
+-- även vid force=true - ett antal medvetna admin-ombegäranden för EN
+-- order kunde då själva knuffa räknaren till 5 och därmed blockera
+-- DEN AUTOMATISKA vägen (retry-confirmation-emails) från att försöka
+-- något den aldrig själv fått chansen att misslyckas med. Räknaren ska
+-- bara mäta AUTOMATISKA, obevakade försök - inte medvetna mänskliga
+-- handlingar, som redan är begränsade av claimed_at-spärren ovan.
+--
 -- SÄKERHET (samma resonemang som cancel_paid_order/finalize_paid_order):
 -- INGEN security definer - enda tänkta anroparen är service_role
 -- (stripe-webhook/admin-resend-tickets/retry-confirmation-emails via
@@ -58,7 +67,7 @@ declare
 begin
   update orders
      set confirmation_email_claimed_at = now(),
-         confirmation_email_attempts = confirmation_email_attempts + 1
+         confirmation_email_attempts = confirmation_email_attempts + case when p_force then 0 else 1 end
    where id = p_order_id
      and (p_force or confirmation_email_sent_at is null)
      and (confirmation_email_claimed_at is null or confirmation_email_claimed_at < now() - interval '2 minutes')
