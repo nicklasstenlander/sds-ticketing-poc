@@ -3,9 +3,19 @@
 // Skickar om bekräftelsemailet (biljetter + kvitto + PDF) för en redan
 // betald order (ordern "Avbokning, återbetalning, omsändning och
 // köparmeddelanden" 2026-10-12, STEG 2.1). Återanvänder EXAKT samma
-// sendConfirmationEmail som stripe-webhook (se _shared/
-// sendConfirmationEmail.ts) - samma HTML, samma PDF-bygge, samma
-// Resend-anrop.
+// _shared/attemptConfirmationEmail.ts som stripe-webhooks bakgrunds-
+// uppgift och retry-confirmation-emails (ordern "Webhooken är för
+// långsam" 2026-10-13, punkt 3) - samma claim, samma HTML, samma
+// PDF-bygge, samma Resend-anrop.
+//
+// force=true vid claim_confirmation_email: detta är en MEDVETEN,
+// manuell ombegäran - ska kunna skicka om ÄVEN ett redan levererat
+// mejl (köparen bad om det igen, eller vill ha det till en annan
+// adress). Den tidsbaserade claimed_at-spärren gäller ändå, så ett
+// admin-klick som råkar krocka med webhookens egen bakgrundsuppgift
+// för SAMMA order (en smal tidslucka direkt efter betalning) kan
+// fortfarande inte skicka parallellt - se claim_confirmation_email-
+// migrationens kommentar.
 //
 // Krav: ordern tillhör arrangörens event, har status 'paid' och är
 // INTE arkiverad. Alla andra fall (fel arrangör, fel status, arkiverad,
@@ -24,7 +34,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
-import { sendConfirmationEmail } from '../_shared/sendConfirmationEmail.ts'
+import { attemptConfirmationEmail } from '../_shared/attemptConfirmationEmail.ts'
 import { isSingleValidEmail } from './emailValidation.ts'
 // @deno-types="npm:@types/qrcode@1"
 import QRCode from 'npm:qrcode@1.5.3'
@@ -164,36 +174,44 @@ Deno.serve(async (req: Request) => {
 
   const buyerEmail = toOverride || order.buyer_email
 
-  try {
-    await sendConfirmationEmail({
-      buyerName: order.buyer_name,
-      buyerEmail,
-      eventTitle: event.title,
-      eventVenue: event.venue,
-      eventStartsAt: event.starts_at as string,
-      orderId: order.id,
-      paidAt: order.paid_at as string,
-      tickets: ticketsWithQr,
-      termsUrl: organizerRow?.terms_url ?? null,
-      receipt: {
-        sellerLegalName: organizerRow?.legal_name ?? null,
-        sellerOrgNumber: organizerRow?.org_number ?? null,
-        totalOre: order.total_ore ?? 0,
-        // Ingen Session att hämta det faktiska betalsättet ifrån här
-        // (bara stripe-webhook har Session-objektet) - kvittot visar då
-        // ingen betalsättsrad, exakt som för en order utan
-        // sellerLegalName.
-        paymentMethod: null,
-        lines: orderItems.map((item) => ({
-          name: single(item.ticket_types)?.name ?? 'Biljett',
-          qty: item.qty,
-          unitPriceOre: item.unit_price_ore,
-          vatRate: item.vat_rate,
-        })),
-      },
-    })
-  } catch (err) {
-    console.error('admin-resend-tickets: kunde inte skicka mailet för order', orderId, err instanceof Error ? err.message : err)
+  // force: true - en MEDVETEN, manuell ombegäran (se filkommentaren)
+  // ska kunna skicka om ÄVEN ett redan skickat mejl.
+  // paymentIntentId: null, oförändrat från tidigare - ingen Session
+  // att hämta det faktiska betalsättet ifrån här (bara stripe-webhook
+  // har Session-objektet), kvittot visar då ingen betalsättsrad, exakt
+  // som för en order utan sellerLegalName.
+  const result = await attemptConfirmationEmail({
+    supabase,
+    orderId: order.id,
+    paymentIntentId: null,
+    paidAt: order.paid_at as string,
+    buyerName: order.buyer_name,
+    buyerEmail,
+    totalOre: order.total_ore,
+    eventTitle: event.title,
+    eventVenue: event.venue,
+    eventStartsAt: event.starts_at as string,
+    organizerLegalName: organizerRow?.legal_name ?? null,
+    organizerOrgNumber: organizerRow?.org_number ?? null,
+    organizerTermsUrl: organizerRow?.terms_url ?? null,
+    orderItems: orderItems.map((item) => ({
+      typeName: single(item.ticket_types)?.name ?? null,
+      qty: item.qty,
+      unitPriceOre: item.unit_price_ore,
+      vatRate: item.vat_rate,
+    })),
+    ticketsWithQr,
+    force: true,
+  })
+
+  if (!result.sent) {
+    if (result.reason === 'already_sent_or_claimed') {
+      // Ett annat utskick (webhookens egen bakgrundsuppgift, eller ett
+      // annat admin-klick) pågår just nu för SAMMA order - inte ett
+      // fel, bara "försök igen om en liten stund".
+      return jsonResponse({ error: 'Ett utskick pågår redan för den här ordern - försök igen om en liten stund.' }, 409)
+    }
+    console.error('admin-resend-tickets: kunde inte skicka mailet för order', orderId, result.code)
     return jsonResponse({ error: 'Kunde inte skicka mailet.' }, 500)
   }
 
