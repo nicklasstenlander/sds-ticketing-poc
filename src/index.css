@@ -1945,3 +1945,12 @@ input[type='radio'] {
     min-width: 0;
   }
 }
+
+/* Gult ljussken längs ramens nederkant (samma som i adminbandet). */
+.signage-slide.framed.landscape,
+.signage-slide.framed.portrait {
+  background:
+    radial-gradient(ellipse 70% 30% at 85% 100%, rgba(246, 185, 59, 0.55), transparent 70%),
+    radial-gradient(ellipse 35% 22% at 5% 100%, rgba(246, 185, 59, 0.22), transparent 70%),
+    #070d1a;
+}
