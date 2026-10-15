@@ -1739,3 +1739,37 @@ input[type='radio'] {
     overflow-wrap: anywhere;
   }
 }
+
+@layer components {
+  .apply-form {
+    display: grid;
+    gap: 1.1rem;
+    max-width: 30rem;
+  }
+  .apply-form .btn-primary {
+    justify-self: start;
+  }
+  .apply-form textarea.field {
+    resize: vertical;
+  }
+  /* Honeypot: utanför skärmen, men inte display:none (en del bottar hoppar över dolda fält). */
+  .apply-hp {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .apply-done {
+    display: grid;
+    gap: 0.25rem;
+    padding: 1.1rem 1.3rem;
+    max-width: 30rem;
+    border-radius: var(--radius-sm);
+    background: var(--success-soft);
+    color: #12361f;
+  }
+  .apply-done strong {
+    font-size: 1.125rem;
+  }
+}

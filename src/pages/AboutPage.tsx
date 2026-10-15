@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 
 const FEATURES = [
@@ -52,6 +53,15 @@ export function AboutPage() {
         <p>
           Betalningen hanteras av Stripe, och vi sparar inga kortuppgifter. Dina uppgifter använder vi bara för att
           skicka din biljett och hantera ditt köp.
+        </p>
+        <h2>För arrangörer</h2>
+        <p>
+          Rideau är byggt för Sollentuna Dans &amp; Scenskola, men fler scener är välkomna. Driver du en förening, ett
+          teatergäng eller en danskola och vill sälja biljetter på samma sätt? Hör av dig, så berättar vi mer.{' '}
+          <Link className="link-accent" to="/kontakt">
+            Kontakta oss
+          </Link>
+          .
         </p>
       </div>
     </Layout>

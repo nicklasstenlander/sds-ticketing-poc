@@ -28,6 +28,25 @@ interface ApplyBody {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const FORM_NAME = 'organizer_application'
+const DEFAULT_NOTIFY_EMAIL = 'nicklas.stenlander@me.com'
+
+// Längdgränser - fälten är publika och hamnar i databasen och i ett mejl.
+const MAX_NAME_LENGTH = 120
+const MAX_EMAIL_LENGTH = 254
+const MAX_MESSAGE_LENGTH = 2000
+
+// Indata är publik och kommer från vem som helst: allt som hamnar i mejlets
+// HTML måste escapas, annars kan en avsändare lägga in egna länkar/HTML i
+// ett mejl som ser ut att komma från oss.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000 // 1 timme
 const RATE_LIMIT_MAX_ATTEMPTS = 3 // en 4:e ansökan från samma IP inom fönstret nekas
 
@@ -49,27 +68,21 @@ async function sendAdminNotification(params: { organizerName: string; email: str
     return
   }
 
-  const supabase = createAdminClient()
-  const { data: platformAdmins, error } = await supabase.from('platform_admins').select('user_id')
-  if (error || !platformAdmins || platformAdmins.length === 0) {
-    console.warn('Kunde inte hämta platform-admins för notismail:', error?.message)
-    return
-  }
-
-  const adminEmails: string[] = []
-  for (const admin of platformAdmins) {
-    const { data: userResult } = await supabase.auth.admin.getUserById(admin.user_id)
-    if (userResult?.user?.email) adminEmails.push(userResult.user.email)
-  }
-  if (adminEmails.length === 0) return
+  // Notisen går till en fast mottagare (Nicklas tar hand om ansökningarna
+  // därifrån), inte längre till alla platform-admins. Kan bytas utan kodändring
+  // via secreten APPLICATION_NOTIFY_EMAIL.
+  const adminEmails = [Deno.env.get('APPLICATION_NOTIFY_EMAIL') ?? DEFAULT_NOTIFY_EMAIL]
 
   const applicationsUrl = frontendBaseUrl ? `${frontendBaseUrl}/#/admin/organizers` : null
 
+  const safeName = escapeHtml(params.organizerName)
+  const safeEmail = escapeHtml(params.email)
+  const safeMessage = escapeHtml(params.message)
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
-      <h1 style="font-size:20px;">Ny arrangörsansökan: ${params.organizerName}</h1>
-      <p><strong>E-post:</strong> ${params.email}</p>
-      ${params.message ? `<p><strong>Meddelande:</strong> ${params.message}</p>` : ''}
+      <h1 style="font-size:20px;">Ny arrangörsansökan: ${safeName}</h1>
+      <p><strong>E-post:</strong> ${safeEmail}</p>
+      ${params.message ? `<p><strong>Meddelande:</strong></p><p style="white-space:pre-wrap;">${safeMessage}</p>` : ''}
       ${applicationsUrl ? `<p><a href="${applicationsUrl}">Öppna ansökningslistan i admin →</a></p>` : ''}
     </div>
   `
@@ -83,7 +96,8 @@ async function sendAdminNotification(params: { organizerName: string; email: str
     body: JSON.stringify({
       from: resendFrom,
       to: adminEmails,
-      subject: `Ny arrangörsansökan: ${params.organizerName}`,
+      // Radbrytningar bort ur ämnesraden (header-injektion).
+      subject: `Ny arrangörsansökan: ${params.organizerName.replace(/[\r\n]+/g, ' ')}`,
       html,
     }),
   })
@@ -146,6 +160,15 @@ Deno.serve(async (req: Request) => {
   if (!organizerName) return jsonResponse({ error: 'Arrangörsnamn krävs.' }, 400)
   if (!email || !EMAIL_RE.test(email)) {
     return jsonResponse({ error: 'En giltig e-postadress krävs.' }, 400)
+  }
+  if (organizerName.length > MAX_NAME_LENGTH) {
+    return jsonResponse({ error: `Namnet får vara högst ${MAX_NAME_LENGTH} tecken.` }, 400)
+  }
+  if (email.length > MAX_EMAIL_LENGTH) {
+    return jsonResponse({ error: 'E-postadressen är för lång.' }, 400)
+  }
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    return jsonResponse({ error: `Meddelandet får vara högst ${MAX_MESSAGE_LENGTH} tecken.` }, 400)
   }
 
   // === 4. Skapa ansökningsraden ===

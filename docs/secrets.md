@@ -17,6 +17,7 @@ värden ska finnas i 1Password.
 | `RESEND_API_KEY` | mail-utskick (bekräftelse, admin-inbjudan, m.fl.) | API-nyckel till Resend. |
 | `RESEND_FROM` | samma | Avsändaradress för utgående mail. |
 | `FRONTEND_BASE_URL` | `create-order`, `public-apply-organizer`, `admin-invite-member` | Basen för länkar som skickas i mail/redirects (t.ex. tillbaka till köpsidan). |
+| `APPLICATION_NOTIFY_EMAIL` | `public-apply-organizer` | Valfri. Mottagare av notismejlet när någon skickar en arrangörsansökan från Kontakt-sidan. Utan secret används nicklas.stenlander@me.com. |
 | `CRON_SECRET` | `release-expired-orders` | Delas med GitHub Actions-schemat (`release-expired-orders.yml`) som auktorisering för cron-anropet. |
 | `SIE_ACCOUNT_CLEARING`, `SIE_ACCOUNT_REVENUE`, `SIE_ACCOUNT_VAT` | — | ⚠️ **Matchar inte vad koden läser.** `platform-export-revenue/index.ts` läser `PLATFORM_SIE_ACCOUNT_REVENUE`/`_VAT`/`_CLEARING` (med `PLATFORM_`-prefix) — dessa tre secrets utan prefix läses alltså aldrig, funktionen faller tillbaka på sina hårdkodade default-konton (3041/2611/1580). Antingen döp om secreten eller rätta koden innan plattformens egen bokföringsexport litas på. |
 | `ADMIN_PIN` | — (avvecklad) | Äldre delad PIN-kod för admin-inloggning (se `_shared/adminToken.ts`). Läses inte längre av någon funktion — ersatt av riktig Supabase Auth per arrangör. Säker att ta bort. |
