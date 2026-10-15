@@ -1240,14 +1240,14 @@ input[type='radio'] {
   /* Bred skärm: stående affisch till vänster, all text och köpväg till höger. */
   @media (min-width: 900px) {
     .poster-frame-hero {
-      aspect-ratio: 2 / 3;
+      aspect-ratio: 9 / 16;
     }
     .poster-frame-hero::before,
     .stage-backdrop::before {
       background-image: var(--poster-p, var(--poster-l));
     }
     .feature {
-      grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
       gap: clamp(40px, 5vw, 64px);
       align-items: start;
     }

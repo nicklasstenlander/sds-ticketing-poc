@@ -80,10 +80,13 @@ function monogram(title: string): string {
 function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'hero' | 'tile' }) {
   const first = shows[0]
   const { landscape, portrait } = posterUrls(shows)
+  // Hela klassnamn, inte ihopsatta av variant: Tailwind rensar annars bort
+  // klasserna ur CSS:en eftersom den inte hittar dem som strängar i koden.
+  const frameClass = variant === 'hero' ? 'poster-frame-hero' : 'poster-frame-tile'
   if (landscape || portrait) {
     const alt = `Affisch: ${first.title}`
     return (
-      <div className={`poster poster-frame poster-frame-${variant}`} style={posterVars(landscape, portrait)}>
+      <div className={`poster poster-frame ${frameClass}`} style={posterVars(landscape, portrait)}>
         {variant === 'hero' ? (
           <picture>
             {landscape && portrait && <source media="(min-width: 900px)" srcSet={portrait} />}
@@ -98,7 +101,7 @@ function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'h
   // Ingen affisch uppladdad: en yta i varumärkets färger med monogram, så
   // rutnätet inte får ett tomt hål.
   return (
-    <div className={`poster poster-frame poster-frame-${variant} poster-fallback`} aria-hidden="true">
+    <div className={`poster poster-frame ${frameClass} poster-fallback`} aria-hidden="true">
       <span className="poster-monogram">{monogram(first.title)}</span>
     </div>
   )
