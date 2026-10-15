@@ -45,10 +45,13 @@ export function AdminDashboardPage() {
   const totalSold = publishedEvents.reduce((sum, e) => sum + e.sold_count, 0)
 
   return (
-    <Layout wide>
+    <Layout wide band={
+        <>
       <AdminNav />
       <h1 className="page-title mb-2">Dashboard</h1>
       <p className="page-lede mb-8">Överblick över dina föreställningar.</p>
+        </>
+      }>
 
       {error && <p className="text-[var(--danger)] mb-6">{error}</p>}
 

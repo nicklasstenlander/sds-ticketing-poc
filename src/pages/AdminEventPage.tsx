@@ -74,32 +74,50 @@ export function AdminEventPage() {
   }, [id, navigate])
 
   return (
-    <Layout>
-      <AdminNav />
-      <Link to="/admin" className="footer-link !px-0 !min-h-0 mb-2">
-        &larr; Tillbaka till admin
-      </Link>
-
+    <Layout
+      wide
+      band={
+        <>
+          <AdminNav />
+          <Link to="/admin" className="admin-back">
+            &larr; Tillbaka till admin
+          </Link>
+          {data && (
+            <div className="hero-split admin-event-hero">
+              <div className="min-w-0">
+                <h1 className="page-title">{data.event.title}</h1>
+                <p className="page-lede">
+                  {data.event.starts_at
+                    ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+                      formatStockholmDateTimeLocale(data.event.starts_at, { dateStyle: 'long', timeStyle: 'short' })
+                    : 'Inget datum satt ännu — sätt det på admin-huvudsidan innan publicering'}
+                  {data.event.venue ? ` · ${data.event.venue}` : ''}
+                </p>
+                {/* Kapaciteten är en delad pott för HELA eventet (rättelseordern
+                    2026-08-05) - visas här en gång, inte upprepad per
+                    biljettyp. Redigeras från admin-huvudsidan (AdminPage.tsx). */}
+                <p className="admin-band-meta">
+                  {data.event.sold_count} / {data.event.capacity} sålda totalt
+                </p>
+              </div>
+              {(data.event.poster_landscape_url || data.event.poster_portrait_url) && (
+                <div className="admin-event-poster">
+                  <img
+                    src={(data.event.poster_landscape_url ?? data.event.poster_portrait_url)!}
+                    alt={`Affisch: ${data.event.title}`}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      }
+    >
       {error && <p className="text-[var(--danger)] mt-4">{error}</p>}
       {!data && !error && <p className="text-[var(--text-muted)] mt-4">Laddar…</p>}
 
       {data && (
-        <div className="mt-4">
-          <h1 className="page-title">{data.event.title}</h1>
-          <p className="text-[var(--text-muted)] mb-1">
-            {data.event.starts_at
-              ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
-                formatStockholmDateTimeLocale(data.event.starts_at, { dateStyle: 'long', timeStyle: 'short' })
-              : 'Inget datum satt ännu — sätt det på admin-huvudsidan innan publicering'}
-            {data.event.venue ? ` · ${data.event.venue}` : ''}
-          </p>
-          {/* Kapaciteten är en delad pott för HELA eventet (rättelseordern
-              2026-08-05) - visas här en gång, inte upprepad per
-              biljettyp. Redigeras från admin-huvudsidan (AdminPage.tsx). */}
-          <p className="text-[var(--text-muted)] mb-8">
-            {data.event.sold_count} / {data.event.capacity} sålda totalt
-          </p>
-
+        <div>
           {/* Arkiverat event (ordern "Arkiv för ordrar och event"
               2026-10-12) - synligt här även om man kommer direkt till
               den här sidan (t.ex. en sparad länk) utan att ha sett

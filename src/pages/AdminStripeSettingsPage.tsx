@@ -135,7 +135,8 @@ export function AdminStripeSettingsPage() {
   if (!authed) return <Navigate to="/admin" replace />
 
   return (
-    <Layout wide>
+    <Layout wide band={
+        <>
       <AdminNav
         actions={
           <>
@@ -161,6 +162,8 @@ export function AdminStripeSettingsPage() {
         }
       />
       <h1 className="page-title mb-6">Stripe-inställningar</h1>
+        </>
+      }>
 
       {!orgCheckReady && <p className="text-[var(--text-muted)] text-sm">Laddar…</p>}
 

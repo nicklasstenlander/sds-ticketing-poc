@@ -239,7 +239,8 @@ export function AdminEmbedPage() {
   if (!authed) return <Navigate to="/admin" replace />
 
   return (
-    <Layout wide>
+    <Layout wide band={
+        <>
       <AdminNav
         actions={
           <>
@@ -265,10 +266,12 @@ export function AdminEmbedPage() {
         }
       />
       <h1 className="page-title mb-2">Bädda in biljettwidget</h1>
-      <p className="text-sm text-[var(--text-muted)] mb-6">
+      <p className="page-lede mb-2">
         Klistra in koden nedan i en Code Block på t.ex. Squarespace. Före släppet visas nedräkningen. Vid släpp byts
         den mot Köp biljetter, utan att du ändrar koden.
       </p>
+        </>
+      }>
 
       {loadError && <p className="text-sm text-[var(--danger)] mb-4">{loadError}</p>}
       {!events && !loadError && <p className="text-sm text-[var(--text-muted)]">Laddar…</p>}
@@ -349,7 +352,7 @@ export function AdminEmbedPage() {
 
             <section className="card">
               <h2 className="text-lg font-extrabold mb-3">Utseende</h2>
-              <div className="flex gap-2 mb-3">
+              <div className="flex flex-wrap gap-2 mb-3">
                 <button
                   type="button"
                   onClick={() => setTheme('light')}
@@ -365,7 +368,7 @@ export function AdminEmbedPage() {
                   Mörk
                 </button>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {ACCENTS.map((a) => (
                   <button
                     key={a.value}
@@ -392,7 +395,7 @@ export function AdminEmbedPage() {
             <section className="card">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-extrabold">Förhandsvisning</h2>
-                <div className="flex items-center gap-1 text-sm" role="group" aria-label="Förhandsvisningens bredd">
+                <div className="flex flex-wrap items-center gap-1 text-sm" role="group" aria-label="Förhandsvisningens bredd">
                   {(
                     [
                       { value: 'auto', label: 'Auto' },

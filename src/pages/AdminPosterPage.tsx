@@ -129,7 +129,8 @@ export function AdminPosterPage() {
   const missing = (s: Show) => (config.orientation === 'portrait' ? !s.portrait : !s.landscape)
 
   return (
-    <Layout wide>
+    <Layout wide band={
+        <>
       <AdminNav
         actions={
           <button onClick={handleLogout} className="admin-logout">
@@ -142,6 +143,8 @@ export function AdminPosterPage() {
         Välj vilka affischer som ska visas och få en länk till digital signage. Länken bläddrar mellan affischerna
         och hämtar nya var 5:e minut.
       </p>
+        </>
+      }>
 
       {error && <p role="alert" className="text-[var(--danger)] mb-4">{error}</p>}
 
@@ -149,7 +152,7 @@ export function AdminPosterPage() {
         <div className="space-y-6">
           <section className="card">
             <h2 className="text-lg font-extrabold mb-3">Format</h2>
-            <div className="flex gap-3" role="radiogroup" aria-label="Skärmens orientering">
+            <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Skärmens orientering">
               {(
                 [
                   ['landscape', 'Liggande'],

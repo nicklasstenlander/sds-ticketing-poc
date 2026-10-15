@@ -34,12 +34,16 @@ interface LayoutProps {
   // Mörk scen för de publika sidorna: tokens byts på <html> (så även ytan bakom
   // sidan blir mörk). Admin och villkorssidan förblir ljusa.
   dark?: boolean
+  // Adminens mörka rubrikband (hybrid: ljus arbetsyta under). Innehållet är sidans
+  // navigering, rubrik och ev. KPI-kort. bandOverhang = kort som hänger över bandets nederkant.
+  band?: ReactNode
+  bandOverhang?: boolean
   // Affischens URL:er (bara eventlistan): en kraftigt suddad, mörkad kopia
   // fyller scenens bakgrund och tonas ut nedåt. Se .stage-backdrop i index.css.
   backdrop?: { landscape?: string | null; portrait?: string | null }
 }
 
-export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false, backdrop }: LayoutProps) {
+export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false, backdrop, band, bandOverhang = false }: LayoutProps) {
   useEffect(() => {
     if (!dark) return
     document.documentElement.classList.add('theme-dark')
@@ -55,7 +59,7 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
           svep). Admin-länken flyttad till sidfoten (ordern 2026-10-04) -
           diskret för en vanlig besökare, inte en framträdande huvudmeny-
           punkt. */}
-      <div className={`stage ${hero ? 'has-hero' : ''} ${heroCompact ? 'stage-compact' : ''} ${heroOverlap ? 'stage-overlap' : ''} ${dark ? 'stage-dark' : ''} ${printHiddenClass}`}>
+      <div className={`stage ${hero ? 'has-hero' : ''} ${heroCompact ? 'stage-compact' : ''} ${heroOverlap ? 'stage-overlap' : ''} ${dark ? 'stage-dark' : ''} ${band ? 'stage-admin' : ''} ${printHiddenClass}`}>
       {backdrop && (backdrop.landscape || backdrop.portrait) && (
         <div className="stage-backdrop" aria-hidden="true" style={posterVars(backdrop.landscape, backdrop.portrait)} />
       )}
@@ -78,13 +82,18 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
           </nav>
         </div>
       </header>
+        {band && (
+          <div className="admin-band">
+            <div className={`mx-auto ${widthClass} px-4`}>{band}</div>
+          </div>
+        )}
         {hero && (
           <div className="stage-hero">
             <div className={`mx-auto ${widthClass} px-4`}>{hero}</div>
           </div>
         )}
       </div>
-      <main className={`flex-1 mx-auto w-full ${widthClass} px-4 pt-10 pb-12`}>{children}</main>
+      <main className={`flex-1 mx-auto w-full ${widthClass} px-4 ${bandOverhang ? 'pt-24' : 'pt-10'} pb-12`}>{children}</main>
       <footer
         className={`mx-auto w-full ${widthClass} px-4 pb-8 pt-2 flex items-center justify-center gap-2 ${printHiddenClass}`}
       >

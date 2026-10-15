@@ -86,7 +86,8 @@ export function AdminOrganizersPage() {
   if (!authed) return <Navigate to="/admin" replace />
 
   return (
-    <Layout wide>
+    <Layout wide band={
+        <>
       <AdminNav
         actions={
           <>
@@ -112,6 +113,8 @@ export function AdminOrganizersPage() {
         }
       />
       <h1 className="page-title mb-6">Arrangörer</h1>
+        </>
+      }>
 
       {!orgCheckReady && <p className="text-[var(--text-muted)] text-sm">Laddar…</p>}
       {orgCheckReady && (isPlatformAdmin && !activeOrgId ? (

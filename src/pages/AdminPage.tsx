@@ -10,6 +10,7 @@ import type { AdminEventRow } from '../lib/types'
 import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
 import { LoginForm } from './admin/AdminLoginForm'
+import { monogram } from '../lib/monogram'
 import { ExportSection } from './admin/ExportSection'
 import { PlatformRevenueExportSection } from './admin/PlatformRevenueExportSection'
 import {
@@ -77,16 +78,41 @@ export function AdminPage() {
 
   if (!authed) {
     return (
-      <Layout>
+      <Layout
+        dark
+        hero={
+          <>
+            <h1 className="page-title">Admin</h1>
+            <p className="page-lede">Logga in för att hantera dina föreställningar.</p>
+          </>
+        }
+      >
         <LoginForm onSuccess={() => setAuthed(true)} />
       </Layout>
     )
   }
 
   return (
-    <Layout wide>
-      <AdminDashboard onLogout={() => setAuthed(false)} />
-    </Layout>
+    <AdminDashboard onLogout={() => setAuthed(false)} />
+  )
+}
+
+// Affischminiatyr i eventlistan: liggande (16:9) först, annars stående, annars
+// monogram - så varje rad har en bild och listan känns som föreställningarna.
+function EventThumb({ event }: { event: AdminEventRow }) {
+  const src = event.poster_landscape_url ?? event.poster_portrait_url
+  const portraitOnly = !event.poster_landscape_url && Boolean(event.poster_portrait_url)
+  if (!src) {
+    return (
+      <span className="admin-thumb admin-thumb-empty" aria-hidden="true">
+        {monogram(event.title)}
+      </span>
+    )
+  }
+  return (
+    <span className={`admin-thumb ${portraitOnly ? 'admin-thumb-portrait' : ''}`}>
+      <img src={src} alt="" loading="lazy" />
+    </span>
   )
 }
 
@@ -431,7 +457,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   return (
-    <div>
+    <Layout
+      wide
+      bandOverhang={Boolean(events && events.length > 0)}
+      band={
+        <>
       <AdminNav
         actions={
           <>
@@ -455,10 +485,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </>
         }
       />
-      <h1 className="page-title mb-6">Events</h1>
-
+      <h1 className="page-title">Events</h1>
       {events && events.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="admin-kpis">
           <div className="stat-card">
             <div className="stat-label">Publicerade events</div>
             <div className="stat-value">
@@ -484,7 +513,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
       )}
-
+        </>
+      }
+    >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <section className="order-1">
           <div className="flex items-center justify-between mb-4">
@@ -536,8 +567,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         : ''
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <Link to={`/admin/event/${event.id}`} className="min-w-0 flex-1 hover:underline">
+                  <div className="admin-event-head">
+                    <Link to={`/admin/event/${event.id}`} className="admin-event-link">
+                      <EventThumb event={event} />
+                      <div className="min-w-0 flex-1">
                       <div className="font-semibold text-[var(--text)]">{event.title}</div>
                       <div className="text-sm text-[var(--text-muted)]">
                         {event.starts_at
@@ -549,6 +582,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         {summary.ticket_type_count === 0
                           ? 'inga biljettyper'
                           : `${summary.ticket_type_count} biljettyp${summary.ticket_type_count > 1 ? 'er' : ''}`}
+                      </div>
                       </div>
                     </Link>
                     <div className="text-right shrink-0">
@@ -827,6 +861,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           {isPlatformAdmin && <PlatformRevenueExportSection />}
         </div>
       </div>
-    </div>
+    </Layout>
   )
 }

@@ -101,9 +101,16 @@ export function AdminWelcomePage() {
   }
 
   return (
-    <Layout>
-      <div className="card max-w-sm mx-auto">
-        <h1 className="text-xl font-bold mb-4 text-[var(--text)]">Välkommen</h1>
+    <Layout
+      dark
+      hero={
+        <>
+          <h1 className="page-title">Välkommen</h1>
+          <p className="page-lede">Skapa ditt lösenord för att komma igång.</p>
+        </>
+      }
+    >
+      <div className="card max-w-sm mx-auto p-8">
 
         {stage === 'checking' && <p className="text-[var(--text-muted)] text-sm">Verifierar inbjudan…</p>}
 
