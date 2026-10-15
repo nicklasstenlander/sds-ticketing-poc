@@ -7,6 +7,7 @@ const ITEMS = [
   { to: '/admin/organizers', label: 'Arrangörer', end: false },
   { to: '/admin/stripe-installning', label: 'Stripe', end: false },
   { to: '/admin/embed', label: 'Bädda in', end: false },
+  { to: '/admin/affischer', label: 'Affischer', end: false },
 ]
 
 // Gemensam adminnavigering (ersätter fem egna länkrader per sida) -

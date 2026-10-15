@@ -10,6 +10,8 @@ import { AdminWelcomePage } from './pages/AdminWelcomePage'
 import { AdminOrganizersPage } from './pages/AdminOrganizersPage'
 import { AdminStripeSettingsPage } from './pages/AdminStripeSettingsPage'
 import { AdminEmbedPage } from './pages/AdminEmbedPage'
+import { AdminPosterPage } from './pages/AdminPosterPage'
+import { PosterPlayerPage } from './pages/PosterPlayerPage'
 
 // HashRouter (URL:er som /#/admin), inte BrowserRouter: GitHub Pages har
 // ingen serverkonfiguration som kan skicka godtyckliga sökvägar till
@@ -38,6 +40,8 @@ export function App() {
         <Route path="/admin/organizers" element={<AdminOrganizersPage />} />
         <Route path="/admin/stripe-installning" element={<AdminStripeSettingsPage />} />
         <Route path="/admin/embed" element={<AdminEmbedPage />} />
+        <Route path="/admin/affischer" element={<AdminPosterPage />} />
+        <Route path="/skylt" element={<PosterPlayerPage />} />
         <Route path="*" element={<Navigate to="/evenemang" replace />} />
       </Routes>
     </HashRouter>

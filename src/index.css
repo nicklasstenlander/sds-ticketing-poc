@@ -1368,3 +1368,114 @@ input[type='radio'] {
   }
 }
 
+/* ---- Digital signage (/skylt) -------------------------------------- */
+.signage {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  cursor: none;
+}
+.signage-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+.signage-slide.is-active {
+  opacity: 1;
+}
+.signage-slide img {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+}
+.signage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vmin;
+  padding: 2.4vmin 3vmin;
+  background: #0d1520;
+  color: #f4f1ea;
+}
+.signage-info strong {
+  font-size: 5vmin;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.signage-info span {
+  font-size: 3vmin;
+  color: #f6b93b;
+  font-weight: 700;
+}
+.signage-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #6f8399;
+  font-size: 3vmin;
+}
+@media (prefers-reduced-motion: reduce) {
+  .signage-slide {
+    transition: none;
+  }
+}
+
+@layer components {
+  .poster-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 10px 18px;
+    border-radius: var(--radius-sm);
+    border: 2px solid var(--border-strong);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .poster-option.is-selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .poster-option:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .poster-option-shape {
+    display: block;
+    border: 2px solid currentColor;
+    border-radius: 3px;
+  }
+  .poster-option-shape.landscape {
+    width: 32px;
+    height: 20px;
+  }
+  .poster-option-shape.portrait {
+    width: 20px;
+    height: 32px;
+  }
+  .poster-preview {
+    margin-inline: auto;
+    background: #000;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
+  .poster-preview.landscape {
+    width: 100%;
+  }
+  .poster-preview.portrait {
+    width: min(100%, 300px);
+  }
+  .poster-preview iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+}
