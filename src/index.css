@@ -1330,7 +1330,6 @@ input[type='radio'] {
   }
   .purchase-main {
     min-width: 0;
-    max-width: 640px;
   }
   .purchase-head {
     margin-bottom: 28px;
@@ -1349,6 +1348,9 @@ input[type='radio'] {
       grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
       gap: clamp(40px, 5vw, 64px);
       align-items: start;
+    }
+    .purchase-main {
+      max-width: 640px;
     }
     .purchase-poster {
       position: sticky;
