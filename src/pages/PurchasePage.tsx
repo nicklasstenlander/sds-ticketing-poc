@@ -9,6 +9,7 @@ import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/
 import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
+import { monogram } from '../lib/monogram'
 import { posterVars } from '../lib/posterVars'
 import { loadPurchaseDraft, savePurchaseDraft, clearPurchaseDraft } from '../lib/purchaseDraft'
 
@@ -441,10 +442,17 @@ export function PurchasePage() {
       wide="xl"
       backdrop={{ landscape: posterL, portrait: posterP }}
     >
-      <div className={`purchase ${posterL || posterP ? 'purchase-with-poster' : ''}`}>
+      <div className={'purchase purchase-with-poster'}>
         {/* Affischen som ett slutet objekt (samma ram som eventlistan):
             alltid hel, suddad kopia bakom, ingen text ovanpå. Liggande på
             smal skärm, stående på bred. */}
+        {!(posterL || posterP) && (
+          <div className="purchase-poster purchase-poster-fallback">
+            <div className="poster poster-frame poster-frame-hero poster-fallback" aria-hidden="true">
+              <span className="poster-monogram">{monogram(event.title)}</span>
+            </div>
+          </div>
+        )}
         {(posterL || posterP) && (
           <div className="purchase-poster">
             <div className="poster poster-frame poster-frame-hero" style={posterVars(posterL, posterP)}>

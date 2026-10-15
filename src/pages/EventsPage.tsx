@@ -6,6 +6,7 @@ import { Layout } from '../components/Layout'
 import { computeCountdown, computeSalesState } from '../lib/salesState'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
+import { monogram } from '../lib/monogram'
 import { posterVars } from '../lib/posterVars'
 
 interface EventWithTicketTypes extends EventRow {
@@ -63,14 +64,6 @@ function posterUrls(shows: EventWithTicketTypes[]) {
 
 // "Around the World" -> "AW". Används när ingen affisch finns, så ytan inte
 // upprepar titeln som redan står bredvid.
-function monogram(title: string): string {
-  const words = title.split(/\s+/).filter((w) => w.length > 2 || /^\p{Lu}/u.test(w))
-  return (words.length > 0 ? words : title.split(/\s+/))
-    .slice(0, 2)
-    .map((w) => w.charAt(0).toUpperCase())
-    .join('')
-}
-
 // Affischen är ett slutet objekt: arrangören styr inte hur den ser ut, så den
 // visas alltid HEL (aldrig beskuren) i en ram med fast format. En kraftigt
 // suddad kopia fyller ytan bakom, och en hårfin kant skiljer den från sidan -
