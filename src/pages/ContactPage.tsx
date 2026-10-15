@@ -122,7 +122,8 @@ export function ContactPage() {
         </p>
         <h2>Vem säljer biljetterna</h2>
         <p>
-          Biljetterna säljs av Moon Movements AB, som driver Sollentuna Dans &amp; Scenskola.
+          Biljetterna säljs av Moon Movements AB, som driver Sollentuna Dans &amp; Scenskola. Med licens från Nicklas
+          Stenlander Marquart.
         </p>
         <dl className="contact-facts">
           <div>

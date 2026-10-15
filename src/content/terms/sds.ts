@@ -6,22 +6,28 @@
 // här, se filkommentaren i scripts/check-terms.mjs för build-spärren mot
 // kvarvarande hakparenteser/"[granska]".
 //
+// VERSION 2 (2026-10-15, uppdrag från Nicklas): punkt 1 kompletterad med
+// "Med licens från Nicklas Stenlander Marquart". Övriga villkor oförändrade.
+// SERVERNS kopia (supabase/functions/_shared/termsVersions.ts) är bumpad i
+// samma leverans; create-order måste deployas för att nya ordrar ska
+// stämplas med version 2.
+//
 // Ändra INTE texten här utan en ny order - en ändring i sak kräver en ny
 // juridisk granskning och en ny VERSION (se orders.terms_version-förslaget,
 // 20261012000000_order_terms_version.sql, som ännu inte är applicerad).
 export const DRAFT = false
-export const VERSION = 1
-export const LAST_UPDATED = '12 oktober 2026'
+export const VERSION = 2
+export const LAST_UPDATED = '15 oktober 2026'
 export const TITLE = 'Köpvillkor för biljetter'
 
 export const BODY = `
 # Köpvillkor för biljetter
 
-*Senast uppdaterad: 12 oktober 2026*
+*Senast uppdaterad: 15 oktober 2026*
 
 ## 1. Vem säljer biljetterna
 
-Biljetterna säljs av **Moon Movements AB**, organisationsnummer 559317-1936, som driver Sollentuna Dans & Scenskola.
+Biljetterna säljs av **Moon Movements AB**, organisationsnummer 559317-1936, som driver Sollentuna Dans & Scenskola. Med licens från Nicklas Stenlander Marquart.
 
 - Adress: Grekfararvägen 7
 - E-post: info@sollentunadansochscenskola.se

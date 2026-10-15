@@ -17,7 +17,7 @@
 // i src/content/terms/<slug>.ts (VERSION-konstanten där), uppdatera
 // samma arrangörs rad här i SAMMA leverans.
 export const TERMS_VERSION_BY_ORGANIZER_SLUG: Record<string, number> = {
-  sds: 1,
+  sds: 2,
 }
 
 /** Null om arrangören saknar en registrerad villkorsversion här - samma
