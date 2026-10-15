@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
-import { parsePosterQuery } from '../lib/posterUrl'
+import { appUrl, parsePosterQuery } from '../lib/posterUrl'
+import { QrCode } from '../components/QrCode'
 import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import type { EventRow } from '../lib/types'
 
 type PosterEvent = Pick<
   EventRow,
-  'id' | 'title' | 'venue' | 'starts_at' | 'poster_portrait_url' | 'poster_landscape_url'
+  'id' | 'slug' | 'title' | 'venue' | 'starts_at' | 'poster_portrait_url' | 'poster_landscape_url'
 >
 
 // Egen anonym klient, utan inloggningssession: skärmen ska se exakt det en
@@ -47,7 +48,7 @@ export function PosterPlayerPage() {
     async function load() {
       const { data, error } = await supabase
         .from('events')
-        .select('id,title,venue,starts_at,poster_portrait_url,poster_landscape_url')
+        .select('id,slug,title,venue,starts_at,poster_portrait_url,poster_landscape_url')
         .order('starts_at', { ascending: true })
       // Vid nätverksfel behålls senaste listan - skärmen ska aldrig bli tom för ett hickup.
       if (cancelled || error) return
@@ -65,7 +66,9 @@ export function PosterPlayerPage() {
     if (!events) return []
     const cutoff = Date.now() - GRACE_MS
     const seen = new Set<string>()
-    const out: { id: string; src: string; title: string; venue: string | null; when: string }[] = []
+    const out: { id: string; src: string; title: string; venue: string | null; when: string; link: string }[] = []
+    const perShow = new Map<string, PosterEvent[]>()
+    for (const e of events) perShow.set(`${e.title}|${e.venue ?? ''}`, [...(perShow.get(`${e.title}|${e.venue ?? ''}`) ?? []), e])
     for (const e of events) {
       if (!e.starts_at || new Date(e.starts_at).getTime() < cutoff) continue
       if (config.eventIds && !config.eventIds.includes(e.id)) continue
@@ -83,6 +86,8 @@ export function PosterPlayerPage() {
         title: e.title,
         venue: e.venue,
         when: formatStockholmDateTimeLocale(e.starts_at, { day: 'numeric', month: 'long' }),
+        // En speltid: direkt till köpsidan. Flera speltider: eventlistan, där alla tider syns.
+        link: (perShow.get(key)?.length ?? 1) === 1 ? appUrl(`/kop/${e.slug}`) : appUrl('/evenemang'),
       })
     }
     return out
@@ -101,10 +106,24 @@ export function PosterPlayerPage() {
       {slides.map((slide, i) => (
         <div key={slide.id} className={`signage-slide ${i === active ? 'is-active' : ''}`} aria-hidden={i !== active}>
           <img src={slide.src} alt={slide.title} />
-          {config.showInfo && (
+          {(config.showInfo || config.showQr) && (
             <div className="signage-info">
-              <strong>{slide.title}</strong>
-              <span>{[slide.when, slide.venue].filter(Boolean).join(' · ')}</span>
+              <div className="signage-info-text">
+                {config.showInfo ? (
+                  <>
+                    <strong>{slide.title}</strong>
+                    <span>{[slide.when, slide.venue].filter(Boolean).join(' · ')}</span>
+                  </>
+                ) : (
+                  <strong>Biljetter</strong>
+                )}
+              </div>
+              {config.showQr && (
+                <div className="signage-qr">
+                  <span>Skanna och köp biljett</span>
+                  <QrCode value={slide.link} label={`QR-kod: köp biljett till ${slide.title}`} />
+                </div>
+              )}
             </div>
           )}
         </div>

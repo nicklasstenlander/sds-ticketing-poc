@@ -261,6 +261,20 @@ export function AdminPosterPage() {
               />
               <span>Visa titel, datum och plats under affischen</span>
             </label>
+            <label className="flex items-start gap-3 mt-3">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={config.showQr}
+                onChange={(e) => setConfig((c) => ({ ...c, showQr: e.target.checked }))}
+              />
+              <span>
+                Visa QR-kod för biljettköp
+                <span className="block text-sm text-[var(--text-muted)]">
+                  Leder till köpsidan, eller till eventlistan om föreställningen har flera speltider.
+                </span>
+              </span>
+            </label>
           </section>
         </div>
 

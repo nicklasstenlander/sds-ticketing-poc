@@ -6,6 +6,7 @@
 //   e = alla | id,id,...     alla kommande (uppdateras automatiskt) eller valda event
 //   t = sekunder             visningstid per affisch
 //   i = 1                    visa titel/datum/plats under affischen
+//   q = 1                    visa QR-kod till biljettköp
 
 export type PosterOrientation = 'portrait' | 'landscape'
 
@@ -15,6 +16,7 @@ export interface PosterConfig {
   eventIds: string[] | null
   seconds: number
   showInfo: boolean
+  showQr: boolean
 }
 
 export const DEFAULT_POSTER_CONFIG: PosterConfig = {
@@ -22,6 +24,7 @@ export const DEFAULT_POSTER_CONFIG: PosterConfig = {
   eventIds: null,
   seconds: 10,
   showInfo: false,
+  showQr: false,
 }
 
 export const POSTER_SECONDS_OPTIONS = [5, 8, 10, 15, 20, 30, 60]
@@ -32,6 +35,7 @@ export function posterConfigToQuery(cfg: PosterConfig): string {
   params.set('e', cfg.eventIds === null ? 'alla' : cfg.eventIds.join(','))
   params.set('t', String(cfg.seconds))
   if (cfg.showInfo) params.set('i', '1')
+  if (cfg.showQr) params.set('q', '1')
   return params.toString()
 }
 
@@ -44,7 +48,13 @@ export function parsePosterQuery(params: URLSearchParams): PosterConfig {
     eventIds,
     seconds: Number.isFinite(t) && t >= 3 && t <= 600 ? Math.round(t) : DEFAULT_POSTER_CONFIG.seconds,
     showInfo: params.get('i') === '1',
+    showQr: params.get('q') === '1',
   }
+}
+
+// Absolut länk till en sida i appen (används i QR-koden på affischen).
+export function appUrl(hashPath: string): string {
+  return `${window.location.origin}${window.location.pathname}#${hashPath}`
 }
 
 // Absolut URL till spelaren. HashRouter -> "#/skylt?...". Byggs av
