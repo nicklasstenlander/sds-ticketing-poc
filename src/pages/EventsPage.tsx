@@ -3,13 +3,18 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
-import { computeSalesState } from '../lib/salesState'
+import { computeCountdown, computeSalesState } from '../lib/salesState'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
+import { posterVars } from '../lib/posterVars'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
   organizers: EventOrganizerRelation | EventOrganizerRelation[] | null
+}
+
+function organizerOf(e: EventWithTicketTypes): EventOrganizerRelation | undefined {
+  return Array.isArray(e.organizers) ? e.organizers[0] : (e.organizers ?? undefined)
 }
 
 // En föreställning (samma titel/plats) visas som EN affischruta med en
@@ -49,45 +54,103 @@ function dateRange(shows: EventWithTicketTypes[]): string {
   return `${day(first)} ${month(first)}–${day(last)} ${month(last)}`
 }
 
-// Liggande affisch är förstahandsval (bred, 16:9); stående används bara om den
-// liggande saknas. Aldrig beskuren.
-function Poster({ shows, prefer = 'landscape' }: { shows: EventWithTicketTypes[]; prefer?: 'landscape' | 'portrait' }) {
+function posterUrls(shows: EventWithTicketTypes[]) {
+  return {
+    landscape: shows.find((e) => e.poster_landscape_url)?.poster_landscape_url ?? null,
+    portrait: shows.find((e) => e.poster_portrait_url)?.poster_portrait_url ?? null,
+  }
+}
+
+// "Around the World" -> "AW". Används när ingen affisch finns, så ytan inte
+// upprepar titeln som redan står bredvid.
+function monogram(title: string): string {
+  const words = title.split(/\s+/).filter((w) => w.length > 2 || /^\p{Lu}/u.test(w))
+  return (words.length > 0 ? words : title.split(/\s+/))
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('')
+}
+
+// Affischen är ett slutet objekt: arrangören styr inte hur den ser ut, så den
+// visas alltid HEL (aldrig beskuren) i en ram med fast format. En kraftigt
+// suddad kopia fyller ytan bakom, och en hårfin kant skiljer den från sidan -
+// då fungerar ljusa, mörka, mättade och felformaterade affischer lika bra.
+// Hero: liggande på smal skärm, stående på bred (om båda finns). Ruta i
+// "Fler föreställningar": stående först.
+function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'hero' | 'tile' }) {
   const first = shows[0]
-  const landscape = shows.find((e) => e.poster_landscape_url)?.poster_landscape_url
-  const portrait = shows.find((e) => e.poster_portrait_url)?.poster_portrait_url
-  const useLandscape = prefer === 'landscape' ? Boolean(landscape) : !portrait && Boolean(landscape)
-  const src = useLandscape ? landscape : (portrait ?? landscape)
-  if (src) {
+  const { landscape, portrait } = posterUrls(shows)
+  if (landscape || portrait) {
+    const alt = `Affisch: ${first.title}`
     return (
-      <div className={`poster ${useLandscape ? 'poster-landscape' : 'poster-portrait'}`}>
-        <img src={src} alt={`Affisch: ${first.title}`} loading="lazy" />
+      <div className={`poster poster-frame poster-frame-${variant}`} style={posterVars(landscape, portrait)}>
+        {variant === 'hero' ? (
+          <picture>
+            {landscape && portrait && <source media="(min-width: 900px)" srcSet={portrait} />}
+            <img src={landscape ?? portrait ?? ''} alt={alt} />
+          </picture>
+        ) : (
+          <img src={portrait ?? landscape ?? ''} alt={alt} loading="lazy" />
+        )}
       </div>
     )
   }
-  // Ingen affisch uppladdad: en typografisk affisch i varumärkets färger,
-  // så rutnätet inte får ett tomt hål.
+  // Ingen affisch uppladdad: en yta i varumärkets färger med monogram, så
+  // rutnätet inte får ett tomt hål.
   return (
-    <div className={`poster ${prefer === 'portrait' ? 'poster-portrait' : 'poster-landscape'} poster-fallback`} aria-hidden="true">
-      <span>{first.title}</span>
+    <div className={`poster poster-frame poster-frame-${variant} poster-fallback`} aria-hidden="true">
+      <span className="poster-monogram">{monogram(first.title)}</span>
     </div>
   )
 }
 
-function Showtime({ event }: { event: EventWithTicketTypes }) {
+function ClockIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  )
+}
+
+// Försäljningsstart som en notis (inte en knappliknande pill) med nedräkning i
+// hela dagar när det är minst två dagar kvar.
+function SalesNotice({ opens }: { opens: string }) {
+  const { days } = computeCountdown(opens, 0)
+  return (
+    <div className="sales-notice">
+      <ClockIcon />
+      <p>
+        <strong>Biljetterna släpps {formatStockholmDateTime(opens)}</strong>
+        {days >= 2 && <span className="sales-notice-count"> · om {days} dagar</span>}
+      </p>
+    </div>
+  )
+}
+
+// Tre tydliga tillstånd: till salu (fylld), släpps snart (streckad kant +
+// klocka), slutsålt (överstruken).
+function Showtime({ event, timeOnly = false }: { event: EventWithTicketTypes; timeOnly?: boolean }) {
   const types = event.ticket_types ?? []
   const salesState = computeSalesState({
     salesOpenAt: event.sales_open_at,
     soldCount: event.sold_count,
     capacity: event.capacity,
   })
+  const time = event.starts_at
+    ? stockholm(event.starts_at, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    : null
   const label = event.starts_at
-    ? `${stockholm(event.starts_at, { weekday: 'short' }).replace('.', '')} ${stockholm(event.starts_at, { day: 'numeric', month: 'short' }).replace('.', '')} · ${stockholm(event.starts_at, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`
+    ? timeOnly
+      ? (time as string)
+      : `${stockholm(event.starts_at, { weekday: 'short' }).replace('.', '')} ${stockholm(event.starts_at, { day: 'numeric', month: 'short' }).replace('.', '')} · ${time}`
     : 'Datum saknas'
   if (salesState === 'sold_out' || types.length === 0) {
+    const soldOut = salesState === 'sold_out'
     return (
       <li>
-        <span className="time-chip time-chip-off">
-          <span className="first-letter:uppercase">{label}</span>
+        <span className={`time-chip time-chip-off ${soldOut ? 'time-chip-sold' : ''}`}>
+          <span className="time-chip-label first-letter:uppercase">{label}</span>
           <small>{types.length === 0 ? 'Ej till salu ännu' : 'Slutsålt'}</small>
         </span>
       </li>
@@ -96,8 +159,10 @@ function Showtime({ event }: { event: EventWithTicketTypes }) {
   if (salesState === 'upcoming') {
     return (
       <li>
-        <span className="time-chip time-chip-off">
-          <span className="first-letter:uppercase">{label}</span>
+        <span className="time-chip time-chip-off time-chip-soon">
+          <ClockIcon />
+          <span className="time-chip-label first-letter:uppercase">{label}</span>
+          <span className="sr-only">, släpps snart</span>
         </span>
       </li>
     )
@@ -108,16 +173,29 @@ function Showtime({ event }: { event: EventWithTicketTypes }) {
   return (
     <li>
       <Link to={`/kop/${event.slug}`} className="time-chip">
-        <span className="first-letter:uppercase">{label}</span>
+        <span className="time-chip-label first-letter:uppercase">{label}</span>
         {lowStock && <small>Få biljetter kvar</small>}
       </Link>
     </li>
   )
 }
 
+// Speltiderna grupperade per dag ("Lördag 5 december": 10:00, 13:00, 16:00).
+function dayGroups(group: EventWithTicketTypes[]) {
+  const byDay = new Map<string, { label: string; events: EventWithTicketTypes[] }>()
+  for (const e of group) {
+    const key = e.starts_at ? stockholm(e.starts_at, { year: 'numeric', month: '2-digit', day: '2-digit' }) : 'saknas'
+    const label = e.starts_at ? stockholm(e.starts_at, { weekday: 'long', day: 'numeric', month: 'long' }) : 'Datum saknas'
+    const entry = byDay.get(key) ?? { label, events: [] }
+    entry.events.push(e)
+    byDay.set(key, entry)
+  }
+  return [...byDay.entries()].map(([key, value]) => ({ key, ...value }))
+}
+
 function Feature({ group }: { group: EventWithTicketTypes[] }) {
   const first = group[0]
-  const organizer = Array.isArray(first.organizers) ? first.organizers[0] : first.organizers
+  const organizer = organizerOf(first)
   const allUpcoming = group.every(
     (e) => computeSalesState({ salesOpenAt: e.sales_open_at, soldCount: e.sold_count, capacity: e.capacity }) === 'upcoming',
   )
@@ -129,7 +207,7 @@ function Feature({ group }: { group: EventWithTicketTypes[] }) {
   return (
     <div className="feature">
       <div className="arch arch-wide">
-        <Poster shows={group} />
+        <Poster shows={group} variant="hero" />
       </div>
       <div className="feature-info">
         <div className="min-w-0">
@@ -140,15 +218,18 @@ function Feature({ group }: { group: EventWithTicketTypes[] }) {
             {price && <span className="show-price">{price}</span>}
           </div>
         </div>
-        <div>
-          {allUpcoming && opens && (
-            <div className="badge badge-spotlight">Biljetterna släpps {formatStockholmDateTime(opens)}</div>
-          )}
-          <ul className="time-chips">
-            {group.map((event) => (
-              <Showtime key={event.id} event={event} />
-            ))}
-          </ul>
+        <div className="feature-times">
+          {allUpcoming && opens && <SalesNotice opens={opens} />}
+          {dayGroups(group).map((day) => (
+            <div key={day.key} className="show-day-group">
+              <p className="show-day first-letter:uppercase">{day.label}</p>
+              <ul className="time-chips">
+                {day.events.map((event) => (
+                  <Showtime key={event.id} event={event} timeOnly />
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -164,7 +245,7 @@ export function EventsPage() {
     async function load() {
       const { data, error } = await supabase
         .from('events')
-        .select('*, ticket_types(*), organizers(name)')
+        .select('*, ticket_types(*), organizers(name, slug)')
         .order('starts_at', { ascending: true })
       if (cancelled) return
       if (error) setError(true)
@@ -178,11 +259,17 @@ export function EventsPage() {
 
   const shows = groupShows(events ?? [])
   const [featured, ...rest] = shows
+  // Köpvillkor-länk i footern bara när alla föreställningar tillhör SAMMA
+  // arrangör (annars vore det oklart vems villkor länken gäller).
+  const slugs = new Set((events ?? []).map((e) => organizerOf(e)?.slug).filter((s): s is string => Boolean(s)))
+  const termsSlug = slugs.size === 1 ? [...slugs][0] : undefined
 
   return (
     <Layout
       wide="xl"
       dark
+      termsSlug={termsSlug}
+      backdrop={featured ? posterUrls(featured) : undefined}
       hero={
         <>
           <h1 className="sr-only">Kommande föreställningar</h1>
@@ -207,7 +294,7 @@ export function EventsPage() {
           <ul className="show-grid">
             {rest.map((group) => {
               const first = group[0]
-              const organizer = Array.isArray(first.organizers) ? first.organizers[0] : first.organizers
+              const organizer = organizerOf(first)
               const allUpcoming = group.every(
                 (e) => computeSalesState({ salesOpenAt: e.sales_open_at, soldCount: e.sold_count, capacity: e.capacity }) === 'upcoming',
               )
@@ -218,7 +305,7 @@ export function EventsPage() {
               const price = priceLabel(group)
               return (
                 <li key={first.id} className="show-tile">
-                  <Poster shows={group} prefer="portrait" />
+                  <Poster shows={group} variant="tile" />
                   <div className="show-body">
                     <div className="show-date">{dateRange(group)}</div>
                     <h3 className="show-title">{first.title}</h3>
@@ -226,9 +313,7 @@ export function EventsPage() {
                       {[first.venue, organizer?.name].filter(Boolean).join(' · ')}
                       {price && <span className="show-price">{price}</span>}
                     </p>
-                    {allUpcoming && opens && (
-                      <div className="badge badge-spotlight">Biljetterna släpps {formatStockholmDateTime(opens)}</div>
-                    )}
+                    {allUpcoming && opens && <SalesNotice opens={opens} />}
                     <ul className="time-chips">
                       {group.map((event) => (
                         <Showtime key={event.id} event={event} />

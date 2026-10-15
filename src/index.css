@@ -1142,3 +1142,179 @@ input[type='radio'] {
     box-shadow: 0 0 0 1px var(--border-strong);
   }
 }
+
+/* ---- Affischram, släppnotis, tidsknappar (publika eventlistan) -----------
+ * Affischen är ett slutet objekt som arrangören styr, inte vi. Därför: hel
+ * bild i ram med fast format (aldrig beskuren), en suddad kopia bakom och en
+ * hårfin kant. Sidans ton och knappar beror aldrig på affischens färger. */
+@layer components {
+  .poster-frame {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    box-shadow: var(--shadow-lift);
+  }
+  .theme-dark .poster-frame {
+    background: #16202e;
+  }
+  .poster-frame::before {
+    content: '';
+    position: absolute;
+    inset: -48px;
+    z-index: -1;
+    background-image: var(--poster-l, var(--poster-p));
+    background-size: cover;
+    background-position: center;
+    filter: blur(36px) saturate(1.25) brightness(0.55);
+  }
+  .poster-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+  .poster-frame picture {
+    display: contents;
+  }
+  .poster-frame img {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .poster-frame-hero {
+    aspect-ratio: 16 / 9;
+    border-radius: 6px;
+  }
+  .poster-frame-tile {
+    aspect-ratio: 2 / 3;
+    border-radius: 6px;
+  }
+  .poster-frame-tile::before {
+    background-image: var(--poster-p, var(--poster-l));
+  }
+  .theme-dark .poster-frame.poster-fallback {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    background:
+      radial-gradient(60% 95% at 50% -8%, rgba(246, 185, 59, 0.3), transparent 70%),
+      linear-gradient(160deg, #243b53, #0f1a27);
+    box-shadow: var(--shadow-lift);
+  }
+  .poster-fallback::before {
+    display: none;
+  }
+  .poster-monogram {
+    font-weight: 800;
+    font-size: clamp(3.5rem, 9vw, 7rem);
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.18);
+  }
+
+  /* Suddad affisch över scenens bakgrund, mörkad så att texten alltid är
+   * läsbar, och utfasad nedåt. */
+  .stage > .stage-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 40%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0, #000 40%, transparent 100%);
+  }
+  .stage-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: -140px;
+    background-image: var(--poster-l, var(--poster-p));
+    background-size: cover;
+    background-position: center top;
+    filter: blur(72px) saturate(1.3) brightness(0.38);
+    opacity: 0.72;
+  }
+
+  /* Bred skärm: stående affisch till vänster, all text och köpväg till höger. */
+  @media (min-width: 900px) {
+    .poster-frame-hero {
+      aspect-ratio: 2 / 3;
+    }
+    .poster-frame-hero::before,
+    .stage-backdrop::before {
+      background-image: var(--poster-p, var(--poster-l));
+    }
+    .feature {
+      grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+      gap: clamp(40px, 5vw, 64px);
+      align-items: start;
+    }
+    .feature-info {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 28px;
+      align-items: start;
+    }
+    .feature-title {
+      font-size: clamp(2.5rem, 5vw, 4.25rem);
+    }
+  }
+
+  /* Försäljningsstart: en notis, inte en knappliknande pill. */
+  .sales-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-size: 0.9375rem;
+  }
+  .sales-notice svg {
+    flex: none;
+    color: var(--text-muted);
+  }
+  .sales-notice p {
+    margin: 0;
+  }
+  .sales-notice-count {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Tider per dag, med tre tydliga tillstånd. */
+  .feature-times {
+    display: grid;
+    gap: 18px;
+  }
+  .show-day {
+    margin: 0 0 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .theme-dark a.time-chip {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+  .theme-dark .time-chip-soon {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    border-style: dashed;
+    border-color: #8497ad;
+    color: #dbe3ec;
+  }
+  .theme-dark .time-chip-sold {
+    border-color: var(--border-strong);
+    color: #8795a7;
+  }
+  .time-chip-sold .time-chip-label {
+    text-decoration: line-through;
+  }
+}

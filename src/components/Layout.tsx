@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { APP_NAME } from '../lib/constants'
 import { TERMS_BY_SLUG } from '../content/terms'
 import { shouldShowTermsLink } from '../lib/termsLink'
+import { posterVars } from '../lib/posterVars'
 
 interface LayoutProps {
   children: ReactNode
@@ -33,9 +34,12 @@ interface LayoutProps {
   // Mörk scen för de publika sidorna: tokens byts på <html> (så även ytan bakom
   // sidan blir mörk). Admin och villkorssidan förblir ljusa.
   dark?: boolean
+  // Affischens URL:er (bara eventlistan): en kraftigt suddad, mörkad kopia
+  // fyller scenens bakgrund och tonas ut nedåt. Se .stage-backdrop i index.css.
+  backdrop?: { landscape?: string | null; portrait?: string | null }
 }
 
-export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false }: LayoutProps) {
+export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false, backdrop }: LayoutProps) {
   useEffect(() => {
     if (!dark) return
     document.documentElement.classList.add('theme-dark')
@@ -52,6 +56,9 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
           diskret för en vanlig besökare, inte en framträdande huvudmeny-
           punkt. */}
       <div className={`stage ${hero ? 'has-hero' : ''} ${heroCompact ? 'stage-compact' : ''} ${heroOverlap ? 'stage-overlap' : ''} ${dark ? 'stage-dark' : ''} ${printHiddenClass}`}>
+      {backdrop && (backdrop.landscape || backdrop.portrait) && (
+        <div className="stage-backdrop" aria-hidden="true" style={posterVars(backdrop.landscape, backdrop.portrait)} />
+      )}
       <header className={`site-header ${printHiddenClass}`}>
         <div className={`mx-auto ${widthClass} px-4 py-5 flex items-center justify-between`}>
           <Link to="/" aria-label={APP_NAME}>
