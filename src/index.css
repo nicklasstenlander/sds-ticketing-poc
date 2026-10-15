@@ -1318,3 +1318,50 @@ input[type='radio'] {
     text-decoration: line-through;
   }
 }
+
+/* ---- Köpsidan: samma uppbyggnad som eventlistans toppevent ---------------
+ * Smal skärm: affisch (liggande) överst, sedan titel och köpväg. Bred skärm:
+ * stående affisch till vänster (följer med vid scroll), allt annat till höger. */
+@layer components {
+  .purchase {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  .purchase-main {
+    min-width: 0;
+    max-width: 640px;
+  }
+  .purchase-head {
+    margin-bottom: 28px;
+  }
+  .purchase .feature-title {
+    font-size: clamp(2.25rem, 6vw, 3.75rem);
+  }
+  .purchase .feature-line {
+    margin: 20px 0 0;
+  }
+  .purchase .badge {
+    margin: 16px 0 0;
+  }
+  @media (min-width: 900px) {
+    .purchase-with-poster {
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      gap: clamp(40px, 5vw, 64px);
+      align-items: start;
+    }
+    .purchase-poster {
+      position: sticky;
+      top: 24px;
+    }
+    .purchase-with-poster .poster-frame-hero {
+      aspect-ratio: 9 / 16;
+    }
+    .purchase-with-poster .poster-frame-hero::before {
+      background-image: var(--poster-p, var(--poster-l));
+    }
+  }
+  .purchase .sales-notice {
+    margin-bottom: 20px;
+  }
+}

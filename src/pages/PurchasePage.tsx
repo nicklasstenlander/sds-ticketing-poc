@@ -9,6 +9,7 @@ import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/
 import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
 import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
+import { posterVars } from '../lib/posterVars'
 import { loadPurchaseDraft, savePurchaseDraft, clearPurchaseDraft } from '../lib/purchaseDraft'
 
 interface CreateOrderResponse {
@@ -431,54 +432,63 @@ export function PurchasePage() {
     )
   }
 
+  const posterL = event.poster_landscape_url
+  const posterP = event.poster_portrait_url
   return (
     <Layout
       termsSlug={organizerSlug}
       dark
-      heroCompact
-      hero={
-        <div className={`hero-split ${event.poster_landscape_url ? 'hero-split-wide' : ''}`}>
-          <div className="min-w-0">
-            <h1 className="page-title">{event.title}</h1>
-            <p className="hero-meta">
+      wide="xl"
+      backdrop={{ landscape: posterL, portrait: posterP }}
+    >
+      <div className={`purchase ${posterL || posterP ? 'purchase-with-poster' : ''}`}>
+        {/* Affischen som ett slutet objekt (samma ram som eventlistan):
+            alltid hel, suddad kopia bakom, ingen text ovanpå. Liggande på
+            smal skärm, stående på bred. */}
+        {(posterL || posterP) && (
+          <div className="purchase-poster">
+            <div className="poster poster-frame poster-frame-hero" style={posterVars(posterL, posterP)}>
+              <picture>
+                {posterL && posterP && <source media="(min-width: 900px)" srcSet={posterP} />}
+                <img src={posterL ?? posterP ?? ''} alt={`Affisch: ${event.title}`} />
+              </picture>
+            </div>
+          </div>
+        )}
+        <div className="purchase-main">
+          <div className="purchase-head">
+            <h1 className="feature-title">{event.title}</h1>
+            <div className="feature-line">
               {event.starts_at && (
-                <span>{formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })}</span>
+                <span className="show-date">
+                  {formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })}
+                </span>
               )}
-              {event.venue && <span>{event.venue}</span>}
-              {organizer?.name && <span>Arrangör: {organizer.name}</span>}
-            </p>
+              <span className="feature-meta">
+                {[event.venue, organizer?.name ? `Arrangör: ${organizer.name}` : null].filter(Boolean).join(' · ')}
+              </span>
+            </div>
             {/* Exakt antal platser visas INTE (önskemål 2026-10-04) - bara
                 "Slutsålt" eller "Få biljetter kvar" under 10% kvar. */}
             {(soldOut || lowStock) && (
               <div className={`badge ${soldOut ? 'badge-neutral' : 'badge-warning'}`}>{soldOut ? 'Slutsålt' : 'Få biljetter kvar'}</div>
             )}
           </div>
-          {/* Affisch i heron: portrait först (fast 2:3, aldrig beskuren),
-              annars landscape. Saknas båda visas ingen bild. */}
-          {(event.poster_landscape_url || event.poster_portrait_url) && (
-            <div className={`arch hero-poster ${event.poster_landscape_url ? 'arch-wide' : ''}`}>
-              <div className={`poster ${event.poster_landscape_url ? 'poster-landscape' : 'poster-portrait'}`}>
-                <img src={(event.poster_landscape_url ?? event.poster_portrait_url)!} alt={`Affisch: ${event.title}`} />
-              </div>
-            </div>
-          )}
-        </div>
-      }
-    >
       {upcoming && event.sales_open_at ? (
-        <div className="card text-center">
-          <span className="inline-block text-sm px-3 py-1 rounded-full bg-[var(--spotlight)] text-[var(--spotlight-ink)] mb-5">
+        <div className="card">
+          <p className="sales-notice">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
             Biljetterna släpps {formatStockholmDateTime(event.sales_open_at)}
-          </span>
+          </p>
           {/* aria-hidden - siffrorna uppdateras sekund för sekund och ska
               inte läsas upp av en skärmläsare varje tick (ordern 2.1,
-              tillgänglighet). Chip-texten ovan är den statiska,
+              tillgänglighet). Notisen ovan är den statiska,
               skärmläsarvänliga motsvarigheten. */}
           {countdown && (
-            <div
-              className="flex items-center justify-center gap-5 text-3xl font-extrabold text-[var(--text)]"
-              aria-hidden="true"
-            >
+            <div className="flex items-center gap-6 text-3xl font-extrabold text-[var(--accent)]" aria-hidden="true">
               {countdown.underAnHour ? (
                 <>
                   <CountdownUnit value={countdown.hours} label="tim" />
@@ -496,7 +506,7 @@ export function PurchasePage() {
           )}
         </div>
       ) : soldOut ? (
-        <div className="card text-center">
+        <div className="card">
           <p className="font-semibold mb-2 text-[var(--text)]">Tyvärr, det här eventet är slutsålt.</p>
           <p className="text-[var(--text-muted)] text-sm">Håll utkik efter fler tillfällen.</p>
         </div>
@@ -687,6 +697,8 @@ export function PurchasePage() {
           </div>
         </form>
       )}
+      </div>
+      </div>
     </Layout>
   )
 }
