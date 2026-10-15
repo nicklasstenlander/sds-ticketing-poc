@@ -129,6 +129,22 @@
     return weekday + ' ' + day + ' ' + month + ' · ' + time
   }
 
+  // "5–6 dec" / "5 dec" / "30 nov–2 dec" - datumspann för en föreställning som
+  // går flera dagar (banner). Samma format som eventlistan och affischspelaren.
+  function formatStockholmDateRange(isos) {
+    if (!isos.length) return ''
+    var sorted = isos.slice().sort()
+    var a = new Date(sorted[0])
+    var b = new Date(sorted[sorted.length - 1])
+    var dayA = stockholmPart(a, { day: 'numeric' })
+    var dayB = stockholmPart(b, { day: 'numeric' })
+    var monA = stockholmPart(a, { month: 'short' }).replace(/\.$/, '')
+    var monB = stockholmPart(b, { month: 'short' }).replace(/\.$/, '')
+    if (dayA === dayB && monA === monB) return dayA + ' ' + monA
+    if (monA === monB) return dayA + '–' + dayB + ' ' + monB
+    return dayA + ' ' + monA + '–' + dayB + ' ' + monB
+  }
+
   // "Lördag · 15:00" - FULL veckodag + tid, för Agenda (Agenda.dc.html).
   function formatStockholmWeekdayAndTime(iso) {
     var d = new Date(iso)
@@ -796,7 +812,16 @@
     left.appendChild(el('div', { className: 'rw-banner-eyebrow', text: 'Nästa föreställning' }))
     left.appendChild(el('h3', { className: 'rw-banner-title', text: ev.title }))
     var metaBits = []
-    if (ev.starts_at) metaBits.push(formatStockholmShortDate(ev.starts_at))
+    // Flera valda speltider av SAMMA föreställning (titel + plats): visa hela
+    // datumspannet ("5–6 dec"), inte bara första speltiden.
+    var sameShow = events.filter(function (e) {
+      return e.starts_at && e.title === ev.title && (e.venue || '') === (ev.venue || '')
+    })
+    if (sameShow.length > 1) {
+      metaBits.push(formatStockholmDateRange(sameShow.map(function (e) { return e.starts_at })))
+    } else if (ev.starts_at) {
+      metaBits.push(formatStockholmShortDate(ev.starts_at))
+    }
     if (ev.venue) metaBits.push(ev.venue)
     left.appendChild(el('div', { className: 'rw-banner-meta', text: metaBits.join(' · ') }))
 

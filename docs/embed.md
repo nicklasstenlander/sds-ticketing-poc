@@ -47,7 +47,7 @@ det kronologiskt närmaste om `data-organizer` används).
 - **showtimes** - en föreställning, flera speltillfällen som rader under en gemensam rubrik.
 - **grid** - rutnät av kort, en kolumn på smala skärmar, upp till tre på breda.
 - **agenda** - en rad per evenemang i en gemensam lista.
-- **banner** - det närmast kommande evenemanget bland de valda, med nedräkning före släpp.
+- **banner** - det närmast kommande evenemanget bland de valda, med nedräkning före släpp. Är flera speltider av samma föreställning (samma titel och plats) valda visas hela datumspannet, t.ex. "5–6 dec", i stället för bara första speltiden.
 
 Alla layouter är responsiva mot **widgetens egen bredd** (fungerar ner till
 280px), inte sidans - en widget i ett smalt sidofält ser likadan ut som en

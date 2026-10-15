@@ -3,8 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
 import { appUrl, parsePosterQuery } from '../lib/posterUrl'
 import { QrCode } from '../components/QrCode'
-import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { formatStockholmDateTime } from '../lib/stockholmTime'
 import { computeSalesState } from '../lib/salesState'
+import { formatDateRange } from '../lib/showDates'
 import type { EventRow } from '../lib/types'
 
 type PosterEvent = Pick<
@@ -86,7 +87,11 @@ export function PosterPlayerPage() {
         src,
         title: e.title,
         venue: e.venue,
-        when: formatStockholmDateTimeLocale(e.starts_at, { day: 'numeric', month: 'long' }),
+        // Hela spannet för föreställningen ("5–6 december"), inte bara första speltiden.
+        when: formatDateRange(
+          (perShow.get(key) ?? [e]).filter((g) => g.starts_at && new Date(g.starts_at).getTime() >= cutoff).map((g) => g.starts_at as string),
+          'long',
+        ),
         // En speltid: direkt till köpsidan. Flera speltider: eventlistan, där alla tider syns.
         // Satt när HELA föreställningen ännu inte släppts (alla speltider väntar på släpp).
         releaseAt: (() => {
