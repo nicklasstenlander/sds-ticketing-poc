@@ -3,6 +3,8 @@ import { EventsPage } from './pages/EventsPage'
 import { PurchasePage } from './pages/PurchasePage'
 import { ConfirmationPage } from './pages/ConfirmationPage'
 import { TermsPage } from './pages/TermsPage'
+import { AboutPage } from './pages/AboutPage'
+import { ContactPage } from './pages/ContactPage'
 import { AdminPage } from './pages/AdminPage'
 import { AdminEventPage } from './pages/AdminEventPage'
 import { AdminDashboardPage } from './pages/AdminDashboardPage'
@@ -33,6 +35,8 @@ export function App() {
         <Route path="/kop/:slug" element={<PurchasePage />} />
         <Route path="/kop/:slug/klar" element={<ConfirmationPage />} />
         <Route path="/villkor/:slug" element={<TermsPage />} />
+        <Route path="/om" element={<AboutPage />} />
+        <Route path="/kontakt" element={<ContactPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/admin/event/:id" element={<AdminEventPage />} />
         <Route path="/admin/dashboard" element={<AdminDashboardPage />} />

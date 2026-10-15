@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { APP_NAME } from '../lib/constants'
 import { TERMS_BY_SLUG } from '../content/terms'
 import { shouldShowTermsLink } from '../lib/termsLink'
@@ -71,6 +71,11 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
               className="h-9 w-auto"
             />
           </Link>
+          {/* Huvudmeny längst ut till höger: informationssidorna. */}
+          <nav aria-label="Huvudmeny" className="site-nav">
+            <NavLink to="/om">Om Rideau</NavLink>
+            <NavLink to="/kontakt">Kontakt</NavLink>
+          </nav>
         </div>
       </header>
         {hero && (
