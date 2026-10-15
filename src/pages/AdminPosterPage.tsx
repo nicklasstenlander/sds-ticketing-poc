@@ -253,25 +253,63 @@ export function AdminPosterPage() {
                 ))}
               </select>
             </label>
+            <label className="flex items-start gap-3 mb-3">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={config.showFrame}
+                onChange={(e) =>
+                  setConfig((c) =>
+                    e.target.checked
+                      ? { ...c, showFrame: true }
+                      : { ...c, showFrame: false, showInfo: false, showQr: false, showRelease: false },
+                  )
+                }
+              />
+              <span>
+                Ram med Rideau-logga
+                <span className="block text-sm text-[var(--text-muted)]">
+                  Affischen ligger högerställd (liggande) eller överst (stående), och resten blir en ram. Tillvalen nedan
+                  visas i ramen.
+                </span>
+              </span>
+            </label>
             <label className="flex items-center gap-3">
               <input
                 type="checkbox"
                 checked={config.showInfo}
+                disabled={!config.showFrame}
                 onChange={(e) => setConfig((c) => ({ ...c, showInfo: e.target.checked }))}
               />
-              <span>Visa titel, datum och plats under affischen</span>
+              <span>Visa titel, datum och plats</span>
             </label>
             <label className="flex items-start gap-3 mt-3">
               <input
                 type="checkbox"
                 className="mt-1"
                 checked={config.showQr}
+                disabled={!config.showFrame}
                 onChange={(e) => setConfig((c) => ({ ...c, showQr: e.target.checked }))}
               />
               <span>
                 Visa QR-kod för biljettköp
                 <span className="block text-sm text-[var(--text-muted)]">
                   Leder till köpsidan, eller till eventlistan om föreställningen har flera speltider.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 mt-3">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={config.showRelease}
+                disabled={!config.showFrame}
+                onChange={(e) => setConfig((c) => ({ ...c, showRelease: e.target.checked }))}
+              />
+              <span>
+                Visa när biljetterna släpps
+                <span className="block text-sm text-[var(--text-muted)]">
+                  Visas bara på föreställningar vars biljetter inte släppts än, och försvinner av sig själv vid släpp.
                 </span>
               </span>
             </label>

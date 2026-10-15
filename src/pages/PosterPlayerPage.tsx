@@ -3,12 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import { createClient } from '@supabase/supabase-js'
 import { appUrl, parsePosterQuery } from '../lib/posterUrl'
 import { QrCode } from '../components/QrCode'
-import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { computeSalesState } from '../lib/salesState'
 import type { EventRow } from '../lib/types'
 
 type PosterEvent = Pick<
   EventRow,
-  'id' | 'slug' | 'title' | 'venue' | 'starts_at' | 'poster_portrait_url' | 'poster_landscape_url'
+  'id' | 'slug' | 'title' | 'venue' | 'starts_at' | 'sales_open_at' | 'sold_count' | 'capacity' | 'poster_portrait_url' | 'poster_landscape_url'
 >
 
 // Egen anonym klient, utan inloggningssession: skärmen ska se exakt det en
@@ -48,7 +49,7 @@ export function PosterPlayerPage() {
     async function load() {
       const { data, error } = await supabase
         .from('events')
-        .select('id,slug,title,venue,starts_at,poster_portrait_url,poster_landscape_url')
+        .select('id,slug,title,venue,starts_at,sales_open_at,sold_count,capacity,poster_portrait_url,poster_landscape_url')
         .order('starts_at', { ascending: true })
       // Vid nätverksfel behålls senaste listan - skärmen ska aldrig bli tom för ett hickup.
       if (cancelled || error) return
@@ -66,7 +67,7 @@ export function PosterPlayerPage() {
     if (!events) return []
     const cutoff = Date.now() - GRACE_MS
     const seen = new Set<string>()
-    const out: { id: string; src: string; title: string; venue: string | null; when: string; link: string }[] = []
+    const out: { id: string; src: string; title: string; venue: string | null; when: string; link: string; releaseAt: string | null }[] = []
     const perShow = new Map<string, PosterEvent[]>()
     for (const e of events) perShow.set(`${e.title}|${e.venue ?? ''}`, [...(perShow.get(`${e.title}|${e.venue ?? ''}`) ?? []), e])
     for (const e of events) {
@@ -87,6 +88,14 @@ export function PosterPlayerPage() {
         venue: e.venue,
         when: formatStockholmDateTimeLocale(e.starts_at, { day: 'numeric', month: 'long' }),
         // En speltid: direkt till köpsidan. Flera speltider: eventlistan, där alla tider syns.
+        // Satt när HELA föreställningen ännu inte släppts (alla speltider väntar på släpp).
+        releaseAt: (() => {
+          const group = perShow.get(key) ?? [e]
+          const upcoming = group.every(
+            (g) => computeSalesState({ salesOpenAt: g.sales_open_at, soldCount: g.sold_count, capacity: g.capacity }) === 'upcoming',
+          )
+          return upcoming ? (group.map((g) => g.sales_open_at).filter((x): x is string => Boolean(x)).sort()[0] ?? null) : null
+        })(),
         link: (perShow.get(key)?.length ?? 1) === 1 ? appUrl(`/kop/${e.slug}`) : appUrl('/evenemang'),
       })
     }
@@ -101,30 +110,40 @@ export function PosterPlayerPage() {
 
   const active = slides.length > 0 ? index % slides.length : 0
 
+  const logo = `${import.meta.env.BASE_URL}rideau-logo-inverse.svg`
+
   return (
-    <div className="signage" role="img" aria-label="Affischer">
+    <div className={`signage ${config.showFrame ? 'is-framed' : ''}`} role="img" aria-label="Affischer">
       {slides.map((slide, i) => (
-        <div key={slide.id} className={`signage-slide ${i === active ? 'is-active' : ''}`} aria-hidden={i !== active}>
-          <img src={slide.src} alt={slide.title} />
-          {(config.showInfo || config.showQr) && (
-            <div className="signage-info">
-              <div className="signage-info-text">
-                {config.showInfo ? (
-                  <>
+        <div
+          key={slide.id}
+          className={`signage-slide ${i === active ? 'is-active' : ''} ${config.showFrame ? `framed ${config.orientation}` : ''}`}
+          aria-hidden={i !== active}
+        >
+          <div className="signage-poster">
+            <img src={slide.src} alt={slide.title} />
+          </div>
+          {config.showFrame && (
+            <aside className="signage-panel">
+              <img className="signage-logo" src={logo} alt="Rideau" />
+              <div className="signage-panel-mid">
+                {config.showRelease && slide.releaseAt && (
+                  <div className="signage-release">Biljetterna släpps {formatStockholmDateTime(slide.releaseAt)}</div>
+                )}
+                {config.showInfo && (
+                  <div className="signage-info">
                     <strong>{slide.title}</strong>
                     <span>{[slide.when, slide.venue].filter(Boolean).join(' · ')}</span>
-                  </>
-                ) : (
-                  <strong>Biljetter</strong>
+                  </div>
                 )}
               </div>
               {config.showQr && (
                 <div className="signage-qr">
-                  <span>Skanna och köp biljett</span>
-                  <QrCode value={slide.link} label={`QR-kod: köp biljett till ${slide.title}`} />
+                  <span>{slide.releaseAt ? 'Skanna för mer info' : 'Skanna och köp biljett'}</span>
+                  <QrCode value={slide.link} label={`QR-kod: biljettinformation för ${slide.title}`} />
                 </div>
               )}
-            </div>
+            </aside>
           )}
         </div>
       ))}

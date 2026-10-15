@@ -6,7 +6,9 @@
 //   e = alla | id,id,...     alla kommande (uppdateras automatiskt) eller valda event
 //   t = sekunder             visningstid per affisch
 //   i = 1                    visa titel/datum/plats under affischen
+//   f = 1                    ram med Rideau-logga runt affischen
 //   q = 1                    visa QR-kod till biljettköp
+//   r = 1                    visa när biljetterna släpps (för event som inte släppts än)
 
 export type PosterOrientation = 'portrait' | 'landscape'
 
@@ -16,7 +18,9 @@ export interface PosterConfig {
   eventIds: string[] | null
   seconds: number
   showInfo: boolean
+  showFrame: boolean
   showQr: boolean
+  showRelease: boolean
 }
 
 export const DEFAULT_POSTER_CONFIG: PosterConfig = {
@@ -24,7 +28,9 @@ export const DEFAULT_POSTER_CONFIG: PosterConfig = {
   eventIds: null,
   seconds: 10,
   showInfo: false,
+  showFrame: true,
   showQr: false,
+  showRelease: false,
 }
 
 export const POSTER_SECONDS_OPTIONS = [5, 8, 10, 15, 20, 30, 60]
@@ -35,7 +41,9 @@ export function posterConfigToQuery(cfg: PosterConfig): string {
   params.set('e', cfg.eventIds === null ? 'alla' : cfg.eventIds.join(','))
   params.set('t', String(cfg.seconds))
   if (cfg.showInfo) params.set('i', '1')
+  if (cfg.showFrame) params.set('f', '1')
   if (cfg.showQr) params.set('q', '1')
+  if (cfg.showRelease) params.set('r', '1')
   return params.toString()
 }
 
@@ -49,6 +57,9 @@ export function parsePosterQuery(params: URLSearchParams): PosterConfig {
     seconds: Number.isFinite(t) && t >= 3 && t <= 600 ? Math.round(t) : DEFAULT_POSTER_CONFIG.seconds,
     showInfo: params.get('i') === '1',
     showQr: params.get('q') === '1',
+    showRelease: params.get('r') === '1',
+    // Ram och logga visas också för äldre URL:er som bara har q/i/r (de tillvalen bor i ramen).
+    showFrame: params.get('f') === '1' || params.get('q') === '1' || params.get('i') === '1' || params.get('r') === '1',
   }
 }
 

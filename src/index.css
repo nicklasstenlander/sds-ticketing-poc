@@ -1368,63 +1368,6 @@ input[type='radio'] {
   }
 }
 
-/* ---- Digital signage (/skylt) -------------------------------------- */
-.signage {
-  position: fixed;
-  inset: 0;
-  background: #000;
-  overflow: hidden;
-  cursor: none;
-}
-.signage-slide {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  opacity: 0;
-  transition: opacity 0.9s ease;
-}
-.signage-slide.is-active {
-  opacity: 1;
-}
-.signage-slide img {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  object-fit: contain;
-}
-.signage-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6vmin;
-  padding: 2.4vmin 3vmin;
-  background: #0d1520;
-  color: #f4f1ea;
-}
-.signage-info strong {
-  font-size: 5vmin;
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-}
-.signage-info span {
-  font-size: 3vmin;
-  color: #f6b93b;
-  font-weight: 700;
-}
-.signage-empty {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: #6f8399;
-  font-size: 3vmin;
-}
-@media (prefers-reduced-motion: reduce) {
-  .signage-slide {
-    transition: none;
-  }
-}
 
 @layer components {
   .poster-option {
@@ -1480,35 +1423,225 @@ input[type='radio'] {
   }
 }
 
-.signage-info {
+
+
+
+/* ---- Digital signage (/skylt) ---------------------------------------
+ * Utan ram: bara affischen på svart. Med ram: affischen (högerställd på
+ * liggande, överst på stående) och resten av skärmen är en midnattsram med
+ * Rideau-logga, släppinfo, titel och QR-kod - inget ligger över affischen. */
+.signage {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  cursor: none;
+}
+.signage.is-framed {
+  background: #0d1520;
+}
+.signage-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+.signage-slide.is-active {
+  opacity: 1;
+}
+.signage-poster {
+  position: absolute;
+  inset: 0;
+}
+.signage-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.signage-slide.framed {
+  display: grid;
+  gap: 3.2vmin;
+  padding: 3.2vmin;
+  background: #0d1520;
+}
+.signage-slide.framed .signage-poster {
+  position: static;
+  grid-area: poster;
+  min-width: 0;
+  min-height: 0;
+}
+.signage-slide.framed .signage-poster img {
+  border-radius: 1.2vmin;
+}
+.signage-slide.framed.portrait {
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: 'poster' 'panel';
+}
+.signage-panel {
+  grid-area: panel;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  color: #f4f1ea;
+}
+.signage-slide.portrait .signage-panel {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 3vmin;
 }
-.signage-info-text {
+.signage-logo {
+  display: block;
+  height: auto;
+}
+.signage-slide.portrait .signage-logo {
+  width: 22vmin;
+  flex: none;
+}
+.signage-panel-mid {
   display: flex;
   flex-direction: column;
-  gap: 0.6vmin;
+  gap: 2.4vmin;
   min-width: 0;
+  flex: 1;
+}
+.signage-release {
+  align-self: flex-start;
+  padding: 1.6vmin 2.2vmin;
+  background: #f6b93b;
+  color: #171717;
+  border-radius: 1.6vmin;
+  font-size: 3.2vmin;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.signage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8vmin;
+}
+.signage-info strong {
+  font-size: 4.4vmin;
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+}
+.signage-info span {
+  font-size: 2.8vmin;
+  font-weight: 700;
+  color: #f6b93b;
 }
 .signage-qr {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 2vmin;
+  gap: 1.2vmin;
+  padding: 1.6vmin;
+  background: #fff;
+  border-radius: 1.8vmin;
   flex: none;
 }
 .signage-qr span {
-  max-width: 14vmin;
-  font-size: 2.2vmin;
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: right;
-  color: #f4f1ea;
+  font-size: 2.4vmin;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  color: #0d1520;
 }
 .signage-qr svg {
-  width: 17vmin;
-  height: 17vmin;
-  border-radius: 1vmin;
   display: block;
+  width: 100%;
+  max-width: 20vmin;
+  aspect-ratio: 1;
+}
+.signage-slide.portrait .signage-qr svg {
+  width: 14vmin;
+}
+.signage-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #6f8399;
+  font-size: 3vmin;
+}
+@media (prefers-reduced-motion: reduce) {
+  .signage-slide {
+    transition: none;
+  }
+}
+
+
+/* Liggande skärm: en L-formad ram. Affischen fyller 16:9-ytan uppe till
+ * höger; vänster kant bär QR-koden (uppe) och loggan (nere), nedre kanten bär
+ * titel, datum, plats och släppinfo. Måtten är 9,4 % / 9,7 % så att en
+ * 16:9-affisch fyller ytan exakt på en 16:9-skärm. */
+.signage-slide.framed.landscape {
+  grid-template-columns: 9.4fr 90.6fr;
+  grid-template-rows: 90.3fr 9.7fr;
+  grid-template-areas:
+    'qr poster'
+    'logo foot';
+  gap: 0;
+  padding: 0;
+  background: #070d1a;
+}
+.signage-slide.framed.landscape .signage-poster img {
+  border-radius: 0;
+}
+.signage-slide.landscape .signage-panel {
+  display: contents;
+}
+.signage-slide.landscape .signage-qr {
+  grid-area: qr;
+  align-self: start;
+  align-items: stretch;
+  gap: 0.8vmin;
+  padding: 1.2vmin;
+  background: transparent;
+  border-radius: 0;
+}
+.signage-slide.landscape .signage-qr span {
+  font-size: 1.9vmin;
+  color: #f4f1ea;
+}
+.signage-slide.landscape .signage-qr svg {
+  width: 100%;
+  max-width: none;
+  border-radius: 0.6vmin;
+}
+.signage-slide.landscape .signage-logo {
+  grid-area: logo;
+  align-self: center;
+  justify-self: center;
+  width: 82%;
+}
+.signage-slide.landscape .signage-panel-mid {
+  grid-area: foot;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2.6vmin;
+  padding: 0 2.4vmin;
+}
+.signage-slide.landscape .signage-info {
+  order: 1;
+  align-items: flex-end;
+  text-align: right;
+  gap: 0.4vmin;
+}
+.signage-slide.landscape .signage-info strong {
+  font-size: 4.2vmin;
+}
+.signage-slide.landscape .signage-info span {
+  font-size: 2.6vmin;
+}
+.signage-slide.landscape .signage-release {
+  order: 2;
+  align-self: center;
+  padding: 1.1vmin 1.6vmin;
+  font-size: 2.6vmin;
+  border-radius: 1.2vmin;
 }
