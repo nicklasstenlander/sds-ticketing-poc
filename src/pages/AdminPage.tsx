@@ -591,42 +591,38 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                           ? 'inga biljettyper'
                           : `${summary.ticket_type_count} biljettyp${summary.ticket_type_count > 1 ? 'er' : ''}`}
                       </div>
-                      </div>
-                    </Link>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm text-[var(--text)]">
-                        {event.sold_count} / {event.capacity} sålda
-                      </div>
-                      <span
-                        className={`badge ${
-                          cancelled
-                            ? 'badge-neutral'
-                            : event.status === 'published'
-                              ? 'badge-success'
-                              : 'badge-warning'
-                        }`}
-                      >
-                        {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
-                      </span>
-                      {event.archived_at && (
-                        <div className="mt-1">
+                      <div className="admin-event-status">
+                        <span className="text-sm text-[var(--text)]">
+                          {event.sold_count} / {event.capacity} sålda
+                        </span>
+                        <span
+                          className={`badge ${
+                            cancelled
+                              ? 'badge-neutral'
+                              : event.status === 'published'
+                                ? 'badge-success'
+                                : 'badge-warning'
+                          }`}
+                        >
+                          {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
+                        </span>
+                        {event.archived_at && (
                           <span className="badge badge-dark">
                             Arkiverad ({event.archived_reason === 'test' ? 'testdata' : 'dold'})
                           </span>
-                        </div>
-                      )}
-                      {isUpcoming && event.sales_open_at && (
-                        <div className="mt-1">
+                        )}
+                        {isUpcoming && event.sales_open_at && (
                           <span className="badge badge-spotlight">
                             Släpps {formatStockholmDateTime(event.sales_open_at)}
                           </span>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                      </div>
+                    </Link>
                   </div>
 
                   {event.archived_at ? (
-                    <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                    <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-[var(--border)] text-sm">
                       <span className="text-[var(--text-muted)]">
                         Arkiverad {formatStockholmDateTime(event.archived_at)}
                         {event.order_count > 0 ? ` · ${event.order_count} order${event.order_count === 1 ? '' : 'ar'} med` : ''}
@@ -643,7 +639,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   ) : (
                     !cancelled &&
                     (archivingEventId === event.id ? (
-                      <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                      <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[var(--border)] text-sm">
                         <span className="text-[var(--text)]">Arkivera som:</span>
                         <button
                           type="button"
@@ -664,7 +660,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--border)] text-sm">
+                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--border)] text-sm">
                         <button type="button" onClick={() => startEdit(event)} className="admin-action-btn">
                           Redigera
                         </button>

@@ -228,12 +228,12 @@ input[type='radio'] {
     display: inline-flex;
     align-items: center;
     white-space: nowrap;
-    min-height: 36px;
+    min-height: 32px;
     background-color: var(--surface);
     color: var(--text);
     border: 1px solid var(--border-strong);
     border-radius: 999px;
-    padding: 6px 16px;
+    padding: 4px 14px;
     font-size: 14px;
     font-weight: 600;
     transition: background-color 0.15s, color 0.15s, border-color 0.15s;
@@ -1943,6 +1943,14 @@ input[type='radio'] {
   .admin-event-link {
     flex: 1 1 15rem;
     min-width: 0;
+    align-items: flex-start;
+  }
+  .admin-event-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 6px;
   }
 }
 
