@@ -526,7 +526,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <h2 className="text-lg font-extrabold text-[var(--text)]">Befintliga events</h2>
             <label className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
               <input type="checkbox" checked={showArchived} onChange={handleToggleShowArchived} />
-              Visa arkiverade
+              Visa arkiverade och inställda
             </label>
           </div>
           {error && <p className="text-[var(--danger)]">{error}</p>}
@@ -548,7 +548,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <p className="text-[var(--text-muted)]">Inga events skapade ännu.</p>
           )}
           <ul className="space-y-3">
-            {events?.map((event) => {
+            {events
+              // Inställda event (raderade med sålda biljetter) hör till arkivet:
+              // döljs tillsammans med arkiverade tills "Visa arkiverade" kryssas i.
+              ?.filter((event) => showArchived || event.status !== 'cancelled')
+              .map((event) => {
               const cancelled = event.status === 'cancelled'
               const isEditing = event.id === editingEventId
               const summary = event.ticket_types_summary
