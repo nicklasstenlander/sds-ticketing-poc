@@ -1891,9 +1891,6 @@ input[type='radio'] {
     align-items: center;
     gap: 14px;
   }
-  .admin-event-link:hover .font-semibold {
-    text-decoration: underline;
-  }
   .admin-thumb {
     flex: none;
     width: 96px;
@@ -1944,6 +1941,12 @@ input[type='radio'] {
     flex: 1 1 15rem;
     min-width: 0;
     align-items: flex-start;
+  }
+  .admin-event-card-clickable {
+    cursor: pointer;
+  }
+  .admin-event-card-clickable:hover .font-semibold {
+    text-decoration: underline;
   }
   .admin-event-status {
     display: flex;

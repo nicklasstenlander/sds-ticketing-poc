@@ -555,6 +555,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               .map((event) => {
               const cancelled = event.status === 'cancelled'
               const isEditing = event.id === editingEventId
+              const editable = !cancelled && !event.archived_at
               const summary = event.ticket_types_summary
               // Schemalagt biljettsläpp (ordern 2026-10-03) - markering i
               // listan, samma stil som status-chipen.
@@ -573,10 +574,20 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                       : cancelled
                         ? 'opacity-70'
                         : ''
-                  }`}
+                  } ${editable ? 'admin-event-card-clickable' : ''}`}
+                  // Hela kortet öppnar "Redigera uppgifter"; knappar och länkar
+                  // inuti behåller sina egna åtgärder.
+                  onClick={
+                    editable
+                      ? (e) => {
+                          if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return
+                          startEdit(event)
+                        }
+                      : undefined
+                  }
                 >
                   <div className="admin-event-head">
-                    <Link to={`/admin/event/${event.id}`} className="admin-event-link">
+                    <div className="admin-event-link">
                       <EventThumb event={event} />
                       <div className="min-w-0 flex-1">
                       <div className="font-semibold text-[var(--text)]">{event.title}</div>
@@ -618,7 +629,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         )}
                       </div>
                       </div>
-                    </Link>
+                    </div>
                   </div>
 
                   {event.archived_at ? (
