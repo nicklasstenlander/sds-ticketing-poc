@@ -40,6 +40,11 @@ function priceLabel(shows: EventWithTicketTypes[]): string {
   return `${formatKr(min)}–${formatKr(max)} kr`
 }
 
+// Showinformationen skrivs per tillfälle; rutan visar första ifyllda texten i gruppen.
+function descriptionOf(shows: EventWithTicketTypes[]): string | null {
+  return shows.find((e) => e.description?.trim())?.description?.trim() ?? null
+}
+
 const stockholm = (iso: string, o: Intl.DateTimeFormatOptions) => formatStockholmDateTimeLocale(iso, o)
 
 // "5–6 dec" / "5 dec" / "30 nov–2 dec" - datumet är det första en besökare söker.
@@ -213,6 +218,9 @@ function Feature({ group }: { group: EventWithTicketTypes[] }) {
             <span className="feature-meta">{[first.venue, organizer?.name].filter(Boolean).join(' · ')}</span>
             {price && <span className="show-price">{price}</span>}
           </div>
+          {descriptionOf(group) && (
+            <p className="whitespace-pre-line mt-3 text-[var(--text-muted)]">{descriptionOf(group)}</p>
+          )}
         </div>
         <div className="feature-times">
           {allUpcoming && opens && <SalesNotice opens={opens} />}
@@ -309,6 +317,11 @@ export function EventsPage() {
                       {[first.venue, organizer?.name].filter(Boolean).join(' · ')}
                       {price && <span className="show-price">{price}</span>}
                     </p>
+                    {descriptionOf(group) && (
+                      <p className="whitespace-pre-line line-clamp-4 mt-2 text-sm text-[var(--text-muted)]">
+                        {descriptionOf(group)}
+                      </p>
+                    )}
                     {allUpcoming && opens && <SalesNotice opens={opens} />}
                     <ul className="time-chips">
                       {group.map((event) => (
