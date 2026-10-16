@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
   let query = supabase
     .from('events')
     .select(
-      'id, slug, title, venue, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, sales_open_at, archived_at, archived_by, archived_reason',
+      'id, slug, title, venue, description, starts_at, status, created_at, capacity, sold_count, poster_landscape_url, poster_portrait_url, sales_open_at, archived_at, archived_by, archived_reason',
     )
     .eq('organizer_id', auth.organizerId)
     .order('starts_at', { ascending: true })

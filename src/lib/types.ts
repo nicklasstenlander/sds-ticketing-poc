@@ -5,6 +5,8 @@ export interface EventRow {
   slug: string
   title: string
   venue: string | null
+  // Showinformation som visas på biljettsidan (fri text, radbrytningar bevaras).
+  description: string | null
   // Nullable: ett dublicerat event (Tilläggsordern "Duplicera event"
   // 2026-08-05) skapas MEDVETET utan datum - status='draft' garanterar
   // (både i kod och som DB-constraint, se migrationen) att ett event

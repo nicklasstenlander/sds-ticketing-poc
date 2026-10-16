@@ -134,6 +134,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const [title, setTitle] = useState('')
   const [venue, setVenue] = useState('')
+  const [description, setDescription] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [capacity, setCapacity] = useState(150)
   const [creating, setCreating] = useState(false)
@@ -236,6 +237,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setEditingEventId(null)
     setTitle('')
     setVenue('')
+    setDescription('')
     setStartsAt('')
     setCapacity(150)
     setReleaseMode('direct')
@@ -249,6 +251,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setEditingEventId(event.id)
     setTitle(event.title)
     setVenue(event.venue ?? '')
+    setDescription(event.description ?? '')
     // Ett dublicerat event har medvetet inget datum satt än - lämna
     // fältet tomt istället för att krascha eller gissa (new Date(null)
     // skulle tyst tolkas som 1970-01-01, ett förvirrande fel-värde).
@@ -320,6 +323,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           event_id: editingEventId,
           title,
           venue,
+          description,
           starts_at: startsAtUtc,
           capacity,
           sales_open_at: salesOpenAt,
@@ -724,6 +728,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     <span className="block text-sm font-medium mb-2 text-[var(--text)]">Plats</span>
                     <input value={venue} onChange={(e) => setVenue(e.target.value)} className="field" />
                   </label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-[var(--text)]">Showinformation</label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={6}
+                    className="field"
+                    placeholder="Text som visas på biljettsidan, t.ex. om föreställningen, speltid, åldersrekommendation."
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

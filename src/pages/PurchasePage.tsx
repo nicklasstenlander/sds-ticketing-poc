@@ -476,6 +476,7 @@ export function PurchasePage() {
                 {[event.venue, organizer?.name ? `Arrangör: ${organizer.name}` : null].filter(Boolean).join(' · ')}
               </span>
             </div>
+            {event.description && <p className="whitespace-pre-line mt-3">{event.description}</p>}
             {/* Exakt antal platser visas INTE (önskemål 2026-10-04) - bara
                 "Slutsålt" eller "Få biljetter kvar" under 10% kvar. */}
             {(soldOut || lowStock) && (

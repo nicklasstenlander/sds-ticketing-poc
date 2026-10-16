@@ -28,6 +28,7 @@ interface UpdateEventBody {
   event_id?: string
   title?: string
   venue?: string
+  description?: string
   starts_at?: string
   capacity?: number
   status?: 'draft' | 'published'
@@ -94,6 +95,10 @@ Deno.serve(async (req: Request) => {
 
   if (body.venue !== undefined) {
     update.venue = body.venue.trim() || null
+  }
+
+  if (body.description !== undefined) {
+    update.description = body.description.trim() || null
   }
 
   if (body.starts_at !== undefined) {
