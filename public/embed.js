@@ -233,10 +233,30 @@
     }
   }
 
+  // ---- Teckensnitt: Manrope, samma som sajten ----
+  // @font-face måste ligga i SIDANS dokument (regler inuti ett Shadow DOM
+  // ignoreras av webbläsarna), men familjenamnet går att använda inifrån
+  // Shadow DOM. Filerna ligger på sajten (public/fonts) och serveras med
+  // CORS (GitHub Pages: Access-Control-Allow-Origin: *). Saknas de faller
+  // widgeten tyst tillbaka på systemteckensnittet (font-stack i STYLE).
+  function ensureFonts() {
+    if (!APP_BASE || document.getElementById('rideau-widget-fonts')) return
+    var weights = [400, 700, 800]
+    var css = weights
+      .map(function (w) {
+        return '@font-face{font-family:"Rideau Manrope";font-style:normal;font-weight:' + w + ';font-display:swap;src:url("' + APP_BASE + '/fonts/manrope-' + w + '.woff2") format("woff2")}'
+      })
+      .join('')
+    var tag = document.createElement('style')
+    tag.id = 'rideau-widget-fonts'
+    tag.textContent = css
+    ;(document.head || document.documentElement).appendChild(tag)
+  }
+
   // ---- CSS (injiceras i varje widgets eget Shadow DOM) ----
 
   var STYLE = [
-    ':host{all:initial;display:block;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}',
+    ':host{all:initial;display:block;font-family:"Rideau Manrope",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}',
     '*{box-sizing:border-box;min-width:0}',
     // overflow-wrap+hyphens, INTE word-break:break-word - "break-word" är
     // i praktiken samma sak som overflow-wrap:anywhere (bryter VARJE
@@ -255,8 +275,8 @@
     // för att en granne är girig. Explicit flex:none läggs bara dit där
     // ett barn SKA ha fast bredd och ALDRIG innehåller radbruten text
     // (t.ex. agenda-datumrutan, en ikon).
-    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5A5A5A;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4;overflow-wrap:break-word;hyphens:auto}',
-    '.rw[data-theme="dark"]{--bg:#141C27;--card-bg:#1C2836;--border:#2F4A66;--text:#F2F5F8;--muted:#9FB0C3;--disabled-bg:#263548;--disabled-text:#9FB0C3;--hover-shadow:rgba(255,255,255,.14)}',
+    '.rw{--accent:#243B53;--accent-text:#FFFFFF;--on-accent-overlay:rgba(255,255,255,.14);--bg:#FAFAF8;--card-bg:#FFFFFF;--border:#E5E5E1;--text:#171717;--muted:#5F5F5C;--chip-bg:#F6B93B;--chip-text:#171717;--disabled-bg:#EAEEF2;--disabled-text:#5A5A5A;--hover-shadow:rgba(0,0,0,.18);color:var(--text);font-size:15px;line-height:1.4;overflow-wrap:break-word;hyphens:auto}',
+    '.rw[data-theme="dark"]{--bg:#0D1520;--card-bg:#162131;--border:#25364A;--text:#F4F1EA;--muted:#A3B3C5;--disabled-bg:#1E2D40;--disabled-text:#A3B3C5;--hover-shadow:rgba(255,255,255,.14)}',
     // :not(.rw-btn) - annars vinner denna över .rw-btn{color:var(--accent-text)}
     // pga högre specificitet (klass+tagg > enkel klass), och knappen
     // "Köp biljetter" (en <a>, till skillnad från de inaktiverade
@@ -264,7 +284,7 @@
     // mörka brödtext istället för accentfärgens kontrastfärg.
     '.rw a:not(.rw-btn){color:inherit;text-decoration:none}',
     '.rw button,.rw a.rw-btn{font:inherit;cursor:pointer}',
-    '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center;text-decoration:none;transition:transform .15s ease,box-shadow .15s ease}',
+    '.rw-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 24px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:15px;text-align:center;text-decoration:none;transition:transform .15s ease,box-shadow .15s ease}',
     // var(--text), inte var(--accent) - accenten (särskilt standardvärdet
     // Midnatt) kan ligga mycket nära den mörka temats kortbakgrund i
     // valör, vilket gjorde fokusringen nästan osynlig i mörkt läge.
@@ -274,7 +294,7 @@
     '.rw-btn[disabled]{background:var(--disabled-bg);color:var(--disabled-text);cursor:default}',
     // Bara klickbara knappar reagerar på hover/aktivering - en inaktiverad
     // knapp ("Slutsålt", köp före släpp) ska inte se interaktiv ut.
-    '.rw-btn:not([disabled]):hover{transform:scale(1.045);box-shadow:0 4px 12px var(--hover-shadow)}',
+    '.rw-btn:not([disabled]):hover{transform:translateY(-1px);box-shadow:0 6px 16px var(--hover-shadow)}',
     '.rw-btn:not([disabled]):active{transform:scale(0.98)}',
     '@media (prefers-reduced-motion:reduce){.rw-btn{transition:none}.rw-btn:not([disabled]):hover{transform:none}}',
     // min-height:44px + flex-centrering på chippet också - ordern
@@ -292,7 +312,7 @@
     // mörkt tema (se [data-theme="dark"] ovan), så randmönstret fungerar
     // theme-säkert utan en egen mörk variant.
     '.rw-poster-placeholder{background:repeating-linear-gradient(45deg,var(--accent) 0,var(--accent) 6px,var(--card-bg) 6px,var(--card-bg) 14px);opacity:.35}',
-    '.rw-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}',
+    '.rw-eyebrow{font-size:13px;font-weight:700;color:var(--muted)}',
     '.rw-title{margin:0;font-size:19px;font-weight:800;line-height:1.2}',
     '.rw-row{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}',
     '.rw-muted{color:var(--muted);font-size:14px}',
@@ -347,19 +367,24 @@
     '.rw-agenda-row-divider{border-bottom:1px solid var(--border)}',
     '.rw-agenda-head{display:flex;align-items:center;gap:16px;flex:1}',
     '.rw-agenda-action{flex:0 1 auto}',
-    '.rw-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px;border-radius:16px;background:var(--accent);color:var(--accent-text)}',
-    '.rw-banner-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
-    '.rw-banner-title{margin:4px 0 0;font-size:20px;font-weight:800;color:var(--accent-text)}',
-    '.rw-banner-meta{font-size:14px;color:var(--accent-text);opacity:.8;margin-top:4px}',
-    '.rw-banner-buy{background:#FFFFFF;color:#171717}',
+    '.rw-banner{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:20px;border-radius:16px;background:var(--card-bg);color:var(--text);border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.08)}',
+    // Mörkt tema: samma scen som sajten - midnatt med ett gult ljussken
+    // uppe till höger, istället för en platt accentyta.
+    '.rw[data-theme="dark"] .rw-banner{background:radial-gradient(ellipse 70% 130% at 100% -30%,rgba(246,185,59,.28),transparent 65%),#0D1520;box-shadow:none}',
+    '.rw-banner-eyebrow{font-size:13px;font-weight:700;color:var(--muted)}',
+    '.rw-banner-title{margin:4px 0 0;font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--text)}',
+    '.rw-banner-meta{font-size:14px;color:var(--muted);margin-top:4px}',
     '.rw-banner-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}',
     '.rw-countdown{display:flex;gap:8px}',
     // --on-accent-overlay sätts i JS (mountWidget) till en mörk eller ljus
     // genomskinlig ton beroende på om --accent-text är vit eller mörk -
     // en fast vit ton hade blivit osynlig mot en ljus (Rampljus) banner.
-    '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:var(--on-accent-overlay);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
-    '.rw-countdown-box b{font-size:17px;line-height:1}',
-    '.rw-countdown-box span{font-size:11px;text-transform:uppercase;color:var(--accent-text);opacity:.75}',
+    '.rw-countdown-box{width:52px;height:52px;border-radius:10px;background:var(--accent);color:var(--accent-text);display:flex;flex-direction:column;align-items:center;justify-content:center}',
+    '.rw-countdown-box b{font-size:18px;font-weight:800;line-height:1}',
+    '.rw-countdown-box span{font-size:12px;font-weight:600;color:var(--accent-text);opacity:.8}',
+    '.rw[data-theme="dark"] .rw-countdown-box{background:rgba(255,255,255,.08);color:var(--text)}',
+    '.rw[data-theme="dark"] .rw-countdown-box span{color:var(--muted);opacity:1}',
+    '.rw[data-theme="dark"] .rw-countdown-box b{color:var(--text)}',
 
     // ============================================================
     // Smala vyer (ordern "Widgeten ska fungera i smala vyer",
@@ -459,6 +484,13 @@
     var accentKey = hostEl.getAttribute('data-accent') || 'midnatt'
     var accent = ACCENTS[accentKey] || ACCENTS.midnatt
     var accentText = accentKey === 'rampljus' ? '#171717' : '#FFFFFF'
+    // Mörkt tema: Midnatt (mörkblå) försvinner mot den mörka bakgrunden -
+    // samma som sajten använder vi då Rampljus (gul, mörk text) som
+    // primärfärg. Skymning (lila) och Rampljus påverkas inte.
+    if (theme === 'dark' && accentKey === 'midnatt') {
+      accent = ACCENTS.rampljus
+      accentText = '#171717'
+    }
     var organizer = hostEl.getAttribute('data-organizer')
     var events = parseList(hostEl.getAttribute('data-events'))
     var title = hostEl.getAttribute('data-title')
@@ -904,6 +936,7 @@
       config.events = config.events.slice(0, 1)
     }
 
+    ensureFonts()
     var shadow = hostEl.attachShadow({ mode: 'open' })
     var style = document.createElement('style')
     style.textContent = STYLE

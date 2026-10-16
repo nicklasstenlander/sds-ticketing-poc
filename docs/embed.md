@@ -30,8 +30,8 @@ samma sida, och skriptet kan inkluderas flera gånger utan problem.
 | `data-events` | kommaseparerade slugs, t.ex. `evenemang-1,evenemang-2` | Vilka evenemang som ska visas. Max 12. Okända eller ej publicerade slugs ignoreras tyst. |
 | `data-organizer` | din arrangörs-slug | Alternativ till `data-events` - visar ALLA dina publicerade kommande evenemang automatiskt, uppdateras själv när du publicerar nya. |
 | `data-show` | kommaseparerad delmängd av `poster, date, place, price, organizer, countdown` | Vilka delar som visas per evenemang. Okända värden ignoreras. |
-| `data-theme` | `light` \| `dark` | Standard: `light`. |
-| `data-accent` | `midnatt` \| `skymning` \| `rampljus` | Knappfärg. Standard: `midnatt`. |
+| `data-theme` | `light` \| `dark` | Standard: `light`. Ljust är en vit kortyta; mörkt följer sajtens mörka scen (midnatt med gult ljussken i bannern). |
+| `data-accent` | `midnatt` \| `skymning` \| `rampljus` | Knappfärg. Standard: `midnatt`. I mörkt tema visas `midnatt` som gult (rampljus) med mörk text, samma som sajten, eftersom mörkblått försvinner mot den mörka ytan. |
 | `data-title` | valfri text | Egen rubrik för `showtimes`-layouten. Används annars det första evenemangets titel. |
 
 De fyra enskilt-event-layouterna (`horizontal`, `portrait`, `landscape`,
@@ -92,3 +92,7 @@ Se `docs/embed-test.html` och `scripts/embed-mock-server.ts` - en lokal
 mockserver som serverar testevent i exakt samma form som den riktiga
 `public-embed`-funktionen, så alla layouter/tillstånd (inklusive själva
 släppögonblicket) går att se utan att röra skarp data.
+
+## Teckensnitt
+
+Widgeten använder Manrope, samma som sajten. Filerna hämtas från `<din-sida>/fonts/manrope-*.woff2` (kräver att sajten serverar dem med CORS, vilket GitHub Pages gör). Går de inte att hämta används systemets teckensnitt.
