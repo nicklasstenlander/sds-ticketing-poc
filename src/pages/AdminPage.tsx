@@ -662,10 +662,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                     ) : (
                       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--border)] text-sm">
                         <button type="button" onClick={() => startEdit(event)} className="admin-action-btn">
-                          Redigera
+                          Redigera uppgifter
                         </button>
                         <Link to={`/admin/event/${event.id}`} className="admin-action-btn">
-                          Biljettyper
+                          Biljettyper, ordrar &amp; affischer
                         </Link>
                         <button type="button" onClick={() => handleTogglePublish(event)} className="admin-action-btn">
                           {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
