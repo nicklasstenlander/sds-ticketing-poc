@@ -43,11 +43,20 @@ function event(slug, title, starts_at, extra = {}) {
     ...extra,
   }
 }
+// Affischer som data-URI:er (inga nätverksanrop). Färgerna skiljer formaten åt.
+const svgPoster = (w, h, fill) =>
+  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="${fill}"/></svg>`)}`
+const LANDSCAPE = svgPoster(1600, 900, '#c0392b')
+const PORTRAIT = svgPoster(900, 1350, '#2980b9')
 const EVENTS = [
   event('atw-1000', 'Around the World', '2026-12-05T09:00:00Z'),
   event('atw-1300', 'Around the World', '2026-12-05T12:00:00Z'),
   event('atw-1600', 'Around the World', '2026-12-06T15:00:00Z'),
-  event('color-me', 'COLOR ME', '2026-12-12T17:00:00Z', { sales_open_at: '2026-11-02T08:00:00Z' }),
+  event('color-me', 'COLOR ME', '2026-12-12T17:00:00Z', {
+    sales_open_at: '2026-11-02T08:00:00Z',
+    poster_landscape_url: LANDSCAPE,
+    poster_portrait_url: PORTRAIT,
+  }),
   event('julshow', 'Julshow', '2026-12-19T16:00:00Z', { ticket_types: ticket(0) }),
   event('workshop', 'Workshop', null),
 ]
@@ -128,6 +137,16 @@ try {
   check((await link.evaluate((a) => a.tagName)) === 'A', 'rutan är en riktig <a>')
   check((await link.getAttribute('href')) === '#/evenemang/color-me', 'länken pekar på /#/evenemang/color-me', await link.getAttribute('href'))
 
+  // Ruta på bred skärm (flera kolumner): stående affisch i 2:3-ram.
+  const colorPoster = page.locator('.show-tile', { hasText: 'COLOR ME' }).locator('.poster')
+  const tilePoster = () =>
+    colorPoster.evaluate((frame) => {
+      const { width, height } = frame.getBoundingClientRect()
+      return { src: frame.querySelector('img')?.currentSrc, ratio: Math.round((width / height) * 100) / 100 }
+    })
+  let tp = await tilePoster()
+  check(tp.src === PORTRAIT && tp.ratio === 0.67, 'desktop: ruta visar stående affisch i 2:3', `ratio ${tp.ratio}`)
+
   await page.screenshot({ path: path.join(OUT_DIR, 'desktop-1280.png'), fullPage: true })
 
   // 2. Klick på AFFISCHEN (inte titeln) byter vy, scrollar upp.
@@ -188,6 +207,12 @@ try {
 
   // 8. Telefonbredd.
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`${BASE_URL}#/evenemang`)
+  await page.locator('.feature-title').waitFor()
+  await colorPoster.scrollIntoViewIfNeeded()
+  tp = await tilePoster()
+  check(tp.src === LANDSCAPE && tp.ratio === 1.78, 'telefon: ruta visar liggande affisch i 16:9', `ratio ${tp.ratio}`)
+  await page.screenshot({ path: path.join(OUT_DIR, 'phone-390-lista.png'), fullPage: true })
   await page.goto(`${BASE_URL}#/evenemang/color-me`)
   await page.locator('.feature-title').waitFor()
   check((await page.evaluate(() => document.documentElement.scrollWidth)) <= 390, 'telefon: ingen horisontell scroll')

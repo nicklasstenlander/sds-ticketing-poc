@@ -1235,6 +1235,21 @@ input[type='radio'] {
   .poster-frame-tile::before {
     background-image: var(--poster-p, var(--poster-l));
   }
+  /* En kolumn: liggande affisch, som i hero på smal skärm. */
+  .poster-frame-tile-landscape {
+    aspect-ratio: 16 / 9;
+  }
+  .poster-frame-tile-landscape::before {
+    background-image: var(--poster-l, var(--poster-p));
+  }
+  @media (min-width: 640px) {
+    .poster-frame-tile-landscape {
+      aspect-ratio: 2 / 3;
+    }
+    .poster-frame-tile-landscape::before {
+      background-image: var(--poster-p, var(--poster-l));
+    }
+  }
   .theme-dark .poster-frame.poster-fallback {
     display: grid;
     place-items: center;

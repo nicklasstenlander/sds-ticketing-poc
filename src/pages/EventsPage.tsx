@@ -64,13 +64,15 @@ function posterUrls(shows: EventWithTicketTypes[]) {
 // suddad kopia fyller ytan bakom, och en hårfin kant skiljer den från sidan -
 // då fungerar ljusa, mörka, mättade och felformaterade affischer lika bra.
 // Hero: liggande på smal skärm, stående på bred (om båda finns). Ruta i
-// "Fler föreställningar": stående först.
+// "Fler föreställningar": liggande när rutnätet har en kolumn, stående
+// från två kolumner (640px, samma brytpunkt som .show-grid).
 function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'hero' | 'tile' }) {
   const first = shows[0]
   const { landscape, portrait } = posterUrls(shows)
   // Hela klassnamn, inte ihopsatta av variant: Tailwind rensar annars bort
   // klasserna ur CSS:en eftersom den inte hittar dem som strängar i koden.
-  const frameClass = variant === 'hero' ? 'poster-frame-hero' : 'poster-frame-tile'
+  const frameClass =
+    variant === 'hero' ? 'poster-frame-hero' : landscape ? 'poster-frame-tile poster-frame-tile-landscape' : 'poster-frame-tile'
   if (landscape || portrait) {
     const alt = `Affisch: ${first.title}`
     return (
@@ -81,7 +83,10 @@ function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'h
             <img src={landscape ?? portrait ?? ''} alt={alt} />
           </picture>
         ) : (
-          <img src={portrait ?? landscape ?? ''} alt={alt} loading="lazy" />
+          <picture>
+            {landscape && portrait && <source media="(min-width: 640px)" srcSet={portrait} />}
+            <img src={landscape ?? portrait ?? ''} alt={alt} loading="lazy" />
+          </picture>
         )}
       </div>
     )
