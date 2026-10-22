@@ -846,8 +846,11 @@
     var metaBits = []
     // Flera valda speltider av SAMMA föreställning (titel + plats): visa hela
     // datumspannet ("5–6 dec"), inte bara första speltiden.
-    var sameShow = events.filter(function (e) {
-      return e.starts_at && e.title === ev.title && (e.venue || '') === (ev.venue || '')
+    var showtimes = events.filter(function (e) {
+      return e.title === ev.title && (e.venue || '') === (ev.venue || '')
+    })
+    var sameShow = showtimes.filter(function (e) {
+      return e.starts_at
     })
     if (sameShow.length > 1) {
       metaBits.push(formatStockholmDateRange(sameShow.map(function (e) { return e.starts_at })))
@@ -882,9 +885,14 @@
       // använder accentfärgen som bakgrund) skulle bli osynlig mot den.
       // Vit knapp ger garanterad kontrast oavsett vilken av de tre
       // accentfärgerna som är vald (Nicklas rapporterade detta 2026-10-04).
-      right.appendChild(
-        el('a', { className: 'rw-btn rw-banner-buy', href: APP_BASE + '/#/kop/' + encodeURIComponent(ev.slug), text: 'Köp biljetter' }),
-      )
+      // Flera speltider av samma föreställning: köpknappen leder till
+      // föreställningens sida (/evenemang/:slug) där alla tider syns, så att
+      // besökaren själv väljer. Annars hade alla hamnat på den första tiden.
+      var bannerHref =
+        showtimes.length > 1
+          ? APP_BASE + '/#/evenemang/' + encodeURIComponent(ev.slug)
+          : APP_BASE + '/#/kop/' + encodeURIComponent(ev.slug)
+      right.appendChild(el('a', { className: 'rw-btn rw-banner-buy', href: bannerHref, text: 'Köp biljetter' }))
       if (config.show.indexOf('price') !== -1) {
         var bannerPriceInfo = formatPriceInfo(ev)
         if (bannerPriceInfo.mainText) {
