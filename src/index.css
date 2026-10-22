@@ -713,6 +713,45 @@ input[type='radio'] {
   .show-tile:hover .poster img {
     transform: scale(1.03);
   }
+  /* Titellänken sträcks över hela rutan, så affisch, datum och titel leder
+     till /evenemang/:slug. Speltiderna lyfts ovanför och går direkt till köp. */
+  .show-tile {
+    position: relative;
+  }
+  .show-tile-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+    transition: text-decoration-color 0.18s;
+  }
+  .show-tile-link::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    z-index: 1;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .show-tile:hover .show-tile-link,
+  .show-tile-link:focus-visible {
+    text-decoration-color: currentColor;
+  }
+  .show-tile-link:focus-visible {
+    outline: none;
+  }
+  .show-tile-link:focus-visible::after {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .show-tile .time-chips {
+    position: relative;
+    z-index: 2;
+  }
+  .feature-title:focus {
+    outline: none;
+  }
   .poster-fallback {
     position: relative;
     display: flex;
