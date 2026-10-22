@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import type { Ref } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
 import { Layout } from '../components/Layout'
@@ -8,6 +9,7 @@ import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/s
 import { formatKr } from '../lib/formatPrice'
 import { monogram } from '../lib/monogram'
 import { posterVars } from '../lib/posterVars'
+import { groupShows, pickFeatured } from '../lib/featuredShow'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
@@ -16,18 +18,6 @@ interface EventWithTicketTypes extends EventRow {
 
 function organizerOf(e: EventWithTicketTypes): EventOrganizerRelation | undefined {
   return Array.isArray(e.organizers) ? e.organizers[0] : (e.organizers ?? undefined)
-}
-
-// En föreställning (samma titel/plats) visas som EN affischruta med en
-// knapp per speltid - varje speltid är fortfarande ett eget event med eget
-// pris, eget säljläge och egen köplänk.
-function groupShows(events: EventWithTicketTypes[]): EventWithTicketTypes[][] {
-  const groups = new Map<string, EventWithTicketTypes[]>()
-  for (const e of events) {
-    const key = [e.title, e.venue ?? ''].join('|')
-    groups.set(key, [...(groups.get(key) ?? []), e])
-  }
-  return [...groups.values()]
 }
 
 // Prisspann över ALLA biljettyper, gratis inkluderat (Nicklas 2026-10-10).
@@ -189,7 +179,7 @@ function dayGroups(group: EventWithTicketTypes[]) {
   return [...byDay.entries()].map(([key, value]) => ({ key, ...value }))
 }
 
-function Feature({ group }: { group: EventWithTicketTypes[] }) {
+function Feature({ group, headingRef }: { group: EventWithTicketTypes[]; headingRef: Ref<HTMLHeadingElement> }) {
   const first = group[0]
   const organizer = organizerOf(first)
   const allUpcoming = group.every(
@@ -207,7 +197,9 @@ function Feature({ group }: { group: EventWithTicketTypes[] }) {
       </div>
       <div className="feature-info">
         <div className="min-w-0">
-          <h2 className="feature-title">{first.title}</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="feature-title">
+            {first.title}
+          </h2>
           <div className="feature-line">
             <span className="show-date">{dateRange(group)}</span>
             <span className="feature-meta">{[first.venue, organizer?.name].filter(Boolean).join(' · ')}</span>
@@ -233,6 +225,7 @@ function Feature({ group }: { group: EventWithTicketTypes[] }) {
 }
 
 export function EventsPage() {
+  const { slug } = useParams()
   const [events, setEvents] = useState<EventWithTicketTypes[] | null>(null)
   const [error, setError] = useState(false)
 
@@ -253,8 +246,20 @@ export function EventsPage() {
     }
   }, [])
 
-  const shows = groupShows(events ?? [])
-  const [featured, ...rest] = shows
+  const { featured, rest, notFound } = pickFeatured(groupShows(events ?? []), slug)
+
+  // Byte av stor föreställning (klick i "Fler föreställningar" eller
+  // bakåt/framåt i webbläsaren): till toppen, och fokus till rubriken så att
+  // tangentbord och skärmläsare följer med - den klickade rutan finns inte
+  // kvar i listan. Inte vid första laddningen.
+  const featureHeading = useRef<HTMLHeadingElement>(null)
+  const previousSlug = useRef(slug)
+  useEffect(() => {
+    if (previousSlug.current === slug) return
+    previousSlug.current = slug
+    window.scrollTo(0, 0)
+    featureHeading.current?.focus({ preventScroll: true })
+  }, [slug])
   // Köpvillkor-länk i footern bara när alla föreställningar tillhör SAMMA
   // arrangör (annars vore det oklart vems villkor länken gäller).
   const slugs = new Set((events ?? []).map((e) => organizerOf(e)?.slug).filter((s): s is string => Boolean(s)))
@@ -278,7 +283,12 @@ export function EventsPage() {
           {events !== null && events.length === 0 && (
             <p className="feature-title">Inga föreställningar just nu. Titta in igen snart.</p>
           )}
-          {featured && <Feature group={featured} />}
+          {events !== null && notFound && (
+            <p role="status" className="text-[var(--text-muted)] text-lg mb-6">
+              Vi hittade inte den föreställningen. Här är alla kommande.
+            </p>
+          )}
+          {featured && <Feature group={featured} headingRef={featureHeading} />}
         </>
       }
     >
@@ -304,7 +314,14 @@ export function EventsPage() {
                   <Poster shows={group} variant="tile" />
                   <div className="show-body">
                     <div className="show-date">{dateRange(group)}</div>
-                    <h3 className="show-title">{first.title}</h3>
+                    {/* Länken täcker hela rutan (.show-tile-link::after), så
+                        affisch och datum också går att klicka på. Speltiderna
+                        ligger ovanpå och leder fortfarande direkt till köp. */}
+                    <h3 className="show-title">
+                      <Link to={`/evenemang/${first.slug}`} className="show-tile-link">
+                        {first.title}
+                      </Link>
+                    </h3>
                     <p className="show-meta">
                       {[first.venue, organizer?.name].filter(Boolean).join(' · ')}
                       {price && <span className="show-price">{price}</span>}

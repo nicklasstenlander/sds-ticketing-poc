@@ -31,7 +31,7 @@ export function App() {
     <HashRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/evenemang" replace />} />
-        <Route path="/evenemang" element={<EventsPage />} />
+        <Route path="/evenemang/:slug?" element={<EventsPage />} />
         <Route path="/kop/:slug" element={<PurchasePage />} />
         <Route path="/kop/:slug/klar" element={<ConfirmationPage />} />
         <Route path="/villkor/:slug" element={<TermsPage />} />
