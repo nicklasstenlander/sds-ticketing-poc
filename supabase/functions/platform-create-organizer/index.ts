@@ -13,6 +13,7 @@
 // EXAKT samma kod när en ansökan godkänns, istället för en parallell
 // implementation att hålla i synk. Den här filen gör nu bara
 // auth-kontrollen + body-parsning.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createOrganizerAndInvite } from '../_shared/createOrganizer.ts'
@@ -22,6 +23,8 @@ interface CreateOrganizerBody {
   slug?: string
   contact_email?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

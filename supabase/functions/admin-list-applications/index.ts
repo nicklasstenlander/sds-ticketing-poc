@@ -5,9 +5,12 @@
 // tidigare hanterade (godkända/avslagna), så admin-UI:t kan visa
 // "Väntande ansökningar" som en egen, alltid synlig-vid-innehåll sektion
 // och "Tidigare ansökningar" hopfällbart (se ordertextens punkt 3).
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

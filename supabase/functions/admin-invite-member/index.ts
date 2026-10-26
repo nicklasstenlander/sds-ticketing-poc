@@ -11,6 +11,7 @@
 // Återanvänder samma Supabase-inbjudningsmönster (auth.admin.
 // inviteUserByEmail) och samma välkomstsida (#/admin/valkommen) som redan
 // finns från onboarding-ordern - inget nytt att bygga där.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
@@ -20,6 +21,8 @@ interface InviteMemberBody {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

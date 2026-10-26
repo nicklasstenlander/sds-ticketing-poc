@@ -16,6 +16,7 @@
 // skapa ansökningsrad -> notismail till platform-admins (best effort,
 // misslyckas mailet blockeras ändå inte svaret till den sökande) ->
 // {success:true}.
+import { captureEdgeException, instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 
@@ -108,6 +109,8 @@ async function sendAdminNotification(params: { organizerName: string; email: str
   }
 }
 
+await instrumentEdgeFunctions()
+
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
   if (preflight) return preflight
@@ -191,6 +194,7 @@ Deno.serve(async (req: Request) => {
     await sendAdminNotification({ organizerName, email, message })
   } catch (err) {
     console.error('Kunde inte skicka notismail till platform-admins:', err)
+    await captureEdgeException(err)
   }
 
   // === 6. Inget mail till den sökande här - se admin-approve-application

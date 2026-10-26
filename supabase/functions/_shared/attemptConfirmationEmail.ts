@@ -16,6 +16,7 @@ import type { createAdminClient } from './supabaseAdmin.ts'
 import { claimConfirmationEmail } from './claimConfirmationEmail.ts'
 import { sendConfirmationEmail, fetchPaymentMethodType } from './sendConfirmationEmail.ts'
 import { shortEmailErrorCode } from './emailErrorCode.ts'
+import { captureEdgeException } from './sentry.ts'
 
 export interface ConfirmationEmailOrderItem {
   typeName: string | null
@@ -133,6 +134,7 @@ export async function attemptConfirmationEmail(input: ConfirmationEmailAttemptIn
   } catch (err) {
     const code = shortEmailErrorCode(err)
     console.error('Mejlutskick misslyckades', input.orderId, code)
+    await captureEdgeException(err)
     const { error: traceError } = await input.supabase
       .from('orders')
       .update({ confirmation_email_last_error: code })

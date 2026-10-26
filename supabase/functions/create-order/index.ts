@@ -18,6 +18,7 @@
 //
 // Returnerar { checkout_url } - frontenden gör en fullständig
 // sidomdirigering (window.location.href) dit.
+import { captureEdgeException, instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient, CHECKOUT_EXPIRY_MINUTES } from '../_shared/stripe.ts'
@@ -149,6 +150,8 @@ function applyDiscountToLines(lines: CartLine[], code: DiscountCodeRow): void {
     line.unitPriceAfterOre = Math.max(0, line.unitPriceOre - perUnitDiscount)
   })
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -541,6 +544,7 @@ Deno.serve(async (req: Request) => {
     await supabase.from('orders').delete().eq('id', order.id)
     await rollbackCapacity()
     const message = err instanceof Error ? err.message : 'Okänt Stripe-fel.'
+    await captureEdgeException(err)
     return jsonResponse({ error: `Kunde inte skapa Stripe Checkout-session: ${message}` }, 502)
   }
 
@@ -548,6 +552,7 @@ Deno.serve(async (req: Request) => {
     await supabase.from('order_items').delete().eq('order_id', order.id)
     await supabase.from('orders').delete().eq('id', order.id)
     await rollbackCapacity()
+    await captureEdgeException(new Error('Stripe returnerade ingen checkout-URL.'))
     return jsonResponse({ error: 'Stripe returnerade ingen checkout-URL.' }, 502)
   }
 

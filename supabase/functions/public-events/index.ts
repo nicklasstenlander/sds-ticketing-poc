@@ -20,6 +20,7 @@
 // from_price_ore rättad och free_ticket_names tillagt (ordern
 // "Förberedelse för CORE-appen" 2026-10-10, B) - se
 // _shared/ticketPricing.ts.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
@@ -46,6 +47,8 @@ interface PublicEvent {
   // _shared/ticketPricing.ts filkommentar för bakgrunden/beviset).
   free_ticket_names: string[]
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

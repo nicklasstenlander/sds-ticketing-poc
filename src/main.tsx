@@ -1,3 +1,4 @@
+import './lib/sentry'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 // Självhostade typsnitt (ordern "Före försäljning" 2026-10-05, 1.1) -
@@ -20,13 +21,18 @@ import '@fontsource/manrope/800.css'
 import '@fontsource/jetbrains-mono/400.css'
 import './index.css'
 import { App } from './App'
+import * as Sentry from '@sentry/react'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
   throw new Error('Root-elementet saknas i index.html')
 }
 
-createRoot(rootElement).render(
+createRoot(rootElement, {
+  onUncaughtError: Sentry.reactErrorHandler(),
+  onCaughtError: Sentry.reactErrorHandler(),
+  onRecoverableError: Sentry.reactErrorHandler(),
+}).render(
   <StrictMode>
     <App />
   </StrictMode>,

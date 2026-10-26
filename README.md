@@ -163,6 +163,25 @@ supabase secrets set RESEND_API_KEY=re_xxxxxxxxxxxx
 supabase secrets set SCANNER_BEARER_TOKEN=$(openssl rand -hex 32)
 ```
 
+Felövervakning (Sentry, projekt `sds-ticketing-poc` i EU) läser en publik
+klientnyckel. Utan den startar funktionerna som vanligt men rapporterar
+inga fel. Sätt den innan nästa functions-deploy, och deploya funktionerna
+innan en frontend som skickar `sentry-trace`/`baggage` (se
+`_shared/cors.ts`), annars kan preflight mot köpet fallera:
+
+```bash
+supabase secrets set SENTRY_DSN='https://267ead0389e0b7be05d0ae5bf8ebd50e@o4512322194112512.ingest.de.sentry.io/4512322257748048'
+supabase secrets set SENTRY_ENVIRONMENT=production
+# valfritt, så fel pekar på en commit:
+supabase secrets set SENTRY_RELEASE=$(git rev-parse HEAD)
+```
+
+SDK:t skickar inte köparens IP (`user.ip_address: null`, `dataCollection.userInfo: false`).
+Sentrys ingest kan ändå fylla i IP och ungefärlig plats från anslutningen.
+Stäng av lagring under projektets Settings → Security & Privacy →
+**Prevent Storing of IP Addresses**. `user.geo` blir kvar tills en
+Advanced Data Scrubbing-regel tar bort `$user.geo.**`.
+
 > **`ADMIN_PIN` är borttagen** (Tilläggsordern 2026-08-05, "Flera
 > arrangörer: riktiga inloggningar och dataisolering") - admin-inloggning
 > sker numera med riktig Supabase Auth (e-post + lösenord per
@@ -321,6 +340,7 @@ något med token-VÄRDET att göra.
 npm install
 cp .env.example .env
 # Fyll i VITE_SUPABASE_URL och VITE_SUPABASE_ANON_KEY i .env
+# VITE_SENTRY_DSN är redan ifylld i .env.example (publik klientnyckel).
 npm run dev
 ```
 
@@ -340,11 +360,17 @@ npm run build
    Actions: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` - samma två
    publika värden som redan finns i din lokala `.env`. Detta är den
    publika anon/publishable-nyckeln, inte service role-nyckeln - samma
-   nyckel som redan är avsedd att synas i klientkoden. Inga av de fem
+   nyckel som redan är avsedd att synas i klientkoden. Inga av
    hemligheterna (`SCANNER_BEARER_TOKEN`, `RESEND_API_KEY`,
    `RESEND_FROM`, service role-nyckeln) ska någonsin läggas som
    GitHub-secret här - de rör bara Edge Functions och är redan satta som
    Supabase secrets (avsnitt 3).
+   Lägg också till `VITE_SENTRY_DSN` (samma publika klientnyckel som
+   `SENTRY_DSN` i avsnitt 3 / `.env.example`). `SENTRY_AUTH_TOKEN` är
+   valfri och används bara för att ladda upp source maps under bygget;
+   saknas den hoppas uppladdningen över. Den är en riktig hemlighet och
+   får inte heta `VITE_` eller checkas in. Skapa den i Sentry (EU,
+   de.sentry.io) med Project Read & Write och Release Admin.
 4. Sajten publiceras på `https://<användarnamn>.github.io/sds-ticketing-poc/`
    som standard, eller på en egen domän - se `docs/domain.md` för den
    aktuella produktionsadressen och hur den är satt upp.

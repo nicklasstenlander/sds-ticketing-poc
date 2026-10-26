@@ -19,6 +19,11 @@ värden ska finnas i 1Password.
 | `FRONTEND_BASE_URL` | `create-order`, `public-apply-organizer`, `admin-invite-member` | Basen för länkar som skickas i mail/redirects (t.ex. tillbaka till köpsidan). |
 | `APPLICATION_NOTIFY_EMAIL` | `public-apply-organizer` | Valfri. Mottagare av notismejlet när någon skickar en arrangörsansökan från Kontakt-sidan. Utan secret används nicklas.stenlander@me.com. |
 | `CRON_SECRET` | `release-expired-orders` | Delas med GitHub Actions-schemat (`release-expired-orders.yml`) som auktorisering för cron-anropet. |
+| `SENTRY_DSN` | alla edge functions | Publik Sentry-klientnyckel (samma värde som `VITE_SENTRY_DSN`). Saknas den körs funktionerna utan felrapportering. Inte en hemlighet, men sätts som secret så den inte hårdkodas. |
+| `SENTRY_ENVIRONMENT` | alla edge functions | Valfri. `production` (default) ger `tracesSampleRate` 0.2, `development` ger 1.0. |
+| `SENTRY_RELEASE` | alla edge functions | Valfri release-tagg (t.ex. git-SHA) så fel kan kopplas till en deploy. |
+
+SDK:t sätter `user.ip_address` till `null`. Sentry kan ändå spara IP och `user.geo` från anslutningen. I projektet `sds-ticketing-poc`: Settings → Security & Privacy → Prevent Storing of IP Addresses, plus en Advanced Data Scrubbing-regel som tar bort `$user.geo.**` om plats inte ska sparas.
 | `SIE_ACCOUNT_CLEARING`, `SIE_ACCOUNT_REVENUE`, `SIE_ACCOUNT_VAT` | — | ⚠️ **Matchar inte vad koden läser.** `platform-export-revenue/index.ts` läser `PLATFORM_SIE_ACCOUNT_REVENUE`/`_VAT`/`_CLEARING` (med `PLATFORM_`-prefix) — dessa tre secrets utan prefix läses alltså aldrig, funktionen faller tillbaka på sina hårdkodade default-konton (3041/2611/1580). Antingen döp om secreten eller rätta koden innan plattformens egen bokföringsexport litas på. |
 | `ADMIN_PIN` | — (avvecklad) | Äldre delad PIN-kod för admin-inloggning (se `_shared/adminToken.ts`). Läses inte längre av någon funktion — ersatt av riktig Supabase Auth per arrangör. Säker att ta bort. |
 | `ADMIN_SESSION_SECRET` | — (avvecklad) | Hörde ihop med samma äldre PIN-flöde som ovan. Läses inte längre. Säker att ta bort. |
@@ -44,6 +49,8 @@ injiceras automatiskt av Supabase i varje Edge Function, finns med i
 | `VITE_SUPABASE_ANON_KEY` | `deploy.yml` | Samma, publik anon-nyckel. |
 | `SUPABASE_FUNCTIONS_URL` | `release-expired-orders.yml` | Bas-URL till Edge Functions, t.ex. `https://oyqgxnmwojjjpoubdlfa.supabase.co/functions/v1`. |
 | `CRON_SECRET` | `release-expired-orders.yml` | Samma värde som Supabase-secreten `CRON_SECRET` ovan. |
+| `VITE_SENTRY_DSN` | `deploy.yml` | Publik Sentry-klientnyckel, bakas in i frontend-bundlen. Samma värde som Supabase-secreten `SENTRY_DSN` och `.env.example`. |
+| `SENTRY_AUTH_TOKEN` | `deploy.yml` | Organisationstoken för uppladdning av source maps till Sentry (EU, `de.sentry.io`). Saknas den hoppas uppladdningen över. **Aldrig** en `VITE_`-variabel. Behörighet: Project Read & Write och Release Admin. |
 
 ## Checklista innan detta repo kopieras till ett nytt Childproof-projekt
 

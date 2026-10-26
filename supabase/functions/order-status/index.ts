@@ -32,9 +32,12 @@
 // i Storage-bucketen "qr" (laddas upp av stripe-webhook som
 // <order_id>/<ticket.id>.png) - ingen ny lagring behövs, bara att bygga
 // den publika URL:en här.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

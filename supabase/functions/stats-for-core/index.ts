@@ -27,6 +27,7 @@
 // köparnamn, e-postadresser eller order-id:n. Cache-Control: no-store
 // eftersom cachning sker ETT STEG BORT (Cloudflare KV, Fas 2) - den
 // här funktionen ska alltid ge ett färskt svar när den anropas.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, corsHeaders } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -37,6 +38,8 @@ function statsResponse(body: unknown, status: number): Response {
     headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   })
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

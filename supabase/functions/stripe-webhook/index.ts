@@ -94,6 +94,7 @@
 //      uppgiften har redan svarat Stripe) och rör ALDRIG
 //      webhook_events.status. Se retry-confirmation-emails för
 //      säkerhetsnätet mot ett mejl som fastnar permanent.
+import { captureEdgeException, instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { createStripeClient } from '../_shared/stripe.ts'
@@ -422,6 +423,8 @@ async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: s
   console.log('charge.refunded (full) ->', orderId, result.cancelled ? 'avbokad' : 'redan avbokad/fel status sedan innan')
 }
 
+await instrumentEdgeFunctions()
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -614,6 +617,7 @@ Deno.serve(async (req: Request) => {
     // Postgres/Stripe-klienten själva rapporterar.
     const message = err instanceof Error ? err.message : 'Okänt fel.'
     console.error('Fel vid hantering av Stripe-webhook (försök', attempts, ')', event.type, event.id, message)
+    await captureEdgeException(err)
 
     const { error: failError } = await supabase
       .from('webhook_events')

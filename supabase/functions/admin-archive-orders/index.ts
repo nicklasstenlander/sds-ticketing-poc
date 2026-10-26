@@ -15,6 +15,7 @@
 // avvisas HELA anropet (inget delvis utfört) med 404, samma
 // "avslöja-ingenting-om-andra-arrangörers-data"-princip som övriga
 // admin-funktioner.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -28,6 +29,8 @@ interface ArchiveOrdersBody {
   action?: 'archive' | 'restore'
   reason?: ArchiveReason
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

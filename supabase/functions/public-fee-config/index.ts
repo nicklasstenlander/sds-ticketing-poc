@@ -23,8 +23,11 @@
 //
 // GET public-fee-config (inga query-params, inga headers)
 // -> { mode: 'percent' | 'flat_per_ticket', flat_ore: number, server_time: string }
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { readPlatformFeeMode, readPlatformFeeFlatOre } from '../_shared/platformFee.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve((req: Request) => {
   const preflight = handleOptions(req)

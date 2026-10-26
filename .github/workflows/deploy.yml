@@ -27,6 +27,14 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Publik klientnyckel, samma värde som i .env.example. Saknas
+          # secreten byggs frontend utan felrapportering.
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SENTRY_RELEASE: ${{ github.sha }}
+          # Organisationstoken för source maps (EU, de.sentry.io). Saknas
+          # den hoppas uppladdningen över och bygget fortsätter. Får inte
+          # vara en VITE_-variabel.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

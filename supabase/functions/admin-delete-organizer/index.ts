@@ -23,6 +23,7 @@
 // stoppa raderingen och felet ytas tydligt till klienten, snarare än att
 // vi gissar oss till att tyst radera eller koppla loss rabattkoder som
 // kan vara i bruk.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -30,6 +31,8 @@ import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 interface DeleteOrganizerBody {
   organizer_id?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

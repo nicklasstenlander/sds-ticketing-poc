@@ -25,10 +25,13 @@
 // när Stripe bekräftar via account.updated att kontot faktiskt kan ta
 // emot betalningar (charges_enabled && details_submitted). Att ett
 // Connect-konto skapats betyder inte att det är klart att användas.
+import { captureEdgeException, instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createStripeClient } from '../_shared/stripe.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -81,6 +84,7 @@ Deno.serve(async (req: Request) => {
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Okänt Stripe-fel.'
+      await captureEdgeException(err)
       return jsonResponse({ error: `Kunde inte skapa Stripe-konto: ${message}` }, 502)
     }
 
@@ -111,6 +115,7 @@ Deno.serve(async (req: Request) => {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Okänt Stripe-fel.'
+    await captureEdgeException(err)
     return jsonResponse({ error: `Kunde inte skapa onboarding-länk: ${message}` }, 502)
   }
 

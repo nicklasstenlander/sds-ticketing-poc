@@ -29,6 +29,7 @@
 // ordern måste höra till ett event som tillhör den inloggade
 // användarens egen arrangör - 404 annars, samma mönster som övriga
 // admin-funktioner.
+import { captureEdgeException, instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -37,6 +38,8 @@ import { cancelPaidOrder } from '../_shared/cancelOrder.ts'
 interface CancelOrderBody {
   order_id?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -94,6 +97,7 @@ Deno.serve(async (req: Request) => {
   try {
     result = await cancelPaidOrder(supabase, orderId)
   } catch (err) {
+    await captureEdgeException(err)
     return jsonResponse({ error: err instanceof Error ? err.message : 'Kunde inte avboka ordern.' }, 500)
   }
 

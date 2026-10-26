@@ -26,6 +26,7 @@
 // (ingen apikey, ingen Authorization) - en apikey-header FÅR skickas
 // utan att svaret ändras, så ett framtida gateway-krav inte bryter
 // appen i förväg.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, corsHeaders } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
@@ -62,6 +63,8 @@ function embedResponse(body: unknown, status = 200): Response {
     headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   })
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

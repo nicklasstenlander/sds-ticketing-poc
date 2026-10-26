@@ -10,6 +10,7 @@
 // Bara `name` i denna order - inte `slug` (skulle bryta befintliga
 // länkar/QR-koder som pekar på slug-baserade URL:er) och inte
 // `contact_email` (rörs inte här).
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
@@ -17,6 +18,8 @@ import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 interface UpdateOrganizerBody {
   name?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

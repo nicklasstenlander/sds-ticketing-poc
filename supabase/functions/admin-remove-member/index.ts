@@ -13,6 +13,7 @@
 // 2. Ingen självborttagning i denna version - för att undvika att av
 //    misstag låsa ut sig ur en arrangör man fortfarande behöver komma åt.
 //    Om det behövs, görs det via en annan medlem eller platform-admin.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
@@ -20,6 +21,8 @@ import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 interface RemoveMemberBody {
   member_id?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

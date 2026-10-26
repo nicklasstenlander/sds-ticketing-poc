@@ -31,6 +31,7 @@
 // det inträffar (bara order-id + antal, aldrig personuppgifter).
 //
 // Loggar bara order-id och resultat - ALDRIG e-post eller namn.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -48,6 +49,8 @@ function single<T>(rel: T | T[] | null): T | null {
   if (Array.isArray(rel)) return rel[0] ?? null
   return rel
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

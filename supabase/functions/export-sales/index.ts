@@ -33,6 +33,7 @@
 // VIKTIGT - SIE-filen: strukturellt korrekt enligt SIE4-skelettet i
 // Tilläggsordern, men den FÖRSTA riktiga filen bör granskas av en
 // redovisningskonsult innan den importeras skarpt i Fortnox. Se README.md.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, corsHeaders, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -291,6 +292,8 @@ function buildSie(rows: SaleRow[]): string {
 
   return [...header, '', ...verifications, ''].join('\n')
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
