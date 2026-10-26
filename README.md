@@ -176,6 +176,12 @@ supabase secrets set SENTRY_ENVIRONMENT=production
 supabase secrets set SENTRY_RELEASE=$(git rev-parse HEAD)
 ```
 
+SDK:t skickar inte köparens IP (`user.ip_address: null`, `dataCollection.userInfo: false`).
+Sentrys ingest kan ändå fylla i IP och ungefärlig plats från anslutningen.
+Stäng av lagring under projektets Settings → Security & Privacy →
+**Prevent Storing of IP Addresses**. `user.geo` blir kvar tills en
+Advanced Data Scrubbing-regel tar bort `$user.geo.**`.
+
 > **`ADMIN_PIN` är borttagen** (Tilläggsordern 2026-08-05, "Flera
 > arrangörer: riktiga inloggningar och dataisolering") - admin-inloggning
 > sker numera med riktig Supabase Auth (e-post + lösenord per

@@ -248,7 +248,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function scrubUnknown(value: unknown, key: string | null, parentKey: string | null, seen: WeakSet<object>): unknown {
   if (typeof value === 'string') {
     if (key && shouldFullyRedact(key, parentKey)) return FILTERED
-    if (key === 'query_string' || key === 'query') return scrubQueryString(value)
+    if (key === 'query_string' || key === 'query' || (key !== null && (key.endsWith('.query') || key.endsWith('_query')))) {
+      return scrubQueryString(value)
+    }
     if (key === 'url' || key === 'http.url' || key === 'http.target' || (key !== null && key.endsWith('.url')) || /^[a-z][a-z0-9+.-]*:/i.test(value)) {
       return scrubUrlOrName(value)
     }
@@ -321,11 +323,30 @@ function tagEdgeFunction(event: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Sentry gissar avsändarens IP på servern om user.ip_address saknas, och
+ * sätter då även geo. Explicit null är opt-outen och måste sättas efter
+ * att skrubbningen tagit bort en eventuell IP som SDK:t lagt dit.
+ */
+function blockInferredIp(event: Record<string, unknown>): void {
+  // Ny kopia: SDK:ts user-objekt kan vara fruset, och tilldelning får inte
+  // fälla beforeSend (då slängs hela felet).
+  try {
+    const user = isPlainObject(event.user) ? { ...event.user } : {}
+    delete user.geo
+    user.ip_address = null
+    event.user = user
+  } catch {
+    // eventet i sig är fruset - hellre skicka utan den här opt-outen än att tappa felet
+  }
+}
+
 /** Muterar ett Sentry-fel/transaktions-event och tar bort person- och betaldata. */
 export function scrubSentryEvent<T>(event: T): T {
   if (!isPlainObject(event)) return event
   tagEdgeFunction(event)
   scrubUnknown(event, null, null, new WeakSet())
+  blockInferredIp(event)
   return event
 }
 

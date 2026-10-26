@@ -49,6 +49,7 @@ assertTrue(serialized.includes('Sentry verification error from sds-ticketing-poc
 assertTrue(serialized.includes('src/lib/sentry.ts'), 'filnamn i stacken blir kvar')
 assertTrue(scrubbed.user.id === 'user-1', 'icke-känsligt user-id blir kvar')
 assertTrue(scrubbed.user.email === undefined, 'user.email tas bort')
+assertTrue(scrubbed.user.ip_address === null, 'IP sätts till null så Sentry inte gissar den')
 assertTrue(scrubbed.tags.edge_function === 'create-order', 'edge function-tagg sätts från funktions-URL')
 
 const browserEvent = scrubSentryEvent({
@@ -59,17 +60,20 @@ const browserSerialized = JSON.stringify(browserEvent)
 assertTrue(!browserSerialized.includes('buyer@example.com'), 'e-post i sidans query skrubbas')
 assertTrue(browserSerialized.includes('/kop/test-event'), 'hash-routen blir kvar')
 assertTrue(browserEvent.tags.edge_function === undefined, 'webbläsarevent får ingen edge_function-tagg')
+assertTrue(browserEvent.user.ip_address === null, 'webbläsarevent utan user får också ip null')
 
 const span = scrubSentrySpan({
   name: 'GET /order-status?order_id=abc&email=buyer@example.com',
   attributes: {
     'http.url': 'https://proj.supabase.co/functions/v1/order-status?email=buyer@example.com&ok=1',
     'http.request.header.authorization': 'Bearer sk_test_abcdefghijklmnopqrstuvwxyz',
+    'url.query': 'email=buyer@example.com&token=super-secret-token&ok=1',
   },
 })
 const spanSerialized = JSON.stringify(span)
 assertTrue(span.name === 'GET /order-status', 'query tas bort från span-namn')
 assertTrue(!spanSerialized.includes('buyer@example.com'), 'e-post tas bort från span')
+assertTrue(!spanSerialized.includes('super-secret-token'), 'token tas bort från span-query')
 assertTrue(!spanSerialized.includes('sk_test_abcdefghijklmnopqrstuvwxyz'), 'nyckel tas bort från span-attribut')
 assertTrue(spanSerialized.includes('ok=1'), 'ofarlig query blir kvar på span-URL')
 

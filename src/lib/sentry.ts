@@ -46,9 +46,8 @@ if (dsn) {
     beforeSend(event) {
       return scrubSentryEvent(event)
     },
-    beforeSendTransaction(event) {
-      return scrubSentryEvent(event)
-    },
+    // traceLifecycle är 'stream' som standard. beforeSendTransaction ignoreras
+    // då; span-skrubbningen sker i beforeSendSpan.
     beforeSendSpan(span) {
       return scrubSentrySpan(span)
     },

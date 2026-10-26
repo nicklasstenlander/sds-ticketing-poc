@@ -4,12 +4,13 @@
 // Saknas SENTRY_DSN, eller om SDK:t inte kan starta, kör funktionen vidare
 // utan Sentry - en trasig felrapport får inte stoppa köp eller webhook.
 //
-// Supabase kör inte Denos --preload-importkrok, så init sker här och
-// Deno.serve wrappas med SDK:ts wrapDenoRequestHandler (samma väg som
-// denoServeIntegration). Request-kroppar (köparnamn, e-post, Stripe-payload)
-// skickas inte. Flush sker efter svaret via EdgeRuntime.waitUntil så
-// isolerade inte fryser innan händelsen hunnit iväg; vid ett kastat fel
-// väntar vi in flush innan felet släpps vidare.
+// Supabase kör inte Denos --preload-importkrok, så init sker här.
+// denoServeIntegration (SDK:ts officiella Deno.serve-krok) fångar fel och
+// spann. Den exporterar inte wrapDenoRequestHandler, så vi lägger ett
+// flush-lager under den kroken: vid ett kastat fel väntar vi in flush,
+// annars schemaläggs flush via EdgeRuntime.waitUntil så isolatet inte
+// fryser innan händelsen hunnit iväg. Request-kroppar (köparnamn, e-post,
+// Stripe-payload) skickas inte.
 
 import {
   scrubBreadcrumb,
@@ -43,26 +44,27 @@ function scheduleFlush(): void {
   }
 }
 
-function patchDenoServe(sdk: SentryModule): void {
-  const current = Deno.serve
-  const patched = new Proxy(current, {
+// Installeras FÖRE Sentry.init. denoServeIntegration ersätter sedan Deno.serve
+// och anropar den här proxyn med sin redan wrappade handler, så flush sker
+// efter att SDK:t både avslutat spannet och köat felet.
+function installFlushPatch(sdk: SentryModule): void {
+  const realServe = Deno.serve
+  const flushProxy = new Proxy(realServe, {
     apply(target, thisArg, args: unknown[]) {
       const wrap = (handler: (request: Request, info: Deno.ServeHandlerInfo) => Response | Promise<Response>) =>
-        (request: Request, info: Deno.ServeHandlerInfo) => {
-          return (async () => {
+        async (request: Request, info: Deno.ServeHandlerInfo) => {
+          try {
+            return await handler(request, info)
+          } catch (error) {
             try {
-              return await sdk.wrapDenoRequestHandler({ request, info }, () => handler(request, info))
-            } catch (error) {
-              try {
-                await sdk.flush(2000)
-              } catch {
-                // rapporteringen får inte dölja det ursprungliga felet
-              }
-              throw error
-            } finally {
-              scheduleFlush()
+              await sdk.flush(2000)
+            } catch {
+              // rapporteringen får inte dölja det ursprungliga felet
             }
-          })()
+            throw error
+          } finally {
+            scheduleFlush()
+          }
         }
 
       const next = [...args]
@@ -89,7 +91,7 @@ function patchDenoServe(sdk: SentryModule): void {
     configurable: descriptor?.configurable ?? true,
     enumerable: descriptor?.enumerable ?? true,
     writable: true,
-    value: patched,
+    value: flushProxy,
   })
 }
 
@@ -97,6 +99,7 @@ async function start(): Promise<void> {
   if (!DSN) return
   try {
     const sdk = await import('npm:@sentry/deno@11.9.0')
+    installFlushPatch(sdk)
     sdk.init({
       dsn: DSN,
       environment: ENVIRONMENT,
@@ -111,14 +114,20 @@ async function start(): Promise<void> {
       tracePropagationTargets: [/^\//, /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\//],
       enableOpenTelemetrySetup: false,
       enableRuntimeChannelInjection: false,
-      integrations: (integrations) => integrations.filter((integration) => integration.name !== 'DenoServe'),
+      integrations: (integrations) =>
+        integrations.map((integration) =>
+          integration.name === 'DenoServe'
+            ? sdk.denoServeIntegration({
+                maxRequestBodySize: 'none',
+                ignoreRequestBody: () => true,
+                sessions: false,
+              })
+            : integration,
+        ),
       initialScope: {
         tags: { runtime: 'deno', service: 'sds-ticketing-poc' },
       },
       beforeSend(event) {
-        return scrubSentryEvent(event)
-      },
-      beforeSendTransaction(event) {
         return scrubSentryEvent(event)
       },
       beforeSendSpan(span) {
@@ -128,7 +137,6 @@ async function start(): Promise<void> {
         return scrubBreadcrumb(breadcrumb)
       },
     })
-    patchDenoServe(sdk)
     sentry = sdk
   } catch (error) {
     const message = error instanceof Error ? error.message : ''
