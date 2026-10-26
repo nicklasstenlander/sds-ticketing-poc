@@ -18,6 +18,7 @@
 // och biljettmailen i stripe-webhook (ett Resend-fel är alltid
 // best-effort, aldrig en anledning att rulla tillbaka eller svara med
 // fel till anroparen).
+import { captureEdgeException, instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -68,6 +69,8 @@ async function sendRejectionEmail(contactEmail: string) {
     console.error('Resend-fel (avslagsmail):', errText)
   }
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
@@ -123,6 +126,7 @@ Deno.serve(async (req: Request) => {
     await sendRejectionEmail(application.contact_email)
   } catch (err) {
     console.error('Kunde inte skicka avslagsmail:', err)
+    await captureEdgeException(err)
   }
 
   return jsonResponse({ success: true })

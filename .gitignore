@@ -14,6 +14,9 @@ dist-ssr
 .env
 .env.*
 !.env.example
+# Sentry-pluginet läser den här filen automatiskt om den finns. Auth-token
+# får bara komma från CI-miljön (SENTRY_AUTH_TOKEN), aldrig från repot.
+.env.sentry-build-plugin
 
 # Editor directories and files
 .vscode/*

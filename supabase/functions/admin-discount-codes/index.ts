@@ -18,6 +18,7 @@
 // "Radera" finns inte som operation i v1 (Tilläggsordern avsnitt 6) -
 // koder inaktiveras istället (active = false) så att de fortfarande syns
 // i exportunderlaget för redan gjorda köp.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -34,6 +35,8 @@ interface Body {
   valid_until?: string | null
   active?: boolean
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

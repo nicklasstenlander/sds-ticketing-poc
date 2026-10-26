@@ -15,6 +15,7 @@
 // (se AdminEventPage.tsx, checkImageDimensions). Fel mått som ändå smiter
 // igenom ger bara en snedvriden bild i UI, inget säkerhets- eller
 // dataintegritetsproblem - acceptabel risk för en PoC.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -44,6 +45,8 @@ function decodeBase64(input: string): Uint8Array {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

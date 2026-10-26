@@ -12,9 +12,12 @@
 // den inloggade användarens egen rad UTAN att behöva exponera user_id -
 // självborttagning är explicit utanför scope för denna order (se admin-
 // remove-member, som ändå blockerar det server-side ifall UI:t kringgås).
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

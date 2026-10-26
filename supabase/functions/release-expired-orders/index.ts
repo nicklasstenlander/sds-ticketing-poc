@@ -13,9 +13,12 @@
 // samma konstant-tid-jämförelsemönster som SCANNER_BEARER_TOKEN. Detta är
 // INTE en admin-sessionstoken (ingen PIN-inloggning inblandad) eftersom
 // anroparen är ett schemalagt jobb utan mänsklig inloggning.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

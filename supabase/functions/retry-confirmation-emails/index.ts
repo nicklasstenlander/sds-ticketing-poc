@@ -75,6 +75,7 @@
 //
 // Autentiseras med en statisk bearer-token (CRON_SECRET), samma
 // mönster som release-expired-orders.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -89,6 +90,8 @@ function single<T>(rel: T | T[] | null): T | null {
   if (Array.isArray(rel)) return rel[0] ?? null
   return rel
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

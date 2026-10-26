@@ -18,6 +18,7 @@
 // till status "published" om det har minst en biljettyp. Detta kontrolleras
 // här, inte bara i frontend, eftersom backend-spärren är den som faktiskt
 // gäller.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -36,6 +37,8 @@ interface UpdateEventBody {
   // för att rensa (släpp direkt). undefined = fältet rörs inte alls.
   sales_open_at?: string | null
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

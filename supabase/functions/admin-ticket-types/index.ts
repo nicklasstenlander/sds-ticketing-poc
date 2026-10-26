@@ -20,6 +20,7 @@
 // Radering: samma villkorade logik som event-radering (Tilläggsordern
 // avsnitt 5) - en biljettyp utan PAID-ordrar raderas, en med paid-ordrar
 // kan inte tas bort (ingen "inaktivera"-flagga i v1, se Tilläggsordern).
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -35,6 +36,8 @@ interface Body {
   vat_rate?: number
   sort_order?: number
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

@@ -19,9 +19,12 @@
 //
 // Samma auktorisering som övriga admin-*-funktioner (resolveOrganizer)
 // - visar bara ordrar för den inloggade arrangörens egna event.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

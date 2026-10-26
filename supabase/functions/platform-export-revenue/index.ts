@@ -24,6 +24,7 @@
 // GET platform-export-revenue?format=csv&scope=day&date=2026-08-07
 // GET platform-export-revenue?format=csv&scope=range&from=...&to=...
 // GET platform-export-revenue?format=sie&scope=...   (samma tre lägen)
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, corsHeaders, jsonResponse } from '../_shared/cors.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -202,6 +203,8 @@ function buildSie(rows: RevenueRow[]): string {
 
   return [...header, '', ...verifications, ''].join('\n')
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

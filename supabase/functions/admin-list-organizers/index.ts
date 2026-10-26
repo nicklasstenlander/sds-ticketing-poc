@@ -19,9 +19,12 @@
 // last_sign_in_at via Auth Admin API (auth.users nås inte direkt via
 // PostgREST, så vi slår upp varje unik user_id individuellt - listan över
 // arrangörer är liten nog att N+1-uppslag inte är ett problem här).
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

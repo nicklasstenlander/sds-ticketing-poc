@@ -15,10 +15,13 @@
 // belopp. Det här är FÖRSTA stället i admin-UI:t som visar köparens namn/
 // e-post på en lista - tidigare bara exponerat via tickets.holder_name
 // (gästlistan), som kan skilja sig från beställaren.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

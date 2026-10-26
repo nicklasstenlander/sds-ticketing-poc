@@ -4,10 +4,13 @@
 // (id, titel, datum, antal sålda biljetter) så appen kan visa en lista att
 // välja event att scanna mot. Autentiseras med en statisk bearer-token
 // (Supabase secret SCANNER_BEARER_TOKEN) - samma token som scan-ticket.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

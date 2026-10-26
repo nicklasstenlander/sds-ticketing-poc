@@ -4,8 +4,12 @@
 // frontend-domän innan ni går i produktion.
 export const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
+  // sentry-trace och baggage (Sentry-tracing från webbläsaren) måste vara
+  // tillåtna, annars faller preflight mot funktionerna och köpet går inte
+  // igenom. Deploya funktionerna INNAN en frontend som skickar de
+  // headrarna. De bär inga personuppgifter, bara trace-id.
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-organizer-id',
+    'authorization, x-client-info, apikey, content-type, x-organizer-id, sentry-trace, baggage',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   // Utan detta kan JS i webbläsaren INTE läsa dessa svars-headers över
   // CORS, trots att de finns i det råa svaret - bara en handfull

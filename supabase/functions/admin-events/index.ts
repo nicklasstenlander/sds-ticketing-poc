@@ -22,6 +22,7 @@
 // - UI:t använder det för att avgöra om "Radera" överhuvudtaget ska
 // visas (bara draft+0 ordrar är raderbart, se admin-delete-event) eller
 // om det måste bli "Arkivera" istället.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -32,6 +33,8 @@ interface TicketTypeSummary {
   min_price_ore: number | null
   max_price_ore: number | null
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

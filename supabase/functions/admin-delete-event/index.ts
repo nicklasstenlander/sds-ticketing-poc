@@ -21,6 +21,7 @@
 // eventet måste tillhöra den inloggade användarens egen arrangör
 // (Tilläggsordern 2026-08-05) - samma 404-för-annan-arrangörs-event-
 // mönster som admin-update-event.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -28,6 +29,8 @@ import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 interface DeleteEventBody {
   event_id?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

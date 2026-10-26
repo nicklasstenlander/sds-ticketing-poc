@@ -5,6 +5,7 @@
 // platform-create-organizer (_shared/createOrganizer.ts) - se den filens
 // kommentar för varför den är delad. Den sökande får först NU sin
 // inbjudan, aldrig vid själva formulärinskicket.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { requirePlatformAdmin } from '../_shared/platformAdmin.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -13,6 +14,8 @@ import { createOrganizerAndInvite } from '../_shared/createOrganizer.ts'
 interface ApproveBody {
   application_id?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

@@ -19,6 +19,7 @@
 // biljettyper vid ett halvvägs-fel - samma mönster som
 // reserve_shared_capacity_multi. Ägarskapskontrollen sker HÄR, inte i
 // DB-funktionen - duplicate_event() litar på att den redan är gjord.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -26,6 +27,8 @@ import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 interface DuplicateEventBody {
   event_id?: string
 }
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)

@@ -53,6 +53,7 @@
 // duger (en vuxenbiljett med en 100%-kod skulle annars se ut som en
 // genuint gratis biljettyp). Inga personuppgifter i något av de tre
 // fälten.
+import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { bearerTokenFrom, timingSafeEqual } from '../_shared/adminToken.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
@@ -78,6 +79,8 @@ interface ScanBody {
 // tydligt 400-fel på uppenbart trasig indata innan vi ens frågar
 // databasen, inte en strikt RFC-validering.
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+await instrumentEdgeFunctions()
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req)
