@@ -60,20 +60,25 @@ for (const file of [
 {
   const migration = read('supabase/migrations/20261012040000_schedule_release_expired_orders.sql')
   assertTrue(migration.includes('begin;') && migration.includes('commit;'), 'Migrationen är omsluten av begin/commit')
-  assertTrue(migration.includes('create extension if not exists pg_cron'), 'Migrationen försöker aktivera pg_cron (if not exists - ofarlig att köra om, även efter en Dashboard-aktivering)')
+  assertTrue(migration.includes('create extension if not exists pg_cron with schema pg_catalog'), 'Migrationen försöker aktivera pg_cron (if not exists - ofarlig att köra om, även efter en Dashboard-aktivering)')
   assertTrue(
     migration.includes("select jobid from cron.job where jobname = 'release-expired-orders'") &&
       migration.includes('cron.unschedule(r.jobid)'),
     'Migrationen avschemalägger ett eventuellt BEFINTLIGT jobb med samma namn innan den schemalägger ett nytt (idempotent, inga dubbletter vid omkörning)',
   )
   assertTrue(
-    migration.includes("cron.schedule(\n  'release-expired-orders',\n  '*/5 * * * *',\n  $$select release_expired_orders();$$\n)"),
-    'cron.schedule anropas med rätt jobbnamn, var-5:e-minut-schema och kommandot select release_expired_orders()',
+    migration.includes("cron.schedule(\n  'release-expired-orders',\n  '*/5 * * * *',\n  $$select public.release_expired_orders();$$\n)"),
+    'cron.schedule anropas med rätt jobbnamn, var-5:e-minut-schema och det schema-kvalificerade kommandot select public.release_expired_orders()',
   )
   // Kollar bara KODRADER (inte -- kommentarer, som förklarande NÄMNER
   // "pg_net"/"CRON_SECRET" i prosa om varför de INTE behövs här) -
   // samma princip som "security definer"-kontrollen i check-archive.ts/
   // check-cancel-order.ts.
+  assertTrue(
+    migration.includes("to_regprocedure('public.release_expired_orders()') is null") &&
+      migration.indexOf('to_regprocedure') < migration.indexOf('create extension if not exists'),
+    'Migrationen avbryter med ett tydligt fel INNAN något skapas om release_expired_orders() saknas',
+  )
   const migrationCodeOnly = migration
     .split('\n')
     .filter((line) => !line.trim().startsWith('--'))

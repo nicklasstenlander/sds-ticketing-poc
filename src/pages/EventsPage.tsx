@@ -9,6 +9,7 @@ import { formatStockholmDateTime, formatStockholmDateTimeLocale } from '../lib/s
 import { formatKr } from '../lib/formatPrice'
 import { monogram } from '../lib/monogram'
 import { posterVars } from '../lib/posterVars'
+import { POSTER_MAX_SIZE } from '../lib/posterCompression'
 import { groupShows, pickFeatured } from '../lib/featuredShow'
 
 interface EventWithTicketTypes extends EventRow {
@@ -75,17 +76,23 @@ function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'h
     variant === 'hero' ? 'poster-frame-hero' : landscape ? 'poster-frame-tile poster-frame-tile-landscape' : 'poster-frame-tile'
   if (landscape || portrait) {
     const alt = `Affisch: ${first.title}`
+    // width/height = uppladdningsmåtten, ger proportionen innan bilden
+    // laddats. Storleken på sidan styrs av .poster-frame-CSS:en.
+    const portraitDims = { width: POSTER_MAX_SIZE.portrait.w, height: POSTER_MAX_SIZE.portrait.h }
+    const imgDims = landscape ? { width: POSTER_MAX_SIZE.landscape.w, height: POSTER_MAX_SIZE.landscape.h } : portraitDims
     return (
       <div className={`poster poster-frame ${frameClass}`} style={posterVars(landscape, portrait)}>
         {variant === 'hero' ? (
+          // Heron ligger överst på sidan - laddas direkt (inte lazy), annars
+          // blir den största bilden på sidan sist att visas.
           <picture>
-            {landscape && portrait && <source media="(min-width: 900px)" srcSet={portrait} />}
-            <img src={landscape ?? portrait ?? ''} alt={alt} />
+            {landscape && portrait && <source media="(min-width: 900px)" srcSet={portrait} {...portraitDims} />}
+            <img src={landscape ?? portrait ?? ''} alt={alt} {...imgDims} />
           </picture>
         ) : (
           <picture>
-            {landscape && portrait && <source media="(min-width: 640px)" srcSet={portrait} />}
-            <img src={landscape ?? portrait ?? ''} alt={alt} loading="lazy" />
+            {landscape && portrait && <source media="(min-width: 640px)" srcSet={portrait} {...portraitDims} />}
+            <img src={landscape ?? portrait ?? ''} alt={alt} loading="lazy" decoding="async" {...imgDims} />
           </picture>
         )}
       </div>
