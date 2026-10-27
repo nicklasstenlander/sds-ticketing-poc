@@ -597,11 +597,22 @@
     return rows
   }
 
+  // Affischernas uppladdningsmått (src/lib/posterCompression.ts). width/
+  // height ger webbläsaren proportionen innan bilden laddats (ingen
+  // layoutförskjutning); den faktiska storleken styrs av CSS:en ovan.
+  var POSTER_DIMS = { landscape: { width: 1600, height: 900 }, portrait: { width: 800, height: 1422 } }
+
+  function posterImg(url, orientation) {
+    var dims = POSTER_DIMS[orientation]
+    return el('img', { src: url, alt: '', loading: 'lazy', decoding: 'async', width: dims.width, height: dims.height })
+  }
+
   function buildPosterBox(ev, preferLandscape) {
-    var url = preferLandscape ? ev.poster_landscape_url || ev.poster_portrait_url : ev.poster_portrait_url || ev.poster_landscape_url
+    var useLandscape = preferLandscape ? !!ev.poster_landscape_url : !ev.poster_portrait_url
+    var url = useLandscape ? ev.poster_landscape_url : ev.poster_portrait_url
     if (!url || !isTrustedPosterUrl(url)) return null
     var box = el('div', { className: 'rw-poster' })
-    box.appendChild(el('img', { src: url, alt: '', loading: 'lazy' }))
+    box.appendChild(posterImg(url, useLandscape ? 'landscape' : 'portrait'))
     return box
   }
 
@@ -682,7 +693,7 @@
         wrap = el('div', { className: 'rw-horizontal' }, [buildPosterBox(ev, false), right])
       } else if (hasLandscapeUrl) {
         var hero = el('div', { className: 'rw-poster' })
-        hero.appendChild(el('img', { src: ev.poster_landscape_url, alt: '', loading: 'lazy' }))
+        hero.appendChild(posterImg(ev.poster_landscape_url, 'landscape'))
         wrap = el('div', { className: 'rw-horizontal-hero' }, [hero, right])
       } else if (config.show.indexOf('poster') !== -1) {
         wrap = el('div', { className: 'rw-horizontal' }, [buildPosterPlaceholder(), right])

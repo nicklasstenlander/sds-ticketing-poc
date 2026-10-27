@@ -32,9 +32,38 @@
 -- köra igen när extensionen redan finns, och resten av filen (av-
 -- schemaläggning + schemaläggning) är skriven idempotent av samma skäl
 -- - säkert att köra om, oavsett hur många gånger.
+--
+-- UPPDATERAD 2026-10-26: jobbet hade aldrig skapats i produktion
+-- (pg_cron ej installerat, cron.job saknades, supabase_migrations-
+-- historiken tom - filen hade alltså aldrig körts). Ändringar:
+--   * "with schema pg_catalog" - Supabase-dokumentationens rekommenderade
+--     form; extensionens egna objekt hamnar ändå i schemat "cron".
+--   * Förkontroll: avbryter HELA transaktionen med ett tydligt fel om
+--     public.release_expired_orders() eller dess beroenden saknas,
+--     istället för att schemalägga ett jobb som sedan felar tyst var
+--     5:e minut (felen syns bara i cron.job_run_details).
+--   * Kommandot är schema-kvalificerat (public.release_expired_orders())
+--     så att det inte beror på search_path i pg_cron-bakgrundsprocessen.
+-- Körs säkert i produktion med `supabase db query --linked -f <den här
+-- filen>`, INTE med `supabase db push` (historiken är tom - push skulle
+-- försöka köra om ALLA migrationer från init). Se PR-beskrivningen.
 begin;
 
-create extension if not exists pg_cron;
+do $$
+begin
+  if to_regprocedure('public.release_expired_orders()') is null then
+    raise exception 'public.release_expired_orders() saknas - kör 20260106000100_order_items_cart.sql först';
+  end if;
+  if to_regprocedure('public.release_shared_capacity_multi(uuid, jsonb, integer)') is null then
+    raise exception 'public.release_shared_capacity_multi(uuid, jsonb, integer) saknas - kör 20260106000100_order_items_cart.sql först';
+  end if;
+  if to_regclass('public.order_items') is null then
+    raise exception 'public.order_items saknas - kör 20260106000100_order_items_cart.sql först';
+  end if;
+end
+$$;
+
+create extension if not exists pg_cron with schema pg_catalog;
 
 -- Avschemalägg ett eventuellt BEFINTLIGT jobb med samma namn först -
 -- pg_cron tvingar inte fram unika jobbnamn, så att bara anropa
@@ -57,7 +86,7 @@ $$;
 select cron.schedule(
   'release-expired-orders',
   '*/5 * * * *',
-  $$select release_expired_orders();$$
+  $$select public.release_expired_orders();$$
 );
 
 commit;

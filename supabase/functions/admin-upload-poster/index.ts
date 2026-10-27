@@ -15,6 +15,13 @@
 // (se AdminEventPage.tsx, checkImageDimensions). Fel mått som ändå smiter
 // igenom ger bara en snedvriden bild i UI, inget säkerhets- eller
 // dataintegritetsproblem - acceptabel risk för en PoC.
+//
+// Egress-ordern 2026-10-26: klienten komprimerar till WebP (JPEG i Safari)
+// innan anropet, se src/lib/posterCompression.ts. Varje uppladdning får
+// ett NYTT filnamn ({orientation}-{tidsstämpel}.{ext}) istället för upsert
+// på samma sökväg + ?v=-cache-bust, så att filen kan cachas i ett år
+// (immutable) - en ny affisch är alltid en ny URL. Den tidigare filen tas
+// bort efteråt (best effort) så att bucketen inte växer.
 import { instrumentEdgeFunctions } from '../_shared/sentry.ts'
 import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
@@ -28,6 +35,19 @@ interface UploadPosterBody {
 }
 
 const MAX_BYTES = 5 * 1024 * 1024 // 5 MB, avkodad storlek
+
+// Ett år. Säkert eftersom filnamnet byts vid varje ny uppladdning.
+const POSTER_CACHE_CONTROL = '31536000'
+
+/** Objektets sökväg i posters-bucketen ur en publik URL, eller null om
+ * URL:en inte pekar dit. */
+function posterObjectPath(publicUrl: string | null): string | null {
+  if (!publicUrl) return null
+  const marker = '/storage/v1/object/public/posters/'
+  const idx = publicUrl.indexOf(marker)
+  if (idx === -1) return null
+  return decodeURIComponent(publicUrl.slice(idx + marker.length).split('?')[0])
+}
 
 const ALLOWED_CONTENT_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -90,7 +110,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, status, organizer_id')
+    .select('id, status, organizer_id, poster_landscape_url, poster_portrait_url')
     .eq('id', eventId)
     .maybeSingle()
   if (eventError) return jsonResponse({ error: `Databasfel: ${eventError.message}` }, 500)
@@ -115,25 +135,20 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Filen är tom.' }, 400)
   }
 
-  // Förutsägbar sökväg med upsert: en ny uppladdning av samma orientering
-  // skriver över den gamla filen istället för att skapa en dubblett.
-  const path = `${eventId}/${orientation}.${ext}`
+  const path = `${eventId}/${orientation}-${Date.now()}.${ext}`
   const { error: uploadError } = await supabase.storage
     .from('posters')
-    .upload(path, bytes, { contentType, upsert: true })
+    .upload(path, bytes, { contentType, upsert: false, cacheControl: POSTER_CACHE_CONTROL })
 
   if (uploadError) {
     return jsonResponse({ error: `Kunde inte ladda upp affischen: ${uploadError.message}` }, 500)
   }
 
   const { data: publicUrlData } = supabase.storage.from('posters').getPublicUrl(path)
-  // Cache-busting query-param så att en omuppladdning (samma path, upsert)
-  // faktiskt visar den nya bilden direkt istället för en cachead gammal
-  // version - webbläsare/CDN:er cachar annars aggressivt på en oförändrad
-  // URL.
-  const publicUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`
+  const publicUrl = publicUrlData.publicUrl
 
   const column = orientation === 'landscape' ? 'poster_landscape_url' : 'poster_portrait_url'
+  const previousPath = posterObjectPath(event[column])
   const { error: updateError } = await supabase
     .from('events')
     .update({ [column]: publicUrl })
@@ -141,6 +156,12 @@ Deno.serve(async (req: Request) => {
 
   if (updateError) {
     return jsonResponse({ error: `Kunde inte spara affisch-URL: ${updateError.message}` }, 500)
+  }
+
+  // Bara filer i eventets egen mapp - aldrig något en annan rad kan peka på.
+  if (previousPath && previousPath !== path && previousPath.startsWith(`${eventId}/`)) {
+    const { error: removeError } = await supabase.storage.from('posters').remove([previousPath])
+    if (removeError) console.error(`Kunde inte ta bort gammal affisch ${previousPath}: ${removeError.message}`)
   }
 
   return jsonResponse({ url: publicUrl, orientation })

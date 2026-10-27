@@ -9,6 +9,7 @@ import type { AdminOrderRow, EventRow, TicketRow, TicketTypeRow } from '../lib/t
 import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
 import { confirmDialog } from '../lib/confirmDialog'
+import { compressPoster } from '../lib/posterCompression'
 
 interface AdminEventTicketsResponse {
   event: EventRow
@@ -220,7 +221,7 @@ function checkImageDimensions(file: File, expected: { w: number; h: number }): P
   })
 }
 
-function fileToBase64(file: File): Promise<string> {
+function fileToBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
@@ -313,7 +314,10 @@ function PosterUploadField({
 
     setUploading(true)
     try {
-      const fileBase64 = await fileToBase64(file)
+      // Komprimeras här, inte i admin-upload-poster: en Edge Function har
+      // ingen inbyggd bildavkodare (se src/lib/posterCompression.ts).
+      const compressed = await compressPoster(file, orientation)
+      const fileBase64 = await fileToBase64(compressed)
       await callFunction('admin-upload-poster', {
         auth: true,
         method: 'POST',
@@ -321,7 +325,7 @@ function PosterUploadField({
           event_id: eventId,
           orientation,
           file_base64: fileBase64,
-          content_type: file.type,
+          content_type: compressed.type,
         },
       })
       await onChange()
