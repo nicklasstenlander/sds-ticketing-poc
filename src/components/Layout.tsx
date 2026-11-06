@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { APP_NAME } from '../lib/constants'
 import { TERMS_BY_SLUG } from '../content/terms'
 import { shouldShowTermsLink } from '../lib/termsLink'
@@ -52,6 +52,9 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
   const widthClass = wide === 'xl' ? 'max-w-6xl' : wide ? 'max-w-4xl' : 'max-w-2xl'
   const printHiddenClass = hideChromeInPrint ? 'print:hidden' : ''
   const showTermsLink = shouldShowTermsLink(termsSlug, TERMS_BY_SLUG)
+  // "Admin"-länken i sidfoten pekar på adminytan - på adminsidorna själva
+  // (inloggning inräknad) leder den bara tillbaka till samma ställe.
+  const onAdmin = useLocation().pathname.startsWith('/admin')
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)] print:bg-white">
       {/* Mörk topbar med negativ logotyp (grafisk profil förslag 1,
@@ -105,12 +108,14 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
             Köpvillkor
           </Link>
         )}
-        <Link
-          to="/admin"
-          className="footer-link"
-        >
-          Admin
-        </Link>
+        {!onAdmin && (
+          <Link
+            to="/admin"
+            className="footer-link"
+          >
+            Admin
+          </Link>
+        )}
       </footer>
     </div>
   )

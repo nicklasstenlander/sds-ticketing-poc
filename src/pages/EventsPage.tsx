@@ -73,7 +73,11 @@ function Poster({ shows, variant }: { shows: EventWithTicketTypes[]; variant: 'h
   // Hela klassnamn, inte ihopsatta av variant: Tailwind rensar annars bort
   // klasserna ur CSS:en eftersom den inte hittar dem som strängar i koden.
   const frameClass =
-    variant === 'hero' ? 'poster-frame-hero' : landscape ? 'poster-frame-tile poster-frame-tile-landscape' : 'poster-frame-tile'
+    variant === 'hero'
+      ? 'poster-frame-hero'
+      : landscape || !portrait
+        ? 'poster-frame-tile poster-frame-tile-landscape'
+        : 'poster-frame-tile'
   if (landscape || portrait) {
     const alt = `Affisch: ${first.title}`
     // width/height = uppladdningsmåtten, ger proportionen innan bilden
@@ -293,7 +297,9 @@ export function EventsPage() {
       backdrop={featured ? posterUrls(featured) : undefined}
       hero={
         <>
-          <h1 className="sr-only">Kommande föreställningar</h1>
+          {/* Synlig, liten rubrik: första skärmen säger vad sidan är (biljetter
+              till kommande föreställningar) innan affischen tar över. */}
+          <h1 className={events && events.length > 0 ? 'stage-eyebrow' : 'sr-only'}>Biljetter · kommande föreställningar</h1>
           {error && (
             <p role="alert" className="text-[var(--danger)] text-lg">
               Vi kunde inte hämta föreställningarna just nu. Försök igen om en stund.

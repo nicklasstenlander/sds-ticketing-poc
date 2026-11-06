@@ -28,7 +28,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="card max-w-sm mx-auto mt-6 sm:mt-12 p-8">
+    <div className="card max-w-sm mt-6 sm:mt-10 p-8">
       <h1 className="text-2xl font-extrabold mb-1 text-[var(--text)]">Logga in</h1>
       <p className="text-sm text-[var(--text-muted)] mb-6">Admin för arrangörer</p>
       <form onSubmit={handleSubmit} className="space-y-4">
