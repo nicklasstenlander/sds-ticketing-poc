@@ -447,7 +447,7 @@ export function CreateEventWizard({
                 <>
                   {' '}
                   <Link to="/admin/stripe-installning" className="underline">
-                    Gå till Stripe-inställningar →
+                    Gå till Betalningar →
                   </Link>
                 </>
               )}

@@ -140,7 +140,7 @@ export function ExportSection({ events }: { events: AdminEventRow[] }) {
       {scope === 'event' && (
         <div className="mb-4">
           <label className="block">
-            <span className="block text-sm font-medium mb-2 text-[var(--text)]">Event</span>
+            <span className="block text-sm font-medium mb-2 text-[var(--text)]">Föreställning</span>
             <select
             value={eventId}
             onChange={(e) => setEventId(e.target.value)}
@@ -159,7 +159,7 @@ export function ExportSection({ events }: { events: AdminEventRow[] }) {
 
       {exportError && <p className="text-[var(--danger)] text-sm mb-3">{exportError}</p>}
 
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-3">
         <button type="button" onClick={() => handleDownload('csv')} disabled={downloading !== null} className="btn-primary">
           {downloading === 'csv' ? 'Laddar ner…' : 'Ladda ner CSV'}
         </button>

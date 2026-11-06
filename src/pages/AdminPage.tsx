@@ -11,6 +11,9 @@ import { CreateEventWizard } from './admin/CreateEventWizard'
 import { DiscountCodesSection } from './admin/DiscountCodesSection'
 import { LoginForm } from './admin/AdminLoginForm'
 import { monogram } from '../lib/monogram'
+import { groupShows } from '../lib/featuredShow'
+import { ActionMenu } from '../components/ActionMenu'
+import type { ActionMenuItem } from '../components/ActionMenu'
 import { ExportSection } from './admin/ExportSection'
 import { PlatformRevenueExportSection } from './admin/PlatformRevenueExportSection'
 import {
@@ -181,7 +184,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setEvents(res.events)
       return res.events
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde inte hämta events.')
+      setError(err instanceof Error ? err.message : 'Kunde inte hämta föreställningarna.')
       return []
     }
   }
@@ -489,11 +492,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </>
         }
       />
-      <h1 className="page-title">Events</h1>
+      <div className="admin-title-row">
+        <h1 className="page-title">Föreställningar</h1>
+        <button type="button" onClick={startCreate} className="btn-spotlight">
+          <span aria-hidden="true">+</span> Ny föreställning
+        </button>
+      </div>
       {events && events.length > 0 && (
         <div className="admin-kpis">
           <div className="stat-card">
-            <div className="stat-label">Publicerade events</div>
+            <div className="stat-label">Publicerade speltider</div>
             <div className="stat-value">
               {events.filter((e) => e.status === 'published').length}
             </div>
@@ -522,8 +530,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <section className="order-1">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-extrabold text-[var(--text)]">Befintliga events</h2>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-4">
+            <h2 className="text-lg font-extrabold text-[var(--text)]">Dina föreställningar</h2>
             <label className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
               <input type="checkbox" checked={showArchived} onChange={handleToggleShowArchived} />
               Visa arkiverade och inställda
@@ -537,7 +545,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <>
                   {' '}
                   <Link to="/admin/stripe-installning" className="underline">
-                    Gå till Stripe-inställningar →
+                    Gå till Betalningar →
                   </Link>
                 </>
               )}
@@ -545,171 +553,203 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           )}
           {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
           {events !== null && events.length === 0 && (
-            <p className="text-[var(--text-muted)]">Inga events skapade ännu.</p>
+            <p className="text-[var(--text-muted)]">Inga föreställningar skapade ännu. Börja med <strong>Ny föreställning</strong> ovan.</p>
           )}
-          <ul className="space-y-3">
-            {events
-              // Inställda event (raderade med sålda biljetter) hör till arkivet:
-              // döljs tillsammans med arkiverade tills "Visa arkiverade" kryssas i.
-              ?.filter((event) => showArchived || event.status !== 'cancelled')
-              .map((event) => {
-              const cancelled = event.status === 'cancelled'
-              const isEditing = event.id === editingEventId
-              const editable = !cancelled && !event.archived_at
-              const summary = event.ticket_types_summary
-              // Schemalagt biljettsläpp (ordern 2026-10-03) - markering i
-              // listan, samma stil som status-chipen.
-              const isUpcoming =
-                computeSalesState({
-                  salesOpenAt: event.sales_open_at,
-                  soldCount: event.sold_count,
-                  capacity: event.capacity,
-                }) === 'upcoming'
+          <ul className="space-y-4">
+            {groupShows(
+              (events ?? [])
+                // Inställda event (raderade med sålda biljetter) hör till arkivet:
+                // döljs tillsammans med arkiverade tills "Visa arkiverade" kryssas i.
+                .filter((event) => showArchived || event.status !== 'cancelled'),
+            ).map((group) => {
+              // Ett kort per föreställning (samma titel + plats, samma gruppering
+              // som /evenemang) med en rad per speltid. Varje speltid är
+              // fortfarande ett eget event med egna åtgärder.
+              const first = group[0]
+              const sold = group.reduce((sum, e) => sum + e.sold_count, 0)
+              const capacity = group.reduce((sum, e) => sum + e.capacity, 0)
+              const pct = capacity > 0 ? Math.round((sold / capacity) * 100) : 0
+              const posterEvent = group.find((e) => e.poster_landscape_url || e.poster_portrait_url) ?? first
               return (
-                <li
-                  key={event.id}
-                  className={`card p-4 transition-colors ${
-                    isEditing
-                      ? 'is-editing'
-                      : cancelled
-                        ? 'opacity-70'
-                        : ''
-                  } ${editable ? 'admin-event-card-clickable' : ''}`}
-                  // Hela kortet öppnar "Redigera uppgifter"; knappar och länkar
-                  // inuti behåller sina egna åtgärder.
-                  onClick={
-                    editable
-                      ? (e) => {
-                          if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return
-                          startEdit(event)
-                        }
-                      : undefined
-                  }
-                >
-                  <div className="admin-event-head">
-                    <div className="admin-event-link">
-                      <EventThumb event={event} />
-                      <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-[var(--text)]">{event.title}</div>
-                      <div className="text-sm text-[var(--text-muted)]">
-                        {event.starts_at
-                          ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
-                            formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
-                          : 'Inget datum satt'}
-                        {event.venue ? ` · ${event.venue}` : ''}
-                        {' · '}
-                        {summary.ticket_type_count === 0
-                          ? 'inga biljettyper'
-                          : `${summary.ticket_type_count} biljettyp${summary.ticket_type_count > 1 ? 'er' : ''}`}
-                      </div>
-                      <div className="admin-event-status">
-                        <span className="text-sm text-[var(--text)]">
-                          {event.sold_count} / {event.capacity} sålda
+                <li key={first.id} className="card admin-show">
+                  <div className="admin-show-head">
+                    <EventThumb event={posterEvent} />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="admin-show-title">{first.title}</h3>
+                      <p className="admin-show-meta">
+                        {[first.venue, group.length === 1 ? '1 speltid' : `${group.length} speltider`]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                      <div className="admin-show-progress">
+                        <div className="progress-track" style={{ height: 6 }}>
+                          <div className="progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
+                        </div>
+                        <span className="tabular-nums">
+                          {sold} / {capacity} sålda
                         </span>
-                        <span
-                          className={`badge ${
-                            cancelled
-                              ? 'badge-neutral'
-                              : event.status === 'published'
-                                ? 'badge-success'
-                                : 'badge-warning'
-                          }`}
-                        >
-                          {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
-                        </span>
-                        {event.archived_at && (
-                          <span className="badge badge-dark">
-                            Arkiverad ({event.archived_reason === 'test' ? 'testdata' : 'dold'})
-                          </span>
-                        )}
-                        {isUpcoming && event.sales_open_at && (
-                          <span className="badge badge-spotlight">
-                            Släpps {formatStockholmDateTime(event.sales_open_at)}
-                          </span>
-                        )}
-                      </div>
                       </div>
                     </div>
                   </div>
+                  <ul className="admin-times">
+                    {group.map((event) => {
+                      const cancelled = event.status === 'cancelled'
+                      const isEditing = event.id === editingEventId
+                      const editable = !cancelled && !event.archived_at
+                      const summary = event.ticket_types_summary
+                      // Schemalagt biljettsläpp (ordern 2026-10-03) - markering i
+                      // listan, samma stil som status-chipen.
+                      const isUpcoming =
+                        computeSalesState({
+                          salesOpenAt: event.sales_open_at,
+                          soldCount: event.sold_count,
+                          capacity: event.capacity,
+                        }) === 'upcoming'
+                      const menuItems: ActionMenuItem[] = [
+                        { label: 'Redigera uppgifter', onSelect: () => startEdit(event) },
+                        {
+                          label: event.status === 'published' ? 'Sätt som utkast' : 'Publicera',
+                          onSelect: () => handleTogglePublish(event),
+                        },
+                        {
+                          label: duplicatingId === event.id ? 'Duplicerar…' : 'Duplicera',
+                          onSelect: () => handleDuplicate(event),
+                          disabled: duplicatingId === event.id,
+                        },
+                        {
+                          label: archiveActionId === event.id ? 'Arkiverar…' : 'Arkivera',
+                          onSelect: () => setArchivingEventId(event.id),
+                          disabled: archiveActionId === event.id,
+                        },
+                        ...(canHardDelete(event)
+                          ? [
+                              {
+                                label: deletingId === event.id ? 'Raderar…' : 'Radera',
+                                onSelect: () => handleDelete(event),
+                                disabled: deletingId === event.id,
+                                danger: true,
+                              },
+                            ]
+                          : []),
+                      ]
+                      return (
+                        <li
+                          key={event.id}
+                          className={`admin-time ${isEditing ? 'is-editing' : ''} ${cancelled ? 'opacity-70' : ''} ${
+                            editable ? 'admin-time-clickable' : ''
+                          }`}
+                          // Hela raden öppnar "Redigera uppgifter"; knappar och länkar
+                          // inuti behåller sina egna åtgärder.
+                          onClick={
+                            editable
+                              ? (e) => {
+                                  if ((e.target as HTMLElement).closest('button, a, input, select, textarea, [role="menu"]')) return
+                                  startEdit(event)
+                                }
+                              : undefined
+                          }
+                        >
+                          <div className="admin-time-row">
+                            <div className="min-w-0 flex-1">
+                              <div className="admin-time-date">
+                                {event.starts_at
+                                  ? // steg 1b: explicit Europe/Stockholm (se stockholmTime.ts).
+                                    formatStockholmDateTimeLocale(event.starts_at, {
+                                      weekday: 'short',
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : 'Inget datum satt'}
+                              </div>
+                              <div className="admin-event-status">
+                                <span className="text-sm text-[var(--text-muted)] tabular-nums">
+                                  {event.sold_count} / {event.capacity} sålda ·{' '}
+                                  {summary.ticket_type_count === 0
+                                    ? 'inga biljettyper'
+                                    : `${summary.ticket_type_count} biljettyp${summary.ticket_type_count > 1 ? 'er' : ''}`}
+                                </span>
+                                <span
+                                  className={`badge ${
+                                    cancelled
+                                      ? 'badge-neutral'
+                                      : event.status === 'published'
+                                        ? 'badge-success'
+                                        : 'badge-warning'
+                                  }`}
+                                >
+                                  {cancelled ? 'Inställt' : event.status === 'published' ? 'Publicerat' : 'Utkast'}
+                                </span>
+                                {event.archived_at && (
+                                  <span className="badge badge-dark">
+                                    Arkiverad ({event.archived_reason === 'test' ? 'testdata' : 'dold'})
+                                  </span>
+                                )}
+                                {isUpcoming && event.sales_open_at && (
+                                  <span className="badge badge-spotlight">
+                                    Släpps {formatStockholmDateTime(event.sales_open_at)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {!event.archived_at && !cancelled && archivingEventId !== event.id && (
+                              <div className="admin-time-actions">
+                                <Link to={`/admin/event/${event.id}`} className="admin-action-btn">
+                                  Hantera
+                                </Link>
+                                <ActionMenu items={menuItems} label={`Fler åtgärder för ${first.title}`} />
+                              </div>
+                            )}
+                          </div>
 
-                  {event.archived_at ? (
-                    <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-[var(--border)] text-sm">
-                      <span className="text-[var(--text-muted)]">
-                        Arkiverad {formatStockholmDateTime(event.archived_at)}
-                        {event.order_count > 0 ? ` · ${event.order_count} order${event.order_count === 1 ? '' : 'ar'} med` : ''}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRestoreEvent(event)}
-                        disabled={archiveActionId === event.id}
-                        className="admin-action-btn disabled:opacity-50"
-                      >
-                        {archiveActionId === event.id ? 'Återställer…' : 'Återställ'}
-                      </button>
-                    </div>
-                  ) : (
-                    !cancelled &&
-                    (archivingEventId === event.id ? (
-                      <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[var(--border)] text-sm">
-                        <span className="text-[var(--text)]">Arkivera som:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleArchiveEvent(event, 'test')}
-                          className="admin-action-btn"
-                        >
-                          Testdata (uteslut ur export)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleArchiveEvent(event, 'hidden')}
-                          className="admin-action-btn"
-                        >
-                          Dölj (riktig betalning, kvar i export)
-                        </button>
-                        <button type="button" onClick={() => setArchivingEventId(null)} className="admin-action-btn">
-                          Avbryt
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--border)] text-sm">
-                        <button type="button" onClick={() => startEdit(event)} className="admin-action-btn">
-                          Redigera uppgifter
-                        </button>
-                        <Link to={`/admin/event/${event.id}`} className="admin-action-btn">
-                          Biljettyper, ordrar &amp; affischer
-                        </Link>
-                        <button type="button" onClick={() => handleTogglePublish(event)} className="admin-action-btn">
-                          {event.status === 'published' ? 'Sätt som utkast' : 'Publicera'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDuplicate(event)}
-                          disabled={duplicatingId === event.id}
-                          className="admin-action-btn disabled:opacity-50"
-                        >
-                          {duplicatingId === event.id ? 'Duplicerar…' : 'Duplicera'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setArchivingEventId(event.id)}
-                          disabled={archiveActionId === event.id}
-                          className="admin-action-btn disabled:opacity-50"
-                        >
-                          {archiveActionId === event.id ? 'Arkiverar…' : 'Arkivera'}
-                        </button>
-                        {canHardDelete(event) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(event)}
-                            disabled={deletingId === event.id}
-                            className="admin-action-btn admin-action-btn-danger disabled:opacity-50"
-                          >
-                            {deletingId === event.id ? 'Raderar…' : 'Radera'}
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
+                          {event.archived_at ? (
+                            <div className="admin-time-sub">
+                              <span className="text-[var(--text-muted)]">
+                                Arkiverad {formatStockholmDateTime(event.archived_at)}
+                                {event.order_count > 0
+                                  ? ` · ${event.order_count} order${event.order_count === 1 ? '' : 'ar'} med`
+                                  : ''}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreEvent(event)}
+                                disabled={archiveActionId === event.id}
+                                className="admin-action-btn disabled:opacity-50"
+                              >
+                                {archiveActionId === event.id ? 'Återställer…' : 'Återställ'}
+                              </button>
+                            </div>
+                          ) : (
+                            !cancelled &&
+                            archivingEventId === event.id && (
+                              <div className="admin-time-sub">
+                                <span className="text-[var(--text)]">Arkivera som:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleArchiveEvent(event, 'test')}
+                                  className="admin-action-btn"
+                                >
+                                  Testdata (uteslut ur export)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleArchiveEvent(event, 'hidden')}
+                                  className="admin-action-btn"
+                                >
+                                  Dölj (riktig betalning, kvar i export)
+                                </button>
+                                <button type="button" onClick={() => setArchivingEventId(null)} className="admin-action-btn">
+                                  Avbryt
+                                </button>
+                              </div>
+                            )
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
                 </li>
               )
             })}
@@ -865,14 +905,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               }}
               onClose={() => setCreatingNew(false)}
             />
-          ) : (
-            <section className="card text-center py-10">
-              <p className="text-[var(--text-muted)] text-sm mb-4">Redo att lägga till en ny föreställning?</p>
-              <button type="button" onClick={startCreate} className="btn-primary">
-                Skapa nytt event →
-              </button>
-            </section>
-          )}
+          ) : null}
 
           <DiscountCodesSection events={events ?? []} />
 

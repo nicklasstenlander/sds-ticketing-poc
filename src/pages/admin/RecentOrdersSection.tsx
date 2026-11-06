@@ -3,13 +3,22 @@ import { callFunction } from '../../lib/functionsApi'
 import { supabase } from '../../lib/supabaseClient'
 import { formatKr } from '../../lib/formatPrice'
 import { formatStockholmDateTimeLocale } from '../../lib/stockholmTime'
-import { splitBuyerName } from '../../lib/buyerExport'
 import type { RecentOrderRow, RecentOrdersResponse } from '../../lib/types'
 import { OrderDetailPanel, OrderStatusBadge } from './OrderDetailPanel'
 
 // Samma topic/event som _shared/orderBroadcast.ts (edge functions).
 const orderChannelTopic = (organizerId: string) => `rideau-orders:${organizerId}`
 const ORDER_PAID_EVENT = 'order_paid'
+
+function eventTime(order: RecentOrderRow): string {
+  return order.event.starts_at
+    ? formatStockholmDateTimeLocale(order.event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
+    : 'Inget datum satt'
+}
+
+function orderPrice(order: RecentOrderRow): string {
+  return order.total_ore !== null ? `${formatKr(order.total_ore)} kr` : '–'
+}
 
 interface RecentOrdersSectionProps {
   /** Anropas när en ny försäljning kommit in - så Dashboard kan räkna om korten. */
@@ -132,76 +141,77 @@ export function RecentOrdersSection({ onNewSale }: RecentOrdersSectionProps) {
 
       {error && <p className="text-[var(--danger)] mb-3 text-sm">{error}</p>}
 
-      <div className="overflow-x-auto border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--surface)]">
-        <table className="w-full min-w-[860px] text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border)] text-left text-[var(--text-muted)] text-xs uppercase tracking-wide">
-              <th className="px-4 py-2.5 font-semibold">Förnamn</th>
-              <th className="px-4 py-2.5 font-semibold">Efternamn</th>
-              <th className="px-4 py-2.5 font-semibold">E-post</th>
-              <th className="px-4 py-2.5 font-semibold">Föreställning</th>
-              <th className="px-4 py-2.5 font-semibold">Tid & datum</th>
-              <th className="px-4 py-2.5 font-semibold text-right">Antal</th>
-              <th className="px-4 py-2.5 font-semibold text-right">Pris</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data === null && loading && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-[var(--text-muted)]">
-                  Laddar…
-                </td>
-              </tr>
-            )}
-            {data !== null && orders.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-[var(--text-muted)]">
-                  Inga sålda biljetter ännu.
-                </td>
-              </tr>
-            )}
-            {orders.map((order) => {
-              const { first, last } = splitBuyerName(order.buyer_name)
-              const nameButton = (text: string) => (
-                <button
-                  type="button"
-                  onClick={() => setSelected(order)}
-                  className="font-semibold text-[var(--text)] hover:text-[var(--accent)] hover:underline text-left"
-                >
-                  {text || '—'}
-                </button>
-              )
-              return (
-                <tr
-                  key={order.id}
-                  className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--accent-soft)]/40 ${loading ? 'opacity-60' : ''}`}
-                >
-                  <td className="px-4 py-2.5 whitespace-nowrap">{nameButton(first)}</td>
-                  <td className="px-4 py-2.5 whitespace-nowrap">{nameButton(last)}</td>
-                  <td className="px-4 py-2.5 text-[var(--text-muted)]">{order.buyer_email}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="line-clamp-1">{order.event.title}</div>
-                    {order.status !== 'paid' && (
-                      <div className="mt-0.5">
-                        <OrderStatusBadge status={order.status} />
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">
-                    {order.event.starts_at
-                      ? formatStockholmDateTimeLocale(order.event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })
-                      : 'Inget datum satt'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{order.ticket_qty}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
-                    {order.total_ore !== null ? `${formatKr(order.total_ore)} kr` : '–'}
-                  </td>
+      {/* Köparen i EN kolumn (namn + e-post under) och föreställningen med
+          tiden under - sparar två kolumner så tabellen ryms utan sidledsscroll
+          på en vanlig skärm. Under 640px blir varje order ett eget kort. */}
+      {data === null && loading && <p className="orders-empty">Laddar…</p>}
+      {data !== null && orders.length === 0 && <p className="orders-empty">Inga sålda biljetter ännu.</p>}
+      {orders.length > 0 && (
+        <>
+          <div className="orders-table-wrap hidden sm:block">
+            <table className="orders-table">
+              <thead>
+                <tr>
+                  <th scope="col">Köpare</th>
+                  <th scope="col">Föreställning</th>
+                  <th scope="col" className="text-right">
+                    Antal
+                  </th>
+                  <th scope="col" className="text-right">
+                    Pris
+                  </th>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className={loading ? 'opacity-60' : ''}>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td>
+                      <button type="button" onClick={() => setSelected(order)} className="orders-buyer">
+                        {order.buyer_name || '—'}
+                      </button>
+                      <div className="orders-sub">{order.buyer_email}</div>
+                    </td>
+                    <td>
+                      <div className="line-clamp-1">{order.event.title}</div>
+                      <div className="orders-sub tabular-nums">
+                        {eventTime(order)}
+                        {order.status !== 'paid' && (
+                          <span className="ml-2 align-middle">
+                            <OrderStatusBadge status={order.status} />
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-right tabular-nums">{order.ticket_qty}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{orderPrice(order)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className={`orders-cards sm:hidden ${loading ? 'opacity-60' : ''}`}>
+            {orders.map((order) => (
+              <li key={order.id}>
+                <button type="button" onClick={() => setSelected(order)} className="orders-card">
+                  <span className="orders-card-top">
+                    <span className="orders-buyer">{order.buyer_name || '—'}</span>
+                    <span className="tabular-nums font-semibold">{orderPrice(order)}</span>
+                  </span>
+                  <span className="orders-sub line-clamp-1">{order.event.title}</span>
+                  <span className="orders-sub tabular-nums">
+                    {eventTime(order)} · {order.ticket_qty} {order.ticket_qty === 1 ? 'biljett' : 'biljetter'}
+                  </span>
+                  {order.status !== 'paid' && (
+                    <span className="mt-1">
+                      <OrderStatusBadge status={order.status} />
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {total > pageSize && (
         <div className="flex items-center justify-between gap-3 mt-3 text-sm">

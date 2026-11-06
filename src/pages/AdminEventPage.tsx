@@ -81,7 +81,7 @@ export function AdminEventPage() {
         <>
           <AdminNav />
           <Link to="/admin" className="admin-back">
-            &larr; Tillbaka till admin
+            &larr; Alla föreställningar
           </Link>
           {data && (
             <div className="hero-split admin-event-hero">

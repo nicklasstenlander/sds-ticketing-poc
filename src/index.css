@@ -2110,3 +2110,317 @@ input[type='radio'] {
     transform: none;
   }
 }
+
+/* ---- Adminöversyn (2026-11): föreställningskort, åtgärdsmeny, ordrar ---- */
+@layer components {
+  /* Rubrik + huvudknapp på samma rad i adminbandet. */
+  .admin-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+  }
+  .btn-spotlight {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    background: var(--spotlight);
+    color: var(--spotlight-ink);
+    font-weight: 800;
+    transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), filter 0.18s;
+  }
+  .btn-spotlight:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    box-shadow: 0 12px 24px -12px rgba(246, 185, 59, 0.7);
+  }
+  .btn-spotlight:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: none;
+  }
+  .admin-band .btn-spotlight:focus-visible {
+    outline-color: #fff;
+  }
+
+  /* Ett kort per föreställning, en rad per speltid. */
+  .admin-show {
+    padding: 0;
+    overflow: visible;
+  }
+  .admin-show-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px;
+  }
+  .admin-show-title {
+    font-size: 1.0625rem;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .admin-show-meta {
+    margin-top: 2px;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .admin-show-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .admin-show-progress .progress-track {
+    flex: 1;
+    max-width: 220px;
+  }
+  .admin-times {
+    border-top: 1px solid var(--border);
+  }
+  .admin-time {
+    padding: 12px 16px;
+    border-left: 3px solid transparent;
+    transition: background-color 0.15s;
+  }
+  .admin-time + .admin-time {
+    border-top: 1px solid var(--border);
+  }
+  .admin-time:last-child {
+    border-bottom-left-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
+  }
+  .admin-time-clickable {
+    cursor: pointer;
+  }
+  .admin-time-clickable:hover {
+    background-color: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  }
+  .admin-time.is-editing {
+    border-left-color: var(--editing);
+    background-color: var(--editing-soft);
+  }
+  .admin-time-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .admin-time-date {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .admin-time-date::first-letter {
+    text-transform: uppercase;
+  }
+  .admin-time .admin-event-status {
+    margin-top: 4px;
+  }
+  .admin-time-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+  }
+  .admin-time-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 14px;
+  }
+
+  /* "⋯"-menyn (ActionMenu.tsx). */
+  .action-menu {
+    position: relative;
+  }
+  .action-menu-button {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    transition: background-color 0.15s, border-color 0.15s, transform 0.15s var(--ease-out);
+  }
+  .action-menu-button:hover,
+  .action-menu-button[aria-expanded='true'] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .action-menu-button:active {
+    transform: scale(0.95);
+  }
+  .action-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    min-width: 200px;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-lift);
+    animation: action-menu-in 0.14s var(--ease-out);
+  }
+  .action-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .action-menu-item:hover:not(:disabled),
+  .action-menu-item:focus-visible {
+    background: var(--accent-soft);
+    outline: none;
+  }
+  .action-menu-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .action-menu-item-danger {
+    color: var(--danger);
+    margin-top: 4px;
+    position: relative;
+  }
+  .action-menu-item-danger::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: -3px;
+    border-top: 1px solid var(--border);
+  }
+  .action-menu-item-danger:hover:not(:disabled),
+  .action-menu-item-danger:focus-visible {
+    background: var(--danger-soft);
+  }
+
+  /* Senaste ordrar. */
+  .orders-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+  .orders-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .orders-table {
+    width: 100%;
+    font-size: 14px;
+  }
+  .orders-table th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .orders-table th.text-right {
+    text-align: right;
+  }
+  .orders-table td {
+    padding: 10px 16px;
+    vertical-align: top;
+  }
+  .orders-table tbody tr + tr td {
+    border-top: 1px solid var(--border);
+  }
+  .orders-table tbody tr:hover {
+    background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  }
+  .orders-buyer {
+    font-weight: 700;
+    color: var(--text);
+    text-align: left;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: color 0.15s, text-decoration-color 0.15s;
+  }
+  button.orders-buyer:hover {
+    color: var(--accent);
+    text-decoration-color: currentColor;
+  }
+  .orders-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .orders-cards {
+    display: grid;
+    gap: 8px;
+  }
+  .orders-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    transition: box-shadow 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+  }
+  .orders-card:hover {
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-2px);
+  }
+  .orders-card:active {
+    transform: translateY(0);
+  }
+  .orders-card-top {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+}
+@keyframes action-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-spotlight,
+  .action-menu-button,
+  .orders-card {
+    transition: none;
+  }
+  .action-menu-list {
+    animation: none;
+  }
+  .btn-spotlight:hover,
+  .btn-spotlight:active,
+  .action-menu-button:active,
+  .orders-card:hover {
+    transform: none;
+  }
+}

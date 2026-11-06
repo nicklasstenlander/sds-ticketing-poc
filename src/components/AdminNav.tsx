@@ -2,10 +2,10 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 
 const ITEMS = [
-  { to: '/admin', label: 'Events', end: true },
-  { to: '/admin/dashboard', label: 'Dashboard', end: false },
+  { to: '/admin', label: 'Föreställningar', end: true },
+  { to: '/admin/dashboard', label: 'Översikt', end: false },
   { to: '/admin/organizers', label: 'Arrangörer', end: false },
-  { to: '/admin/stripe-installning', label: 'Stripe', end: false },
+  { to: '/admin/stripe-installning', label: 'Betalningar', end: false },
   { to: '/admin/embed', label: 'Bädda in', end: false },
   { to: '/admin/affischer', label: 'Affischer', end: false },
 ]
