@@ -38,8 +38,10 @@ export function SidePanel({ open, title, subtitle, onClose, children, footer, el
         aria-modal="true"
         aria-label={title}
         aria-hidden={!open}
-        className={`fixed inset-x-0 bottom-0 ${z} flex max-h-[88dvh] w-full flex-col rounded-t-[24px] bg-[var(--surface)] text-[var(--text)] shadow-2xl transition-transform duration-300 ease-out md:inset-x-auto md:bottom-auto md:right-0 md:top-0 md:h-full md:max-h-none md:max-w-md md:rounded-none ${
-          open ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:translate-y-0 md:translate-x-full'
+        className={`fixed inset-x-0 bottom-0 ${z} flex max-h-[88dvh] w-full flex-col rounded-t-[24px] bg-[var(--surface)] text-[var(--text)] shadow-2xl transition-[transform,visibility] duration-300 ease-out md:inset-x-auto md:bottom-auto md:right-0 md:top-0 md:h-full md:max-h-none md:max-w-md md:rounded-none ${
+          open
+            ? 'visible translate-y-0 md:translate-x-0'
+            : 'invisible translate-y-full md:translate-y-0 md:translate-x-full'
         }`}
       >
         <div className="mx-auto mt-3 h-1 w-11 rounded-full bg-[var(--border-strong)] md:hidden" />
