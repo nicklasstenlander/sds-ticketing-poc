@@ -2568,3 +2568,146 @@ input[type='radio'] {
     text-decoration-color: currentColor;
   }
 }
+
+/* ---- Köpvillkor (/villkor/:slug), översyn 2026-11 -----------------------
+ * Samma mörka scen som Om Rideau och Kontakt. Innehållsförteckning i sidled
+ * från 1024px, läsbar textbredd, ljus och svartvit utskrift. */
+@layer components {
+  .terms-layout {
+    display: grid;
+    gap: 48px;
+  }
+  .terms-toc {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .terms-layout {
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 56px;
+      align-items: start;
+    }
+    .terms-toc {
+      display: block;
+      position: sticky;
+      top: 24px;
+    }
+  }
+  .terms-toc-title {
+    margin-bottom: 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--spotlight);
+  }
+  .terms-toc ol {
+    display: grid;
+    gap: 2px;
+    border-left: 1px solid var(--border);
+  }
+  .terms-toc button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 0 6px 14px;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+    font-size: 14px;
+    line-height: 1.35;
+    color: var(--text-muted);
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .terms-toc button:hover {
+    color: var(--text);
+    border-left-color: var(--spotlight);
+  }
+  .terms-body {
+    max-width: 68ch;
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    color: var(--text);
+  }
+  .terms-body h2 {
+    margin: 2.75rem 0 0.75rem;
+    font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    scroll-margin-top: 24px;
+  }
+  .terms-body h2:first-child {
+    margin-top: 0;
+  }
+  .terms-body h2:focus {
+    outline: none;
+  }
+  .terms-body p + p,
+  .terms-body p + ul,
+  .terms-body ul + p {
+    margin-top: 0.9rem;
+  }
+  .terms-body ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+    display: grid;
+    gap: 0.4rem;
+  }
+  .terms-body li::marker {
+    color: var(--spotlight);
+  }
+  .terms-body strong {
+    font-weight: 700;
+  }
+  .terms-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .terms-print-head {
+    display: none;
+  }
+}
+@media print {
+  html.theme-dark {
+    --bg: #fff;
+    --surface: #fff;
+    --text: #000;
+    --text-muted: #333;
+    --border: #bbb;
+  }
+  html.theme-dark body {
+    background: #fff;
+  }
+  .terms-toc {
+    display: none !important;
+  }
+  .terms-layout {
+    display: block;
+  }
+  .terms-print-head {
+    display: block;
+    margin-bottom: 1.5rem;
+  }
+  .terms-print-head h1 {
+    font-size: 1.5rem;
+    font-weight: 800;
+  }
+  .terms-body {
+    max-width: none;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+  .terms-body li::marker {
+    color: #000;
+  }
+  .terms-body h2 {
+    break-after: avoid;
+  }
+}
