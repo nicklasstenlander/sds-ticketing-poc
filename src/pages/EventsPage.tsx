@@ -137,7 +137,9 @@ function SalesNotice({ opens }: { opens: string }) {
 
 // Tre tydliga tillstånd: till salu (fylld), släpps snart (streckad kant +
 // klocka), slutsålt (överstruken).
-function Showtime({ event, timeOnly = false }: { event: EventWithTicketTypes; timeOnly?: boolean }) {
+// cta: gruppens enda speltid går att köpa - knappen säger då "Köp biljetter"
+// med tiden under, så det inte behövs någon gissning om vad knappen gör.
+function Showtime({ event, timeOnly = false, cta = false }: { event: EventWithTicketTypes; timeOnly?: boolean; cta?: boolean }) {
   const types = event.ticket_types ?? []
   const salesState = computeSalesState({
     salesOpenAt: event.sales_open_at,
@@ -179,11 +181,30 @@ function Showtime({ event, timeOnly = false }: { event: EventWithTicketTypes; ti
   const lowStock = event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
   return (
     <li>
-      <Link to={`/kop/${event.slug}`} className="time-chip">
-        <span className="time-chip-label first-letter:uppercase">{label}</span>
-        {lowStock && <small>Få biljetter kvar</small>}
+      <Link to={`/kop/${event.slug}`} className={`time-chip ${cta ? 'time-chip-cta' : ''}`}>
+        {cta ? (
+          <>
+            <span className="time-chip-label">Köp biljetter</span>
+            <small className="first-letter:uppercase">
+              {label}
+              {lowStock ? ' · få kvar' : ''}
+            </small>
+          </>
+        ) : (
+          <>
+            <span className="time-chip-label first-letter:uppercase">{label}</span>
+            {lowStock && <small>Få biljetter kvar</small>}
+          </>
+        )}
       </Link>
     </li>
+  )
+}
+
+function isBuyable(e: EventWithTicketTypes): boolean {
+  return (
+    (e.ticket_types ?? []).length > 0 &&
+    computeSalesState({ salesOpenAt: e.sales_open_at, soldCount: e.sold_count, capacity: e.capacity }) === 'open'
   )
 }
 
@@ -200,7 +221,15 @@ function dayGroups(group: EventWithTicketTypes[]) {
   return [...byDay.entries()].map(([key, value]) => ({ key, ...value }))
 }
 
-function Feature({ group, headingRef }: { group: EventWithTicketTypes[]; headingRef: Ref<HTMLHeadingElement> }) {
+function Feature({
+  group,
+  headingRef,
+  showOrganizer,
+}: {
+  group: EventWithTicketTypes[]
+  headingRef: Ref<HTMLHeadingElement>
+  showOrganizer: boolean
+}) {
   const first = group[0]
   const organizer = organizerOf(first)
   const allUpcoming = group.every(
@@ -211,6 +240,7 @@ function Feature({ group, headingRef }: { group: EventWithTicketTypes[]; heading
     .filter((x): x is string => Boolean(x))
     .sort()[0]
   const price = priceLabel(group)
+  const buyable = group.filter(isBuyable)
   return (
     <div className="feature">
       <div className="arch arch-wide">
@@ -218,12 +248,16 @@ function Feature({ group, headingRef }: { group: EventWithTicketTypes[]; heading
       </div>
       <div className="feature-info">
         <div className="min-w-0">
+          {/* Datumet som en rad ovanför titeln - titeln är det man ser först,
+              datumet det andra (designöversynen 2026-11). */}
+          <p className="show-date">{dateRange(group)}</p>
           <h2 ref={headingRef} tabIndex={-1} className="feature-title">
             {first.title}
           </h2>
           <div className="feature-line">
-            <span className="show-date">{dateRange(group)}</span>
-            <span className="feature-meta">{[first.venue, organizer?.name].filter(Boolean).join(' · ')}</span>
+            <span className="feature-meta">
+              {[first.venue, showOrganizer ? organizer?.name : null].filter(Boolean).join(' · ')}
+            </span>
             {price && <span className="show-price">{price}</span>}
           </div>
           {descriptionOf(group) && (
@@ -232,12 +266,13 @@ function Feature({ group, headingRef }: { group: EventWithTicketTypes[]; heading
         </div>
         <div className="feature-times">
           {allUpcoming && opens && <SalesNotice opens={opens} />}
+          {buyable.length > 1 && <p className="times-label">Välj tid och köp biljetter</p>}
           {dayGroups(group).map((day) => (
             <div key={day.key} className="show-day-group">
               <p className="show-day first-letter:uppercase">{day.label}</p>
               <ul className="time-chips">
                 {day.events.map((event) => (
-                  <Showtime key={event.id} event={event} timeOnly />
+                  <Showtime key={event.id} event={event} timeOnly cta={buyable.length === 1 && isBuyable(event)} />
                 ))}
               </ul>
             </div>
@@ -288,18 +323,25 @@ export function EventsPage() {
   // arrangör (annars vore det oklart vems villkor länken gäller).
   const slugs = new Set((events ?? []).map((e) => organizerOf(e)?.slug).filter((s): s is string => Boolean(s)))
   const termsSlug = slugs.size === 1 ? [...slugs][0] : undefined
+  // En enda arrangör på sidan: namnet står en gång i rubriken i stället för
+  // på varje föreställning.
+  const organizerNames = new Set((events ?? []).map((e) => organizerOf(e)?.name).filter((n): n is string => Boolean(n)))
+  const soleOrganizer = organizerNames.size === 1 ? [...organizerNames][0] : null
 
   return (
     <Layout
       wide="xl"
       dark
+      heroLabel="Utvald föreställning"
       termsSlug={termsSlug}
       backdrop={featured ? posterUrls(featured) : undefined}
       hero={
         <>
           {/* Synlig, liten rubrik: första skärmen säger vad sidan är (biljetter
               till kommande föreställningar) innan affischen tar över. */}
-          <h1 className={events && events.length > 0 ? 'stage-eyebrow' : 'sr-only'}>Biljetter · kommande föreställningar</h1>
+          <h1 className={events && events.length > 0 ? 'stage-eyebrow' : 'sr-only'}>
+            Biljetter · {soleOrganizer ?? 'kommande föreställningar'}
+          </h1>
           {error && (
             <p role="alert" className="text-[var(--danger)] text-lg">
               Vi kunde inte hämta föreställningarna just nu. Försök igen om en stund.
@@ -314,7 +356,7 @@ export function EventsPage() {
               Vi hittade inte den föreställningen. Här är alla kommande.
             </p>
           )}
-          {featured && <Feature group={featured} headingRef={featureHeading} />}
+          {featured && <Feature group={featured} headingRef={featureHeading} showOrganizer={!soleOrganizer} />}
         </>
       }
     >
@@ -323,7 +365,7 @@ export function EventsPage() {
           <h2 id="more-shows" className="more-title">
             Fler föreställningar
           </h2>
-          <ul className="show-grid">
+          <ul className={`show-grid ${rest.length <= 2 ? 'show-grid-wide' : ''}`}>
             {rest.map((group) => {
               const first = group[0]
               const organizer = organizerOf(first)
@@ -335,6 +377,7 @@ export function EventsPage() {
                 .filter((x): x is string => Boolean(x))
                 .sort()[0]
               const price = priceLabel(group)
+              const buyable = group.filter(isBuyable)
               return (
                 <li key={first.id} className="show-tile">
                   <Poster shows={group} variant="tile" />
@@ -349,7 +392,7 @@ export function EventsPage() {
                       </Link>
                     </h3>
                     <p className="show-meta">
-                      {[first.venue, organizer?.name].filter(Boolean).join(' · ')}
+                      <span>{[first.venue, soleOrganizer ? null : organizer?.name].filter(Boolean).join(' · ')}</span>
                       {price && <span className="show-price">{price}</span>}
                     </p>
                     {descriptionOf(group) && (
@@ -360,7 +403,7 @@ export function EventsPage() {
                     {allUpcoming && opens && <SalesNotice opens={opens} />}
                     <ul className="time-chips">
                       {group.map((event) => (
-                        <Showtime key={event.id} event={event} />
+                        <Showtime key={event.id} event={event} cta={buyable.length === 1 && isBuyable(event)} />
                       ))}
                     </ul>
                   </div>
