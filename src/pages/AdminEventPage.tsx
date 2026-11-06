@@ -650,7 +650,7 @@ function OrdersSection({
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex gap-3">
+                              <div className="flex gap-3 whitespace-nowrap">
                                 <button type="button" onClick={() => openResend(order)} className="text-xs underline">
                                   Skicka biljetter igen
                                 </button>

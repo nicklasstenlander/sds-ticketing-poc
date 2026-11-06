@@ -280,7 +280,7 @@ export function AdminEmbedPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="flex flex-col gap-6">
             <section className="card">
-              <h2 className="text-lg font-extrabold mb-3">Evenemang</h2>
+              <h2 className="text-lg font-extrabold mb-3">Föreställningar</h2>
               {events.length === 0 && (
                 <p className="text-sm text-[var(--text-muted)]">Inga publicerade evenemang ännu.</p>
               )}
@@ -305,7 +305,7 @@ export function AdminEmbedPage() {
               </div>
               <label className="flex items-center gap-2 text-sm mt-3 pt-3 border-t border-[var(--border)]">
                 <input type="checkbox" checked={useOrganizerMode} onChange={(e) => setUseOrganizerMode(e.target.checked)} />
-                <span>Visa alla mina publicerade evenemang automatiskt</span>
+                <span>Visa alla mina publicerade föreställningar automatiskt</span>
               </label>
             </section>
 
@@ -418,7 +418,7 @@ export function AdminEmbedPage() {
               </div>
               {!hasSelection && (
                 <p className="text-sm text-[var(--text-muted)]">
-                  Välj minst ett evenemang (eller kryssa i "Visa alla mina publicerade evenemang automatiskt").
+                  Välj minst en föreställning (eller kryssa i "Visa alla mina publicerade föreställningar automatiskt").
                 </p>
               )}
               {/* overflow-x:auto - en 768px-ruta är bredare än panelen på en

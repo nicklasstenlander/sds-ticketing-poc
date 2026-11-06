@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
 const ITEMS = [
   { to: '/admin', label: 'Föreställningar', end: true },
@@ -14,11 +14,20 @@ const ITEMS = [
 // aktiv sida syns, och navigeringen scrollar horisontellt i smal vy
 // istället för att radbryta. `actions` = workspace-väljare/Logga ut.
 export function AdminNav({ actions }: { actions?: ReactNode }) {
+  // En föreställnings egen sida (/admin/event/:id) hör till fliken
+  // Föreställningar - annars är ingen flik markerad där.
+  const { pathname } = useLocation()
+  const onEventPage = pathname.startsWith('/admin/event/')
   return (
     <div className="admin-nav">
       <nav aria-label="Admin" className="admin-nav-tabs">
         {ITEMS.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.end} className="admin-nav-link">
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) => `admin-nav-link ${isActive || (item.to === '/admin' && onEventPage) ? 'active' : ''}`}
+          >
             {item.label}
           </NavLink>
         ))}
