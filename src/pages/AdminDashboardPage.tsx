@@ -56,22 +56,49 @@ export function AdminDashboardPage() {
 
   const publishedEvents = (events ?? []).filter((e) => e.status !== 'cancelled')
   const totalSold = publishedEvents.reduce((sum, e) => sum + e.sold_count, 0)
+  // Samma tre nyckeltal-kort som Events-sidan (AdminPage.tsx), räknade ur
+  // samma admin-events-data - ingen ny backend-aggregering.
+  const now = Date.now()
+  const upcomingCount = publishedEvents.filter(
+    (e) => e.status === 'published' && e.starts_at && new Date(e.starts_at).getTime() > now,
+  ).length
+  const withCapacity = publishedEvents.filter((e) => e.status === 'published' && e.capacity > 0)
+  const avgOccupancy =
+    withCapacity.length === 0
+      ? '–'
+      : `${Math.round((withCapacity.reduce((sum, e) => sum + e.sold_count / e.capacity, 0) / withCapacity.length) * 100)}%`
+  const showKpis = events !== null && publishedEvents.length > 0
 
   return (
-    <Layout wide band={
+    <Layout
+      wide
+      bandOverhang={showKpis}
+      band={
         <>
-      <AdminNav />
-      <h1 className="page-title mb-2">Dashboard</h1>
-      <p className="page-lede mb-8">Överblick över dina föreställningar.</p>
+          <AdminNav />
+          <h1 className="page-title mb-2">Dashboard</h1>
+          <p className={`page-lede ${showKpis ? '' : 'mb-8'}`}>Överblick över dina föreställningar.</p>
+          {showKpis && (
+            <div className="admin-kpis">
+              <div className="stat-card">
+                <div className="stat-label">Sålda biljetter totalt</div>
+                <div className="stat-value">{totalSold}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Kommande föreställningar</div>
+                <div className="stat-value">{upcomingCount}</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Snittbeläggning</div>
+                <div className="stat-value">{avgOccupancy}</div>
+              </div>
+            </div>
+          )}
         </>
-      }>
+      }
+    >
 
       {error && <p className="text-[var(--danger)] mb-6">{error}</p>}
-
-      <div className="stat-card mb-6 max-w-xs">
-        <div className="stat-label">Sålda biljetter totalt</div>
-        <div className="stat-value">{totalSold}</div>
-      </div>
 
       {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
       {events !== null && publishedEvents.length === 0 && (
@@ -88,7 +115,7 @@ export function AdminDashboardPage() {
               key={event.id}
               type="button"
               onClick={() => setBuyersFor(event)}
-              className="card text-left transition-shadow hover:shadow-[var(--shadow-lift)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+              className="card dash-event-card text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
               style={{ padding: '12px 16px' }}
               title="Visa alla som köpt biljett"
             >
@@ -110,7 +137,9 @@ export function AdminDashboardPage() {
                       ` · ${formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })}`
                     : ''}
                 </span>
-                <span className="shrink-0 font-semibold text-[var(--accent)]">Köpare →</span>
+                <span className="dash-event-cta shrink-0 font-semibold text-[var(--accent)]">
+                  Köpare <span aria-hidden="true">→</span>
+                </span>
               </div>
             </button>
           )

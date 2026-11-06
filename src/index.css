@@ -236,11 +236,15 @@ input[type='radio'] {
     padding: 4px 14px;
     font-size: 14px;
     font-weight: 600;
-    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.15s var(--ease-out);
   }
   .admin-action-btn:hover:not(:disabled) {
     background-color: var(--accent-soft);
     border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .admin-action-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
   }
   .admin-action-btn-danger {
     color: var(--danger);
@@ -2018,4 +2022,91 @@ input[type='radio'] {
     radial-gradient(ellipse 70% 30% at 85% 100%, rgba(246, 185, 59, 0.55), transparent 70%),
     radial-gradient(ellipse 35% 22% at 5% 100%, rgba(246, 185, 59, 0.22), transparent 70%),
     #070d1a;
+}
+
+/* ---- Finputs (design-taste-genomgång 2026-11) -------------------------
+ * Samma mikrointeraktioner överallt: klickbara kort lyfter 2px, knappar
+ * kliver upp vid hover och trycks ned vid klick, understrykningar ritas
+ * in. Allt vilar under prefers-reduced-motion. */
+@layer components {
+  /* Synlig sidrubrik ovanför toppföreställningen på eventlistan. */
+  .stage-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--spotlight);
+    margin-bottom: clamp(16px, 2.5vw, 28px);
+  }
+
+  /* Affischrutorna i "Fler föreställningar": ramen lyfter, bilden zoomar
+     redan (se .show-tile:hover .poster img). */
+  .show-tile .poster-frame {
+    transition: transform 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out);
+  }
+  .show-tile:hover .poster-frame {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 44px -20px rgba(0, 0, 0, 0.75);
+  }
+  a.time-chip:active {
+    transform: translateY(0) scale(0.97);
+  }
+
+  /* Eventkorten i admin (hela kortet öppnar redigering). */
+  .admin-event-card-clickable {
+    transition: box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+  }
+  .admin-event-card-clickable:hover {
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-2px);
+  }
+
+  /* Föreställningskorten på dashboarden (öppnar köparlistan). */
+  .dash-event-card {
+    transition: box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+  }
+  .dash-event-card:hover {
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-2px);
+  }
+  .dash-event-card:active {
+    transform: translateY(0);
+  }
+  .dash-event-cta span {
+    display: inline-block;
+    transition: transform 0.2s var(--ease-out);
+  }
+  .dash-event-card:hover .dash-event-cta span {
+    transform: translateX(3px);
+  }
+
+  /* Understrykningar ritas in i stället för att bara byta färg. */
+  .footer-link {
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    transition: color 0.15s, text-decoration-color 0.2s;
+  }
+  .footer-link:hover {
+    text-decoration-color: currentColor;
+  }
+  .site-nav a:hover:not(.active) {
+    box-shadow: inset 0 -3px 0 rgba(255, 255, 255, 0.28);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .show-tile .poster-frame,
+  .admin-event-card-clickable,
+  .dash-event-card,
+  .dash-event-cta span,
+  .admin-action-btn {
+    transition: none;
+  }
+  .show-tile:hover .poster-frame,
+  .admin-event-card-clickable:hover,
+  .dash-event-card:hover,
+  .dash-event-card:hover .dash-event-cta span,
+  .admin-action-btn:hover:not(:disabled),
+  a.time-chip:active {
+    transform: none;
+  }
 }
