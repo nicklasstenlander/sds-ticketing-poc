@@ -24,7 +24,28 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   })
 }
 
+// Stabilt id för en "## "-rubrik, så att innehållsförteckningen på
+// villkorssidan kan hoppa dit ("2. Pris och betalning" -> "villkor-2").
+// Numret räcker och tål att rubriktexten ändras.
+export function headingId(text: string, index: number): string {
+  const num = text.match(/^(\d+)\./)?.[1]
+  return `villkor-${num ?? index + 1}`
+}
+
+// "## "-rubrikerna i ordning, för innehållsförteckningen.
+export function markdownHeadings(markdown: string): { id: string; text: string }[] {
+  return markdown
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('## '))
+    .map((l, i) => ({ id: headingId(l.slice(3), i), text: l.slice(3) }))
+}
+
+// Stilarna kommer från omslutande .terms-body i index.css - inga
+// verktygsklasser här, så att sidan kan byta utseende (mörk scen, utskrift)
+// utan att renderaren ändras.
 export function renderMarkdown(markdown: string): ReactNode {
+  let h2Index = 0
   const blocks = markdown.trim().split(/\n{2,}/)
   return blocks.map((block, i) => {
     const lines = block
@@ -35,21 +56,23 @@ export function renderMarkdown(markdown: string): ReactNode {
 
     if (lines.length === 1 && lines[0].startsWith('# ')) {
       return (
-        <h1 key={i} className="text-2xl font-bold text-[var(--text)] mb-4">
+        <h1 key={i}>
           {renderInline(lines[0].slice(2), `h1-${i}`)}
         </h1>
       )
     }
     if (lines.length === 1 && lines[0].startsWith('## ')) {
+      const text = lines[0].slice(3)
+      const id = headingId(text, h2Index++)
       return (
-        <h2 key={i} className="text-lg font-bold text-[var(--text)] mt-8 mb-3">
-          {renderInline(lines[0].slice(3), `h2-${i}`)}
+        <h2 key={i} id={id} tabIndex={-1}>
+          {renderInline(text, `h2-${i}`)}
         </h2>
       )
     }
     if (lines.every((l) => l.startsWith('- '))) {
       return (
-        <ul key={i} className="list-disc pl-5 mb-4 space-y-1.5 text-base leading-relaxed text-[var(--text)]">
+        <ul key={i}>
           {lines.map((l, j) => (
             <li key={j}>{renderInline(l.slice(2), `li-${i}-${j}`)}</li>
           ))}
@@ -57,7 +80,7 @@ export function renderMarkdown(markdown: string): ReactNode {
       )
     }
     return (
-      <p key={i} className="mb-4 text-base leading-relaxed text-[var(--text)]">
+      <p key={i}>
         {renderInline(lines.join(' '), `p-${i}`)}
       </p>
     )

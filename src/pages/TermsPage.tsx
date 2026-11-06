@@ -2,12 +2,27 @@ import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { TERMS_BY_SLUG } from '../content/terms'
-import { renderMarkdown } from '../lib/simpleMarkdown'
+import { markdownHeadings, renderMarkdown } from '../lib/simpleMarkdown'
+
+// Villkorstextens egen rubrik ("# Köpvillkor …") och datumrad ("*Senast
+// uppdaterad …*") visas i sidans rubrikyta i stället - de plockas bort ur
+// brödtexten här, så själva texten i src/content/terms/ inte behöver
+// ändras (den är juridiskt granskad).
+function bodyWithoutTitle(body: string): string {
+  return body
+    .trim()
+    .replace(/^# .*\n+/, '')
+    .replace(/^\*Senast uppdaterad:[^*]*\*\n+/, '')
+}
 
 // /villkor/:slug (ordern "Köpvillkor som egen sida i Rideau" 2026-10-07).
 // Ren frontend-sida - hämtar INGET från Supabase (ordertextens punkt 1:
 // "ska fungera även om databasen är nere"), bara statiskt innehåll från
 // src/content/terms/. Ingen inloggning krävs.
+//
+// Designöversynen 2026-11: samma mörka scen och rubrikyta som Om Rideau och
+// Kontakt, innehållsförteckning (i sidled på bred skärm), och en ljus,
+// svartvit utskrift.
 export function TermsPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
@@ -32,29 +47,55 @@ export function TermsPage() {
 
   if (!content) {
     return (
-      <Layout>
-        <p className="text-[var(--text-muted)] mb-4">Sidan finns inte.</p>
+      <Layout dark hero={<h1 className="page-title">Sidan finns inte</h1>}>
         <Link to="/evenemang" className="link-accent">
-          Till startsidan
+          Till alla föreställningar
         </Link>
       </Layout>
     )
   }
 
+  const body = bodyWithoutTitle(content.BODY)
+  const headings = markdownHeadings(body)
+  const meta = `Senast uppdaterad ${content.LAST_UPDATED} · Version ${content.VERSION}`
+
+  // HashRouter: en vanlig #ankarlänk skulle tolkas som en ny route, så
+  // innehållsförteckningen scrollar och flyttar fokus själv.
+  function jumpTo(id: string) {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    el.focus({ preventScroll: true })
+  }
+
   return (
-    <Layout hideChromeInPrint>
-      <div className="print:hidden mb-6">
-        {/* history.length<=1 är en heuristik (ingen garanterat korrekt
-            signal om "kom hit direkt" i webbläsare) - räcker för en
-            diskret tillbaka-länk som annars faller tillbaka till
-            startsidan, exakt vad ordertexten ber om. */}
-        <button
-          type="button"
-          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/evenemang'))}
-          className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] underline underline-offset-2"
-        >
-          ← Tillbaka
-        </button>
+    <Layout
+      dark
+      wide
+      hideChromeInPrint
+      heroCompact
+      hero={
+        <>
+          {/* history.length<=1 är en heuristik (ingen garanterat korrekt
+              signal om "kom hit direkt" i webbläsare) - räcker för en
+              diskret tillbaka-länk som annars faller tillbaka till
+              startsidan, exakt vad ordertexten ber om. */}
+          <button
+            type="button"
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/evenemang'))}
+            className="back-link"
+          >
+            <span aria-hidden="true">←</span> Tillbaka
+          </button>
+          <h1 className="page-title">{content.TITLE}</h1>
+          <p className="page-lede">{meta}</p>
+        </>
+      }
+    >
+      {/* Rubrikytan döljs vid utskrift - titel och datum skrivs då här. */}
+      <div className="terms-print-head">
+        <h1>{content.TITLE}</h1>
+        <p>{meta}</p>
       </div>
 
       {content.DRAFT && (
@@ -63,11 +104,30 @@ export function TermsPage() {
         </div>
       )}
 
-      <div className="max-w-prose print:text-black">{renderMarkdown(content.BODY)}</div>
-
-      <div className="mt-10 pt-6 border-t border-[var(--border)] text-xs text-[var(--text-muted)] print:text-black">
-        <p>Senast uppdaterad: {content.LAST_UPDATED}</p>
-        <p>Version {content.VERSION}</p>
+      <div className="terms-layout">
+        {headings.length > 2 && (
+          <nav className="terms-toc" aria-label="Innehåll">
+            <p className="terms-toc-title">Innehåll</p>
+            <ol>
+              {headings.map((h) => (
+                <li key={h.id}>
+                  <button type="button" onClick={() => jumpTo(h.id)}>
+                    {h.text}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )}
+        <article className="terms-body">
+          {renderMarkdown(body)}
+          <footer className="terms-foot">
+            <p>{meta}</p>
+            <button type="button" className="btn-secondary print:hidden" onClick={() => window.print()}>
+              Skriv ut eller spara som PDF
+            </button>
+          </footer>
+        </article>
       </div>
     </Layout>
   )
