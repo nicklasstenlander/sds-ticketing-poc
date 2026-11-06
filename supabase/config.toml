@@ -88,6 +88,9 @@ verify_jwt = true
 [functions.admin-event-tickets]
 verify_jwt = true
 
+[functions.admin-recent-orders]
+verify_jwt = true
+
 [functions.admin-ticket-types]
 verify_jwt = true
 
