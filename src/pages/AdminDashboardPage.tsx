@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Layout } from '../components/Layout'
 import { AdminNav } from '../components/AdminNav'
 import { callFunction } from '../lib/functionsApi'
@@ -54,15 +54,19 @@ export function AdminDashboardPage() {
   if (checkingAuth) return null
   if (!authed) return <Navigate to="/admin" replace />
 
-  const publishedEvents = (events ?? []).filter((e) => e.status !== 'cancelled')
+  // Bara publicerade speltider på översikten (designöversynen 2026-11) -
+  // utkast har inga köpare än och visades förut som tomma 0%-kort. De
+  // räknas i stället och länkas till Föreställningar.
+  const publishedEvents = (events ?? []).filter((e) => e.status === 'published')
+  const draftCount = (events ?? []).filter((e) => e.status === 'draft' && !e.archived_at).length
   const totalSold = publishedEvents.reduce((sum, e) => sum + e.sold_count, 0)
   // Samma tre nyckeltal-kort som Events-sidan (AdminPage.tsx), räknade ur
   // samma admin-events-data - ingen ny backend-aggregering.
   const now = Date.now()
   const upcomingCount = publishedEvents.filter(
-    (e) => e.status === 'published' && e.starts_at && new Date(e.starts_at).getTime() > now,
+    (e) => e.starts_at && new Date(e.starts_at).getTime() > now,
   ).length
-  const withCapacity = publishedEvents.filter((e) => e.status === 'published' && e.capacity > 0)
+  const withCapacity = publishedEvents.filter((e) => e.capacity > 0)
   const avgOccupancy =
     withCapacity.length === 0
       ? '–'
@@ -76,7 +80,7 @@ export function AdminDashboardPage() {
       band={
         <>
           <AdminNav />
-          <h1 className="page-title mb-2">Dashboard</h1>
+          <h1 className="page-title mb-2">Översikt</h1>
           <p className={`page-lede ${showKpis ? '' : 'mb-8'}`}>Överblick över dina föreställningar.</p>
           {showKpis && (
             <div className="admin-kpis">
@@ -102,12 +106,12 @@ export function AdminDashboardPage() {
 
       {events === null && !error && <p className="text-[var(--text-muted)]">Laddar…</p>}
       {events !== null && publishedEvents.length === 0 && (
-        <p className="text-[var(--text-muted)] mb-8">Inga event att visa ännu.</p>
+        <p className="text-[var(--text-muted)] mb-8">Inga publicerade föreställningar ännu.</p>
       )}
 
       {/* Kompakta föreställningskort, två kolumner. Klick öppnar köparlistan
           (med utskrift/PDF och CSV-export), se EventBuyersPanel. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${draftCount > 0 ? 'mb-4' : 'mb-10'}`}>
         {publishedEvents.map((event) => {
           const pct = event.capacity > 0 ? Math.round((event.sold_count / event.capacity) * 100) : 0
           return (
@@ -145,6 +149,15 @@ export function AdminDashboardPage() {
           )
         })}
       </div>
+
+      {draftCount > 0 && (
+        <p className="text-sm text-[var(--text-muted)] mb-10">
+          {draftCount === 1 ? '1 utkast' : `${draftCount} utkast`} visas inte här ·{' '}
+          <Link to="/admin" className="link-accent">
+            Visa i Föreställningar →
+          </Link>
+        </p>
+      )}
 
       {/* Ny försäljning (realtidsping) räknar även om korten ovan. */}
       <RecentOrdersSection onNewSale={loadEvents} />

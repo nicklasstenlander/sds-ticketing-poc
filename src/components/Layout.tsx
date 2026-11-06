@@ -96,7 +96,7 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
           </div>
         )}
       </div>
-      <main className={`flex-1 mx-auto w-full ${widthClass} px-4 ${bandOverhang ? 'pt-24' : 'pt-10'} pb-12`}>{children}</main>
+      <main className={`flex-1 mx-auto w-full ${widthClass} px-4 ${bandOverhang ? 'pt-20 sm:pt-16' : 'pt-10'} pb-12`}>{children}</main>
       <footer
         className={`mx-auto w-full ${widthClass} px-4 pb-8 pt-2 flex items-center justify-center gap-2 ${printHiddenClass}`}
       >

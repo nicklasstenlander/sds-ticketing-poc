@@ -81,7 +81,7 @@ export function AdminEventPage() {
         <>
           <AdminNav />
           <Link to="/admin" className="admin-back">
-            &larr; Tillbaka till admin
+            &larr; Alla föreställningar
           </Link>
           {data && (
             <div className="hero-split admin-event-hero">
@@ -650,7 +650,7 @@ function OrdersSection({
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex gap-3">
+                              <div className="flex gap-3 whitespace-nowrap">
                                 <button type="button" onClick={() => openResend(order)} className="text-xs underline">
                                   Skicka biljetter igen
                                 </button>

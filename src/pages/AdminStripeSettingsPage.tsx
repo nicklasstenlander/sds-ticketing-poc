@@ -161,7 +161,7 @@ export function AdminStripeSettingsPage() {
           </>
         }
       />
-      <h1 className="page-title mb-6">Stripe-inställningar</h1>
+      <h1 className="page-title mb-6">Betalningar</h1>
         </>
       }>
 

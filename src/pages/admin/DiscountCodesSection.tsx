@@ -9,9 +9,9 @@ interface DiscountCodesResponse {
 
 function eventTitleOf(code: DiscountCodeRow): string {
   const rel = code.events
-  if (!rel) return 'Alla event'
-  if (Array.isArray(rel)) return rel[0]?.title ?? 'Alla event'
-  return rel.title ?? 'Alla event'
+  if (!rel) return 'Alla föreställningar'
+  if (Array.isArray(rel)) return rel[0]?.title ?? 'Alla föreställningar'
+  return rel.title ?? 'Alla föreställningar'
 }
 
 // Admin-sektion för rabattkoder (Tilläggsordern avsnitt 6). Ligger som en
@@ -171,7 +171,7 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
             <label className="block">
               <span className="block text-sm font-medium mb-2 text-[var(--text)]">Gäller</span>
               <select value={eventId} onChange={(e) => setEventId(e.target.value)} className="field">
-              <option value="">Alla event</option>
+              <option value="">Alla föreställningar</option>
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
                   {ev.title}
@@ -226,39 +226,37 @@ export function DiscountCodesSection({ events }: { events: AdminEventRow[] }) {
             <thead>
               <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
                 <th className="py-2 pr-3">Kod</th>
-                <th className="py-2 pr-3">Rabatt</th>
                 <th className="py-2 pr-3">Gäller</th>
-                <th className="py-2 pr-3">Använd</th>
-                <th className="py-2 pr-3">Status</th>
-                <th className="py-2"></th>
+                <th className="py-2 pr-3 text-right">Använd</th>
+                <th className="py-2 text-right">Status</th>
               </tr>
             </thead>
             <tbody>
               {codes.map((c) => (
                 <tr key={c.id} className="border-b border-[var(--border)] last:border-0">
-                  <td className="py-2 pr-3 font-mono">{c.code}</td>
-                  <td className="py-2 pr-3">
-                    {c.discount_type === 'percent' ? `${c.value}%` : `${(c.value / 100).toFixed(2)} kr`}
+                  {/* Kod och rabatt i samma cell, status och av/på-knapp i samma
+                      cell - fyra kolumner ryms i högerspalten utan att klippas. */}
+                  <td className="py-2.5 pr-3 align-top">
+                    <div className="font-mono font-semibold">{c.code}</div>
+                    <div className="text-xs text-[var(--text-muted)]">
+                      {c.discount_type === 'percent' ? `${c.value}%` : `${(c.value / 100).toFixed(2)} kr`} rabatt
+                    </div>
                   </td>
-                  <td className="py-2 pr-3">{eventTitleOf(c)}</td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2.5 pr-3 align-top">{eventTitleOf(c)}</td>
+                  <td className="py-2.5 pr-3 align-top text-right tabular-nums whitespace-nowrap">
                     {c.used_count}
                     {c.max_uses !== null ? ` / ${c.max_uses}` : ''}
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2.5 align-top text-right">
                     <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        c.active ? 'bg-[var(--success-soft)] text-[var(--success-ink)]' : 'bg-[#ececea] text-[var(--text-muted)]'
-                      }`}
+                      className={`badge ${c.active ? 'badge-success' : 'badge-neutral'}`}
                     >
                       {c.active ? 'Aktiv' : 'Inaktiv'}
                     </span>
-                  </td>
-                  <td className="py-2 text-right">
                     <button
                       type="button"
                       onClick={() => handleToggleActive(c)}
-                      className="text-[var(--text-muted)] hover:text-[var(--text)] underline"
+                      className="block ml-auto mt-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline"
                     >
                       {c.active ? 'Inaktivera' : 'Aktivera'}
                     </button>
