@@ -133,7 +133,7 @@ export function RecentOrdersSection({ onNewSale }: RecentOrdersSectionProps) {
         <button
           type="button"
           onClick={() => load(1)}
-          className="w-full mb-3 rounded-[var(--radius-sm)] bg-[var(--accent-soft)] px-4 py-2 text-sm font-semibold text-[var(--accent)] hover:underline"
+          className="w-full mb-3 rounded-full bg-[var(--accent-soft)] px-4 py-2 text-sm font-semibold text-[var(--accent)] hover:underline"
         >
           {pendingNew === 1 ? '1 ny order' : `${pendingNew} nya ordrar`} har kommit in – visa senaste
         </button>
