@@ -2507,3 +2507,63 @@ input[type='radio'] {
     transform: none;
   }
 }
+
+/* ---- Speltiderna först (2026-11) ---------------------------------------
+ * Toppföreställningen: titel, plats och pris, sedan tiderna och sist
+ * beskrivningen (fyra rader + Läs mer). På bredare skärm står dagen till
+ * vänster om tiderna så att dagarna läses som en tabell. */
+@layer components {
+  .times-intro {
+    margin-bottom: 8px;
+  }
+  .times-intro .times-label {
+    margin-bottom: 2px;
+  }
+  .times-help {
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+  .show-day-short {
+    display: none;
+  }
+  @media (min-width: 768px) {
+    .feature-times .show-day-group {
+      display: grid;
+      grid-template-columns: 7.5rem minmax(0, 1fr);
+      align-items: center;
+      gap: 16px;
+      padding: 10px 0;
+    }
+    .feature-times .show-day-group + .show-day-group {
+      border-top: 1px solid var(--border);
+    }
+    .feature-times .show-day {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .feature-times .show-day-long {
+      display: none;
+    }
+    .feature-times .show-day-short {
+      display: inline;
+    }
+  }
+  .feature-description p {
+    color: var(--text-muted);
+  }
+  .read-more {
+    margin-top: 6px;
+    min-height: 44px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    text-underline-offset: 4px;
+    transition: text-decoration-color 0.2s;
+  }
+  .read-more:hover {
+    text-decoration-color: currentColor;
+  }
+}

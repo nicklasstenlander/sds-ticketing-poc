@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
@@ -208,13 +208,20 @@ function isBuyable(e: EventWithTicketTypes): boolean {
   )
 }
 
+// Stor bokstav i dagnamnet ("lördag" -> "Lördag"). first-letter-varianten
+// fungerar inte på inline-element som de två dagetiketterna.
+const capitalize = (text: string) => text.charAt(0).toLocaleUpperCase('sv-SE') + text.slice(1)
+
 // Speltiderna grupperade per dag ("Lördag 5 december": 10:00, 13:00, 16:00).
 function dayGroups(group: EventWithTicketTypes[]) {
-  const byDay = new Map<string, { label: string; events: EventWithTicketTypes[] }>()
+  const byDay = new Map<string, { label: string; short: string; events: EventWithTicketTypes[] }>()
   for (const e of group) {
     const key = e.starts_at ? stockholm(e.starts_at, { year: 'numeric', month: '2-digit', day: '2-digit' }) : 'saknas'
     const label = e.starts_at ? stockholm(e.starts_at, { weekday: 'long', day: 'numeric', month: 'long' }) : 'Datum saknas'
-    const entry = byDay.get(key) ?? { label, events: [] }
+    const short = e.starts_at
+      ? `${stockholm(e.starts_at, { weekday: 'short' }).replace('.', '')} ${stockholm(e.starts_at, { day: 'numeric', month: 'short' }).replace('.', '')}`
+      : 'Datum saknas'
+    const entry = byDay.get(key) ?? { label, short, events: [] }
     entry.events.push(e)
     byDay.set(key, entry)
   }
@@ -260,16 +267,27 @@ function Feature({
             </span>
             {price && <span className="show-price">{price}</span>}
           </div>
-          {descriptionOf(group) && (
-            <p className="whitespace-pre-line mt-3 text-[var(--text-muted)]">{descriptionOf(group)}</p>
-          )}
         </div>
+        {/* Tiderna före beskrivningen (2026-11): det man kommer för att göra
+            ska ligga på första skärmen, inte under en lång text. */}
         <div className="feature-times">
           {allUpcoming && opens && <SalesNotice opens={opens} />}
-          {buyable.length > 1 && <p className="times-label">Välj tid och köp biljetter</p>}
+          {buyable.length > 0 && (
+            <div className="times-intro">
+              {buyable.length > 1 && <p className="times-label">Välj tid och köp biljetter</p>}
+              <p className="times-help">
+                {buyable.length > 1 ? 'Välj tid – antal biljetter väljer du i nästa steg.' : 'Antal biljetter väljer du i nästa steg.'}
+              </p>
+            </div>
+          )}
           {dayGroups(group).map((day) => (
             <div key={day.key} className="show-day-group">
-              <p className="show-day first-letter:uppercase">{day.label}</p>
+              {/* Lång dag över tiderna på mobilen, kort dag till vänster om
+                  dem på bredare skärm - då blir dagarna en tabell. */}
+              <p className="show-day">
+                <span className="show-day-long">{capitalize(day.label)}</span>
+                <span className="show-day-short">{capitalize(day.short)}</span>
+              </p>
               <ul className="time-chips">
                 {day.events.map((event) => (
                   <Showtime key={event.id} event={event} timeOnly cta={buyable.length === 1 && isBuyable(event)} />
@@ -278,7 +296,40 @@ function Feature({
             </div>
           ))}
         </div>
+        {descriptionOf(group) && <ClampedText text={descriptionOf(group) as string} />}
       </div>
+    </div>
+  )
+}
+
+// Showinformationen kortas till fyra rader med "Läs mer" - knappen visas bara
+// när texten faktiskt är längre än så.
+function ClampedText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  const [overflows, setOverflows] = useState(false)
+  const ref = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      if (!open) setOverflows(el.scrollHeight > el.clientHeight + 1)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [text, open])
+  const id = useId()
+  return (
+    <div className="feature-description">
+      <p ref={ref} id={id} className={`whitespace-pre-line ${open ? '' : 'line-clamp-4'}`}>
+        {text}
+      </p>
+      {(overflows || open) && (
+        <button type="button" className="read-more" aria-expanded={open} aria-controls={id} onClick={() => setOpen((v) => !v)}>
+          {open ? 'Visa mindre' : 'Läs mer'}
+        </button>
+      )}
     </div>
   )
 }
@@ -395,17 +446,17 @@ export function EventsPage() {
                       <span>{[first.venue, soleOrganizer ? null : organizer?.name].filter(Boolean).join(' · ')}</span>
                       {price && <span className="show-price">{price}</span>}
                     </p>
-                    {descriptionOf(group) && (
-                      <p className="whitespace-pre-line line-clamp-4 mt-2 text-sm text-[var(--text-muted)]">
-                        {descriptionOf(group)}
-                      </p>
-                    )}
                     {allUpcoming && opens && <SalesNotice opens={opens} />}
                     <ul className="time-chips">
                       {group.map((event) => (
                         <Showtime key={event.id} event={event} cta={buyable.length === 1 && isBuyable(event)} />
                       ))}
                     </ul>
+                    {descriptionOf(group) && (
+                      <p className="whitespace-pre-line line-clamp-4 mt-4 text-sm text-[var(--text-muted)]">
+                        {descriptionOf(group)}
+                      </p>
+                    )}
                   </div>
                 </li>
               )
