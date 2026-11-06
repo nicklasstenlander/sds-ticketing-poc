@@ -176,3 +176,38 @@ export interface DiscountCodeRow {
   created_at: string
   events?: { title: string } | { title: string }[] | null
 }
+
+// admin-recent-orders (Dashboard, "Senaste ordrar"): en rad per betald
+// order, med event och orderrader inbäddade så detaljvyn inte behöver ett
+// extra anrop.
+export interface RecentOrderItem {
+  name: string | null
+  qty: number
+  unit_price_ore: number
+  vat_rate: number
+}
+
+export interface RecentOrderRow {
+  id: string
+  buyer_name: string
+  buyer_email: string
+  status: OrderStatus
+  created_at: string
+  paid_at: string | null
+  total_ore: number | null
+  ticket_qty: number
+  discount_amount_ore: number
+  confirmation_email_sent_at: string | null
+  stripe_payment_intent_id: string | null
+  stripe_url: string | null
+  event: { id: string; title: string; starts_at: string | null; venue: string | null }
+  items: RecentOrderItem[]
+}
+
+export interface RecentOrdersResponse {
+  organizer_id: string
+  page: number
+  page_size: number
+  total: number
+  orders: RecentOrderRow[]
+}

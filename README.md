@@ -276,6 +276,7 @@ supabase functions deploy admin-update-event
 supabase functions deploy admin-delete-event
 supabase functions deploy admin-events
 supabase functions deploy admin-event-tickets
+supabase functions deploy admin-recent-orders
 supabase functions deploy admin-ticket-types
 supabase functions deploy admin-discount-codes
 supabase functions deploy admin-upload-poster

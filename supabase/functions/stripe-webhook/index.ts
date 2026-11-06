@@ -104,6 +104,7 @@ import { shouldReleaseAfterExpiryUpdate } from './expiryGuard.ts'
 import { cancelPaidOrder } from '../_shared/cancelOrder.ts'
 import { isFullRefund, findOrderIdForRefund } from '../_shared/refundLookup.ts'
 import { finalizePaidOrder, mapFinalizeOutcome, type FinalizeHandlerOutcome } from '../_shared/finalizeOrder.ts'
+import { scheduleOrderPaidBroadcast } from '../_shared/orderBroadcast.ts'
 import { decideRetryAction, type WebhookEventStatus } from './webhookEventRetry.ts'
 import { startTimer, type Tick } from './timing.ts'
 // @deno-types="npm:@types/qrcode@1"
@@ -216,6 +217,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, tick: T
     console.log('Betalning för order i oväntat läge - needs_attention', orderId, result.outcome)
     return 'needs_attention'
   }
+
+  // "Ny order"-ping till admin-dashboarden (Senaste ordrar). Bara vid
+  // FÖRSTA slutförandet, i bakgrunden, fel ignoreras - se
+  // _shared/orderBroadcast.ts.
+  if (result.outcome === 'finalized') scheduleOrderPaidBroadcast(supabase, result.eventId)
 
   // Från här: 'finalized' (första gången) eller 'already_paid'
   // (omkörning) - biljetterna finns. confirmation_email_sent_at kommer
