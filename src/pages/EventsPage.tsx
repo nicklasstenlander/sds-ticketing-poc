@@ -276,7 +276,10 @@ function Feature({
             <div className="times-intro">
               {buyable.length > 1 && <p className="times-label">Välj tid och köp biljetter</p>}
               <p className="times-help">
-                {buyable.length > 1 ? 'Välj tid – antal biljetter väljer du i nästa steg.' : 'Antal biljetter väljer du i nästa steg.'}
+                {/* Sammanfattning som Showtics "66 kommande speltillfällen" -
+                    bara när föreställningen har fler än en speltid. */}
+                {group.length > 1 && `${group.length} speltider · `}
+                Antal biljetter väljer du i nästa steg.
               </p>
             </div>
           )}
