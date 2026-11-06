@@ -2024,6 +2024,89 @@ input[type='radio'] {
     #070d1a;
 }
 
+/* ---- Publika sidor, översyn (2026-11) ----------------------------------
+ * Datumet som en rad ovanför titeln, tydlig köpknapp, liggande kort när det
+ * bara finns en eller två föreställningar till, tillbakalänk på köpsidan. */
+@layer components {
+  .show-date {
+    font-size: clamp(1.0625rem, 0.95rem + 0.5vw, 1.3125rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    text-transform: none;
+  }
+  .feature .show-date,
+  .purchase-head .show-date {
+    margin-bottom: 10px;
+  }
+  .feature-line {
+    margin-top: 16px;
+  }
+  .times-label {
+    margin-bottom: 12px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .time-chip-cta {
+    padding: 8px 22px;
+  }
+  .time-chip-cta .time-chip-label {
+    font-size: 16px;
+    font-weight: 800;
+  }
+  /* En eller två föreställningar i "Fler föreställningar": ett liggande kort
+     per rad (affisch till vänster) i stället för ett rutnät med tomma
+     kolumner. */
+  @media (min-width: 900px) {
+    .show-grid.show-grid-wide {
+      grid-template-columns: 1fr;
+      gap: 48px;
+    }
+    .show-grid-wide .show-tile {
+      display: grid;
+      grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+      gap: 40px;
+      align-items: start;
+    }
+    .show-grid-wide .show-body {
+      padding-top: 4px;
+      max-width: 60ch;
+    }
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    margin: -10px 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: color 0.15s;
+  }
+  .back-link:hover {
+    color: var(--text);
+  }
+  .back-link span {
+    transition: transform 0.18s var(--ease-out);
+  }
+  .back-link:hover span {
+    transform: translateX(-3px);
+  }
+  .confirm-title {
+    margin-bottom: 12px;
+    font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.125rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    color: var(--text);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .back-link:hover span {
+    transform: none;
+  }
+}
+
 /* ---- Finputs (design-taste-genomgång 2026-11) -------------------------
  * Samma mikrointeraktioner överallt: klickbara kort lyfter 2px, knappar
  * kliver upp vid hover och trycks ned vid klick, understrykningar ritas

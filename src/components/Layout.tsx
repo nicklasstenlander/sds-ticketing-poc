@@ -41,9 +41,13 @@ interface LayoutProps {
   // Affischens URL:er (bara eventlistan): en kraftigt suddad, mörkad kopia
   // fyller scenens bakgrund och tonas ut nedåt. Se .stage-backdrop i index.css.
   backdrop?: { landscape?: string | null; portrait?: string | null }
+  // Skärmläsarnamn på rubrikytan (hero/band). Den ligger utanför <main> för
+  // att dela yta med toppbalken, så den blir en egen namngiven region i
+  // stället för innehåll utanför alla landmärken.
+  heroLabel?: string
 }
 
-export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false, backdrop, band, bandOverhang = false }: LayoutProps) {
+export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = false, hero, heroCompact = false, heroOverlap = false, dark = false, backdrop, band, bandOverhang = false, heroLabel = 'Sidans rubrik' }: LayoutProps) {
   useEffect(() => {
     if (!dark) return
     document.documentElement.classList.add('theme-dark')
@@ -86,14 +90,14 @@ export function Layout({ children, wide = false, termsSlug, hideChromeInPrint = 
         </div>
       </header>
         {band && (
-          <div className="admin-band">
+          <section className="admin-band" aria-label={heroLabel}>
             <div className={`mx-auto ${widthClass} px-4`}>{band}</div>
-          </div>
+          </section>
         )}
         {hero && (
-          <div className="stage-hero">
+          <section className="stage-hero" aria-label={heroLabel}>
             <div className={`mx-auto ${widthClass} px-4`}>{hero}</div>
-          </div>
+          </section>
         )}
       </div>
       <main className={`flex-1 mx-auto w-full ${widthClass} px-4 ${bandOverhang ? 'pt-20 sm:pt-16' : 'pt-10'} pb-12`}>{children}</main>

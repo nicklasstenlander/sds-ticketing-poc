@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
@@ -465,13 +465,25 @@ export function PurchasePage() {
         )}
         <div className="purchase-main">
           <div className="purchase-head">
+            {/* Tillbaka till föreställningen (alla speltider) - köpsidan var
+                tidigare en återvändsgränd utan webbläsarens bakåtknapp. */}
+            <Link to={`/evenemang/${event.slug}`} className="back-link">
+              <span aria-hidden="true">←</span> Alla speltider
+            </Link>
+            {event.starts_at && (
+              <p className="show-date first-letter:uppercase">
+                {formatStockholmDateTimeLocale(event.starts_at, {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            )}
             <h1 className="feature-title">{event.title}</h1>
             <div className="feature-line">
-              {event.starts_at && (
-                <span className="show-date">
-                  {formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'long', timeStyle: 'short' })}
-                </span>
-              )}
               <span className="feature-meta">
                 {[event.venue, organizer?.name ? `Arrangör: ${organizer.name}` : null].filter(Boolean).join(' · ')}
               </span>

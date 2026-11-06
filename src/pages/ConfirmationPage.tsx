@@ -31,6 +31,15 @@ const POLL_TIMEOUT_MS = 30000
 // webhooken hunnit markera ordern som betald. Stripe-webhooken kör oftast
 // klart innan kunden är tillbaka från Checkout, men inte alltid - därför
 // polling istället för att bara anta att betalningen redan är klar.
+function OrderNumber({ orderId, className = '' }: { orderId: string; className?: string }) {
+  return (
+    <div className={`card ${className}`}>
+      <div className="text-sm text-[var(--text-muted)] mb-1">Ordernummer</div>
+      <div className="font-mono text-sm break-all text-[var(--text)]">{orderId}</div>
+    </div>
+  )
+}
+
 export function ConfirmationPage() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
@@ -108,10 +117,10 @@ export function ConfirmationPage() {
 
   return (
     <Layout termsSlug={organizerSlug} dark>
-      <div className="card mb-6">
-        <div className="text-sm text-[var(--text-muted)] mb-2">Ordernummer</div>
-        <div className="font-mono text-sm break-all text-[var(--text)]">{orderId}</div>
-      </div>
+      {/* Ordernumret står överst medan betalningen bekräftas (texterna nedan
+          hänvisar till "ordernumret ovan"); när biljetterna är klara kommer
+          biljetterna först och ordernumret längst ned. */}
+      {status !== 'paid' && <OrderNumber orderId={orderId} className="mb-6" />}
 
       {wasCancelled && status !== 'paid' && (
         <p className="text-[var(--warning-ink)] bg-[var(--warning-soft)] rounded-[var(--radius-sm)] p-4 mb-6 text-sm">
@@ -132,8 +141,8 @@ export function ConfirmationPage() {
 
       {status === 'paid' && (
         <div className="text-center">
-          <p className="font-semibold mb-6 text-[var(--text)]">Du är klar.</p>
-          <p className="text-[var(--text-muted)] text-sm mb-6">
+          <h1 className="confirm-title">Tack! Dina biljetter är klara.</h1>
+          <p className="text-[var(--text-muted)] text-sm mb-8 max-w-md mx-auto">
             Vi ses på föreställningen. Samma biljetter ligger också i mailet vi just skickade dig
             - dyker det inte upp direkt, kolla skräpposten.
           </p>
@@ -187,6 +196,7 @@ export function ConfirmationPage() {
               </div>
             ))}
           </div>
+          {tickets && <OrderNumber orderId={orderId} className="mt-8 max-w-sm mx-auto text-left" />}
         </div>
       )}
 
@@ -225,9 +235,11 @@ export function ConfirmationPage() {
         </div>
       )}
 
-      <Link to="/" className="link-accent inline-block mt-8">
-        Till startsidan
-      </Link>
+      <div className="text-center mt-8">
+        <Link to="/" className="link-accent">
+          Till alla föreställningar
+        </Link>
+      </div>
     </Layout>
   )
 }
