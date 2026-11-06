@@ -311,7 +311,7 @@ export function AdminEmbedPage() {
 
             <section className="card">
               <h2 className="text-lg font-extrabold mb-3">Layout</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {LAYOUTS.map((l) => (
                   <button
                     key={l.value}
@@ -374,7 +374,7 @@ export function AdminEmbedPage() {
                     key={a.value}
                     type="button"
                     onClick={() => setAccent(a.value)}
-                    className="flex items-center gap-2 text-sm px-3 py-2 rounded-[var(--radius-sm)] border"
+                    className="flex items-center gap-2 text-sm px-4 py-2 rounded-full border"
                     style={{
                       borderColor: accent === a.value ? a.color : 'var(--border)',
                       borderWidth: accent === a.value ? 2 : 1,
