@@ -13,6 +13,7 @@ import { formatKr } from '../lib/formatPrice'
 import { monogram } from '../lib/monogram'
 import { posterVars } from '../lib/posterVars'
 import { loadPurchaseDraft, savePurchaseDraft, clearPurchaseDraft } from '../lib/purchaseDraft'
+import { isLowStock } from '../lib/lowStock'
 
 interface CreateOrderResponse {
   checkout_url: string
@@ -284,10 +285,10 @@ export function PurchasePage() {
   const remaining = event ? event.capacity - event.sold_count : 0
   const soldOut = event ? event.capacity > 0 && remaining <= 0 : false
   // Exakt antal kvarvarande platser visas inte längre för köparen (önskemål
-  // 2026-10-04) - bara ett löst "få kvar"-läge under 10%. remaining/
+  // 2026-10-04) - bara ett löst "få kvar"-läge från 75% sålda. remaining/
   // maxSelectable nedan styr fortfarande den FAKTISKA köpspärren oförändrat,
   // det är bara den visade TEXTEN som ändras.
-  const lowStock = event ? !soldOut && event.capacity > 0 && remaining / event.capacity < 0.1 : false
+  const lowStock = event ? !soldOut && isLowStock(event.capacity, event.sold_count) : false
   const totalQty = Object.values(quantities).reduce((sum, q) => sum + q, 0)
   const totalOre = (ticketTypes ?? []).reduce(
     (sum, t) => sum + (quantities[t.id] ?? 0) * t.price_ore,
@@ -491,7 +492,7 @@ export function PurchasePage() {
             </div>
             {event.description && <p className="whitespace-pre-line mt-3">{event.description}</p>}
             {/* Exakt antal platser visas INTE (önskemål 2026-10-04) - bara
-                "Slutsålt" eller "Få biljetter kvar" under 10% kvar. */}
+                "Slutsålt" eller "Få biljetter kvar" från 75% sålda. */}
             {(soldOut || lowStock) && (
               <div className={`badge ${soldOut ? 'badge-neutral' : 'badge-warning'}`}>{soldOut ? 'Slutsålt' : 'Få biljetter kvar'}</div>
             )}
