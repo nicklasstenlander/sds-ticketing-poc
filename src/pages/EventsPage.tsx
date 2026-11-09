@@ -11,6 +11,7 @@ import { monogram } from '../lib/monogram'
 import { posterVars } from '../lib/posterVars'
 import { POSTER_MAX_SIZE } from '../lib/posterCompression'
 import { groupShows, pickFeatured } from '../lib/featuredShow'
+import { isLowStock } from '../lib/lowStock'
 
 interface EventWithTicketTypes extends EventRow {
   ticket_types: TicketTypeRow[]
@@ -189,8 +190,8 @@ function Showtime({ event, timeOnly = false, cta = false }: { event: EventWithTi
     )
   }
   // Exakt antal sålda visas inte för besökare (önskemål 2026-10-04) - bara
-  // "Få biljetter kvar" under 10% kvar.
-  const lowStock = event.capacity > 0 && (event.capacity - event.sold_count) / event.capacity < 0.1
+  // "Få biljetter kvar" från 75% sålda (se lib/lowStock).
+  const lowStock = isLowStock(event.capacity, event.sold_count)
   return (
     <li>
       <Link to={`/kop/${event.slug}`} className={`time-chip ${cta ? 'time-chip-cta' : ''}`}>
