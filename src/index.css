@@ -2734,5 +2734,56 @@ input[type='radio'] {
   .move-target.is-disabled {
     cursor: not-allowed;
     opacity: 0.55;
+/* ---- Intäkt i Översikt (2026-11) -------------------------------------- */
+@layer components {
+  .stat-sub {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  @media (min-width: 640px) {
+    .admin-kpis.admin-kpis-4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1024px) {
+    .admin-kpis.admin-kpis-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  /* Fyra kort i bredd: beloppet ska rymmas på en rad ("153 660 kr"). */
+  .admin-kpis.admin-kpis-4 .stat-value {
+    font-size: clamp(1.5rem, 1.1rem + 0.9vw, 2rem);
+    white-space: nowrap;
+  }
+  @media (max-width: 639px) {
+    .admin-kpis.admin-kpis-4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .admin-kpis.admin-kpis-4 .stat-value {
+      font-size: 1.75rem;
+    }
+  }
+  .dash-event-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .dash-event-revenue {
+    flex: none;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .dash-event-revenue-gross {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--accent);
+  }
+  .dash-event-revenue-net {
+    font-size: 11px;
+    color: var(--text-muted);
   }
 }
