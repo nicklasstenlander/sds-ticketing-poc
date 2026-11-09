@@ -123,6 +123,9 @@ Deno.serve(async (req: Request) => {
     .from('tickets')
     .select('id, ticket_code, ticket_type_id')
     .eq('order_id', orderId)
+    // Makulerade biljetter (t.ex. efter en flytt, admin-move-order) ska
+    // aldrig skickas ut igen.
+    .neq('status', 'void')
   if (ticketsError || !tickets || tickets.length === 0) {
     return jsonResponse({ error: `Hittade inga biljetter för ordern: ${ticketsError?.message}` }, 500)
   }

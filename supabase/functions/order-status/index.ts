@@ -80,6 +80,8 @@ Deno.serve(async (req: Request) => {
       .from('tickets')
       .select('id, ticket_code')
       .eq('order_id', order.id)
+      // Makulerade biljetter (flyttad order) visas inte.
+      .neq('status', 'void')
       .order('ticket_code', { ascending: true })
 
     if (ticketsError) {

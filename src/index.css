@@ -2711,3 +2711,28 @@ input[type='radio'] {
     break-after: avoid;
   }
 }
+
+/* ---- Flytta order (MoveOrderPanel.tsx, 2026-11) ------------------------ */
+@layer components {
+  .move-target {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .move-target:hover:not(.is-disabled) {
+    border-color: var(--accent);
+  }
+  .move-target.is-selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .move-target.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+}
