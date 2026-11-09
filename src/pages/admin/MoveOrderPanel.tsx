@@ -97,6 +97,8 @@ export function MoveOrderPanel({
         </div>
       }
     >
+      {/* SidePanel lägger ingen egen luft runt innehållet. */}
+      <div className="p-5">
       <p className="text-sm text-[var(--text-muted)] mb-4">
         Hela ordern flyttas. De gamla biljetterna slutar gälla och köparen får nya biljetter med nya QR-koder
         i ett mejl. Priset och kvittot ändras inte.
@@ -146,6 +148,7 @@ export function MoveOrderPanel({
           {error}
         </p>
       )}
+      </div>
     </SidePanel>
   )
 }
