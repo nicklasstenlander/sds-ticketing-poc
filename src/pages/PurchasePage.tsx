@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { callFunction, ApiError } from '../lib/functionsApi'
 import type { EventOrganizerRelation, EventRow, TicketTypeRow } from '../lib/types'
+import { WaitlistForm } from '../components/WaitlistForm'
 import { Layout } from '../components/Layout'
 import { computeSalesState, computeCountdown, computeClockSkewMs } from '../lib/salesState'
 import { checkFreeTicketLimit } from '../lib/freeTicketLimit'
@@ -526,6 +527,8 @@ export function PurchasePage() {
             </div>
           )}
         </div>
+      ) : soldOut && event.waitlist_enabled ? (
+        <WaitlistForm eventSlug={event.slug} />
       ) : soldOut ? (
         <div className="card">
           <p className="font-semibold mb-2 text-[var(--text)]">Tyvärr, det här eventet är slutsålt.</p>

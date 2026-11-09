@@ -36,6 +36,9 @@ export interface EventRow {
   archived_at: string | null
   archived_by: string | null
   archived_reason: ArchivedReason | null
+  // Väntelista när speltiden är slutsåld (2026-11). Valfri tills
+  // migrationen 20261109020000_waitlist.sql är körd.
+  waitlist_enabled?: boolean
 }
 
 export type ArchivedReason = 'test' | 'hidden'

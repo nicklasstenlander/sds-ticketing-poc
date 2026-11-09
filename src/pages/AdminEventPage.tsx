@@ -10,6 +10,7 @@ import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
 import { formatKr } from '../lib/formatPrice'
 import { confirmDialog } from '../lib/confirmDialog'
 import { compressPoster } from '../lib/posterCompression'
+import { WaitlistSection } from './admin/WaitlistSection'
 import { MoveOrderPanel } from './admin/MoveOrderPanel'
 
 interface AdminEventTicketsResponse {
@@ -143,6 +144,7 @@ export function AdminEventPage() {
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
 
           <OrdersSection orders={data.orders} tickets={data.tickets} event={data.event} onChange={load} />
+          <WaitlistSection eventId={data.event.id} />
 
           <h2 className="text-lg font-extrabold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
           {data.tickets.length === 0 ? (
