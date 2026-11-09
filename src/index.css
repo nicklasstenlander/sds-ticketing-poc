@@ -2734,6 +2734,9 @@ input[type='radio'] {
   .move-target.is-disabled {
     cursor: not-allowed;
     opacity: 0.55;
+  }
+}
+
 /* ---- Intäkt i Översikt (2026-11) -------------------------------------- */
 @layer components {
   .stat-sub {
