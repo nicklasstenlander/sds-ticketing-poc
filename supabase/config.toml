@@ -139,6 +139,14 @@ verify_jwt = true
 [functions.public-apply-organizer]
 verify_jwt = false
 
+# Köpsidans väntelista (2026-11) - publik, skriver bara en rad i
+# waitlist_entries och bara för en slutsåld speltid med väntelistan på.
+[functions.public-join-waitlist]
+verify_jwt = false
+
+[functions.admin-waitlist]
+verify_jwt = true
+
 [functions.admin-approve-application]
 verify_jwt = true
 

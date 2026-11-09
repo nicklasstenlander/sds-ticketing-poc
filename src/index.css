@@ -2711,3 +2711,21 @@ input[type='radio'] {
     break-after: avoid;
   }
 }
+
+/* ---- Väntelista (2026-11) ---------------------------------------------
+ * Slutsåld tid med väntelista: inte gul (går inte att köpa), men tydligt
+ * klickbar - kantad, och leder till köpsidans väntelisteformulär. */
+@layer components {
+  .theme-dark .time-chips li a.time-chip.time-chip-waitlist,
+  a.time-chip.time-chip-waitlist {
+    background: transparent;
+    border-color: var(--spotlight);
+    color: var(--text);
+  }
+  .theme-dark .time-chips li a.time-chip.time-chip-waitlist:hover,
+  a.time-chip.time-chip-waitlist:hover {
+    background: color-mix(in srgb, var(--spotlight) 18%, transparent);
+    border-color: var(--spotlight);
+    color: var(--text);
+  }
+}

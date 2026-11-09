@@ -36,6 +36,8 @@ interface UpdateEventBody {
   // Schemalagt biljettsläpp (ordern 2026-10-03) - ISO-sträng, eller null
   // för att rensa (släpp direkt). undefined = fältet rörs inte alls.
   sales_open_at?: string | null
+  // Väntelista när speltiden är slutsåld (2026-11). undefined = rörs inte.
+  waitlist_enabled?: boolean
 }
 
 await instrumentEdgeFunctions()
@@ -161,6 +163,13 @@ Deno.serve(async (req: Request) => {
       }
       update.sales_open_at = normalized
     }
+  }
+
+  if (body.waitlist_enabled !== undefined) {
+    if (typeof body.waitlist_enabled !== 'boolean') {
+      return jsonResponse({ error: 'waitlist_enabled måste vara true eller false.' }, 400)
+    }
+    update.waitlist_enabled = body.waitlist_enabled
   }
 
   if (body.status !== undefined) {

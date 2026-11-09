@@ -154,6 +154,18 @@ function Showtime({ event, timeOnly = false, cta = false }: { event: EventWithTi
       ? (time as string)
       : `${stockholm(event.starts_at, { weekday: 'short' }).replace('.', '')} ${stockholm(event.starts_at, { day: 'numeric', month: 'short' }).replace('.', '')} · ${time}`
     : 'Datum saknas'
+  // Slutsålt med väntelista påslagen (2026-11): tiden leder till köpsidan,
+  // där väntelisteformuläret visas.
+  if (salesState === 'sold_out' && types.length > 0 && event.waitlist_enabled) {
+    return (
+      <li>
+        <Link to={`/kop/${event.slug}`} className="time-chip time-chip-waitlist">
+          <span className="time-chip-label first-letter:uppercase">{label}</span>
+          <small>Slutsålt · väntelista</small>
+        </Link>
+      </li>
+    )
+  }
   if (salesState === 'sold_out' || types.length === 0) {
     const soldOut = salesState === 'sold_out'
     return (
