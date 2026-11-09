@@ -6,6 +6,10 @@ import { callFunction } from '../lib/functionsApi'
 import { supabase } from '../lib/supabaseClient'
 import type { AdminEventRow } from '../lib/types'
 import { formatStockholmDateTimeLocale } from '../lib/stockholmTime'
+import { formatKr } from '../lib/formatPrice'
+
+// Hela kronor räcker i översikten ("24 420 kr").
+const kr = (ore: number) => `${formatKr(Math.round(ore / 100) * 100)} kr`
 import { RecentOrdersSection } from './admin/RecentOrdersSection'
 import { EventBuyersPanel } from './admin/EventBuyersPanel'
 
@@ -72,6 +76,11 @@ export function AdminDashboardPage() {
       ? '–'
       : `${Math.round((withCapacity.reduce((sum, e) => sum + e.sold_count / e.capacity, 0) / withCapacity.length) * 100)}%`
   const showKpis = events !== null && publishedEvents.length > 0
+  // Intäkten visas bara när admin-events faktiskt skickar fältet (nyare
+  // deploy) - annars hellre ingen siffra än en felaktig nolla.
+  const hasRevenue = publishedEvents.some((e) => e.revenue_ore !== undefined)
+  const totalRevenue = publishedEvents.reduce((sum, e) => sum + (e.revenue_ore ?? 0), 0)
+  const totalRevenueNet = publishedEvents.reduce((sum, e) => sum + (e.revenue_net_ore ?? 0), 0)
 
   return (
     <Layout
@@ -83,7 +92,14 @@ export function AdminDashboardPage() {
           <h1 className="page-title mb-2">Översikt</h1>
           <p className={`page-lede ${showKpis ? '' : 'mb-8'}`}>Överblick över dina föreställningar.</p>
           {showKpis && (
-            <div className="admin-kpis">
+            <div className={`admin-kpis ${hasRevenue ? 'admin-kpis-4' : ''}`}>
+              {hasRevenue && (
+                <div className="stat-card">
+                  <div className="stat-label">Intäkter totalt</div>
+                  <div className="stat-value">{kr(totalRevenue)}</div>
+                  <div className="stat-sub">{kr(totalRevenueNet)} exkl. moms</div>
+                </div>
+              )}
               <div className="stat-card">
                 <div className="stat-label">Sålda biljetter totalt</div>
                 <div className="stat-value">{totalSold}</div>
@@ -123,23 +139,39 @@ export function AdminDashboardPage() {
               style={{ padding: '12px 16px' }}
               title="Visa alla som köpt biljett"
             >
-              <div className="flex justify-between items-baseline gap-3 mb-2">
-                <div className="font-extrabold text-sm text-[var(--text)] line-clamp-1">{event.title}</div>
-                <div className="font-extrabold text-sm tabular-nums shrink-0" style={{ color: 'var(--accent)' }}>
-                  {pct}%
+              {/* Rad 1: titel + speltid till vänster, intäkten till höger -
+                  speltiden är det som skiljer korten åt när samma
+                  föreställning går flera gånger. */}
+              <div className="dash-event-top">
+                <div className="min-w-0">
+                  <div className="font-extrabold text-sm text-[var(--text)] line-clamp-1">{event.title}</div>
+                  <div className="text-xs text-[var(--text-muted)] first-letter:uppercase">
+                    {event.starts_at
+                      ? // steg 1b: explicit Europe/Stockholm, inte webbläsarens egen
+                        // tidszon (se stockholmTime.ts).
+                        formatStockholmDateTimeLocale(event.starts_at, {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Inget datum satt'}
+                  </div>
                 </div>
+                {event.revenue_ore !== undefined && (
+                  <div className="dash-event-revenue">
+                    <div className="dash-event-revenue-gross">{kr(event.revenue_ore)}</div>
+                    <div className="dash-event-revenue-net">{kr(event.revenue_net_ore ?? 0)} exkl. moms</div>
+                  </div>
+                )}
               </div>
               <div className="progress-track mb-1.5" style={{ height: 6 }}>
                 <div className="progress-fill" style={{ width: `${Math.min(100, pct)}%` }} />
               </div>
               <div className="text-[var(--text-muted)] text-xs flex justify-between gap-2">
-                <span className="truncate">
-                  {event.sold_count} / {event.capacity} sålda
-                  {event.starts_at
-                    ? // steg 1b: explicit Europe/Stockholm, inte webbläsarens egen
-                      // tidszon (se stockholmTime.ts).
-                      ` · ${formatStockholmDateTimeLocale(event.starts_at, { dateStyle: 'medium', timeStyle: 'short' })}`
-                    : ''}
+                <span className="truncate tabular-nums">
+                  {event.sold_count} / {event.capacity} sålda · {pct}%
                 </span>
                 <span className="dash-event-cta shrink-0 font-semibold text-[var(--accent)]">
                   Köpare <span aria-hidden="true">→</span>
