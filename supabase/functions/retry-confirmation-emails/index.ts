@@ -178,6 +178,7 @@ Deno.serve(async (req: Request) => {
       .from('tickets')
       .select('id, ticket_code, ticket_type_id')
       .eq('order_id', order.id)
+      .neq('status', 'void')
     if (ticketsError || !tickets || tickets.length === 0) {
       errorCount += 1
       console.error('retry-confirmation-emails: hittade inga biljetter', order.id, ticketsError?.message)
