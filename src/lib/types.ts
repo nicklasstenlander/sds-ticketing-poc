@@ -75,6 +75,12 @@ export interface AdminEventRow extends EventRow {
   // i UI:t om "Radera" ska visas alls (bara draft+0 ordrar är raderbart,
   // se admin-delete-event) eller om det måste bli "Arkivera" istället.
   order_count: number
+  // Intäkt (Översikt, 2026-11) - betalda ordrar, snapshotpris inkl. moms,
+  // 'test'-arkiverade utesluts; netto = exkl. moms. Se
+  // supabase/functions/admin-events/revenue.ts. Valfria tills
+  // admin-events är deployad med fälten.
+  revenue_ore?: number
+  revenue_net_ore?: number
 }
 
 // admin-event-tickets returnerar en rad per order för eventet (ordern

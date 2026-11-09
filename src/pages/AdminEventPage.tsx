@@ -11,6 +11,7 @@ import { formatKr } from '../lib/formatPrice'
 import { confirmDialog } from '../lib/confirmDialog'
 import { compressPoster } from '../lib/posterCompression'
 import { WaitlistSection } from './admin/WaitlistSection'
+import { MoveOrderPanel } from './admin/MoveOrderPanel'
 
 interface AdminEventTicketsResponse {
   event: EventRow
@@ -142,7 +143,7 @@ export function AdminEventPage() {
 
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
 
-          <OrdersSection orders={data.orders} tickets={data.tickets} onChange={load} />
+          <OrdersSection orders={data.orders} tickets={data.tickets} event={data.event} onChange={load} />
           <WaitlistSection eventId={data.event.id} />
 
           <h2 className="text-lg font-extrabold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
@@ -378,10 +379,12 @@ function PosterUploadField({
 function OrdersSection({
   orders,
   tickets,
+  event,
   onChange,
 }: {
   orders: AdminOrderRow[]
   tickets: TicketRow[]
+  event: EventRow
   onChange: () => Promise<void>
 }) {
   const [showArchived, setShowArchived] = useState(false)
@@ -406,6 +409,9 @@ function OrdersSection({
   // Avboka order (2.2/2.3)
   const [cancelBusyId, setCancelBusyId] = useState<string | null>(null)
   const [cancelMessage, setCancelMessage] = useState<{ orderId: string; text: string } | null>(null)
+  // Flytta order (2026-11) - panelen är öppen för den här ordern.
+  const [moveOrder, setMoveOrder] = useState<AdminOrderRow | null>(null)
+  const [moveMessage, setMoveMessage] = useState<string | null>(null)
 
   const visibleOrders = (showArchived ? orders : orders.filter((o) => !o.archived_at)).filter((o) => {
     const term = search.trim().toLowerCase()
@@ -556,6 +562,13 @@ function OrdersSection({
       </div>
 
       {error && <p className="text-[var(--danger)] text-sm mb-2">{error}</p>}
+      {/* Efter en flytt försvinner ordern ur den här speltidens lista
+          (den ligger nu på målet) - därför visas beskedet här uppe. */}
+      {moveMessage && (
+        <p role="status" className="mb-3 rounded-[var(--radius-sm)] bg-[var(--success-soft)] px-4 py-2 text-sm text-[var(--success-ink)]">
+          {moveMessage}
+        </p>
+      )}
 
       <div className="mb-3">
         <input
@@ -656,6 +669,9 @@ function OrdersSection({
                                 <button type="button" onClick={() => openResend(order)} className="text-xs underline">
                                   Skicka biljetter igen
                                 </button>
+                                <button type="button" onClick={() => setMoveOrder(order)} className="text-xs underline">
+                                  Flytta
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleCancelOrder(order)}
@@ -716,6 +732,16 @@ function OrdersSection({
           </div>
         </>
       )}
+      <MoveOrderPanel
+        order={moveOrder}
+        event={event}
+        onClose={() => setMoveOrder(null)}
+        onMoved={async (message) => {
+          setMoveOrder(null)
+          setMoveMessage(message)
+          await onChange()
+        }}
+      />
     </section>
   )
 }

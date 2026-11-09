@@ -27,6 +27,8 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts'
 import { resolveOrganizer } from '../_shared/organizerAuth.ts'
 import { createAdminClient } from '../_shared/supabaseAdmin.ts'
 import { toIso8601Seconds } from '../_shared/time.ts'
+import { revenueByEvent } from './revenue.ts'
+import type { RevenueItem } from './revenue.ts'
 
 interface TicketTypeSummary {
   ticket_type_count: number
@@ -132,6 +134,49 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Intäkt per event (Översikt-listan, 2026-11) - se revenue.ts för
+  // reglerna (betalda ordrar, snapshotpris, 'test'-arkiverade utesluts).
+  let revenue = new Map<string, { revenue_ore: number; revenue_net_ore: number }>()
+  if (eventIds.length > 0) {
+    // Hämtas sida för sida: PostgREST returnerar högst 1000 rader per
+    // anrop, och en arrangör med många ordrar passerar det snabbt.
+    const PAGE = 1000
+    const itemRows: {
+      qty: number
+      unit_price_ore: number
+      vat_rate: number
+      orders: { event_id: string; archived_reason: string | null } | { event_id: string; archived_reason: string | null }[] | null
+    }[] = []
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: pageError } = await supabase
+        .from('order_items')
+        .select('id, qty, unit_price_ore, vat_rate, orders!inner(event_id, status, archived_reason)')
+        .eq('orders.status', 'paid')
+        .in('orders.event_id', eventIds)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (pageError) {
+        return jsonResponse({ error: `Kunde inte hämta intäkter: ${pageError.message}` }, 500)
+      }
+      itemRows.push(...(page ?? []))
+      if (!page || page.length < PAGE) break
+    }
+
+    const items: RevenueItem[] = []
+    for (const row of itemRows) {
+      const order = Array.isArray(row.orders) ? row.orders[0] : row.orders
+      if (!order) continue
+      items.push({
+        event_id: order.event_id,
+        qty: row.qty,
+        unit_price_ore: row.unit_price_ore,
+        vat_rate: row.vat_rate,
+        archived_reason: order.archived_reason,
+      })
+    }
+    revenue = revenueByEvent(items)
+  }
+
   const events = eventRows.map((e) => ({
     ...e,
     starts_at: toIso8601Seconds(e.starts_at),
@@ -142,6 +187,8 @@ Deno.serve(async (req: Request) => {
       max_price_ore: null,
     },
     order_count: orderCounts.get(e.id) ?? 0,
+    revenue_ore: revenue.get(e.id)?.revenue_ore ?? 0,
+    revenue_net_ore: revenue.get(e.id)?.revenue_net_ore ?? 0,
   }))
 
   return jsonResponse({ events, organizer_slug: organizerRow.slug })
