@@ -34,7 +34,7 @@ function firstThatFit(waiting: WaitlistEntry[], freeSeats: number): WaitlistEntr
 // Väntelista per speltid (2026-11). Valfri: av som standard. Admin erbjuder
 // platser själv - de valda får ett mejl med köplänk, och först till kvarn
 // gäller (erbjudandet reserverar ingen plats).
-export function WaitlistSection({ eventId }: { eventId: string }) {
+export function WaitlistSection({ eventId, onCount }: { eventId: string; onCount?: (count: number) => void }) {
   const [data, setData] = useState<WaitlistResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -46,10 +46,11 @@ export function WaitlistSection({ eventId }: { eventId: string }) {
       const res = await callFunction<WaitlistResponse>(`admin-waitlist?event_id=${eventId}`, { auth: true })
       setData(res)
       setError(null)
+      onCount?.(res.entries.length)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kunde inte hämta väntelistan.')
     }
-  }, [eventId])
+  }, [eventId, onCount])
 
   useEffect(() => {
     load()
@@ -130,11 +131,11 @@ export function WaitlistSection({ eventId }: { eventId: string }) {
   return (
     <section className="mb-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h2 className="text-lg font-extrabold">
+        <h2 className="sr-only">
           Väntelista{data && entries.length > 0 ? ` (${entries.length})` : ''}
         </h2>
         {data && (
-          <label className="flex items-center gap-2 text-sm text-[var(--text)]">
+          <label className="ml-auto flex items-center gap-2 text-sm text-[var(--text)]">
             <input
               type="checkbox"
               checked={data.waitlist_enabled}
