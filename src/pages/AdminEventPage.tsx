@@ -46,11 +46,20 @@ const VAT_OPTIONS = [
   { value: 0, label: '0 %' },
 ]
 
+type EventTab = 'orders' | 'waitlist' | 'tickets'
+const EVENT_TABS: EventTab[] = ['orders', 'waitlist', 'tickets']
+
 export function AdminEventPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [data, setData] = useState<AdminEventTicketsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Ordrar, väntelista och biljetter ligger på varje sin flik (2026-11) i
+  // stället för tre långa listor under varandra. Alla tre är monterade hela
+  // tiden och döljs bara, så sökning, markeringar och väntelistans antal
+  // finns kvar när man byter flik.
+  const [tab, setTab] = useState<EventTab>('orders')
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null)
 
   async function load() {
     if (!id) return
@@ -143,10 +152,26 @@ export function AdminEventPage() {
 
           <TicketTypesSection eventId={data.event.id} ticketTypes={data.ticket_types} onChange={load} />
 
-          <OrdersSection orders={data.orders} tickets={data.tickets} event={data.event} onChange={load} />
-          <WaitlistSection eventId={data.event.id} />
+          <EventTabs
+            tab={tab}
+            onChange={setTab}
+            labels={{
+              orders: `Ordrar (${data.orders.length})`,
+              waitlist: waitlistCount ? `Väntelista (${waitlistCount})` : 'Väntelista',
+              tickets: `Biljetter (${data.tickets.length})`,
+            }}
+          />
 
-          <h2 className="text-lg font-extrabold mb-3 mt-8">Biljetter ({data.tickets.length})</h2>
+          <div role="tabpanel" id="event-panel-orders" aria-labelledby="event-tab-orders" hidden={tab !== 'orders'}>
+            <OrdersSection orders={data.orders} tickets={data.tickets} event={data.event} onChange={load} />
+          </div>
+
+          <div role="tabpanel" id="event-panel-waitlist" aria-labelledby="event-tab-waitlist" hidden={tab !== 'waitlist'}>
+            <WaitlistSection eventId={data.event.id} onCount={setWaitlistCount} />
+          </div>
+
+          <div role="tabpanel" id="event-panel-tickets" aria-labelledby="event-tab-tickets" hidden={tab !== 'tickets'}>
+          <h2 className="sr-only">Biljetter ({data.tickets.length})</h2>
           {data.tickets.length === 0 ? (
             <p className="text-[var(--text-muted)]">Inga biljetter sålda ännu.</p>
           ) : (
@@ -191,9 +216,55 @@ export function AdminEventPage() {
               </table>
             </div>
           )}
+          </div>
         </div>
       )}
     </Layout>
+  )
+}
+
+// Flikraden: pillerna delar utseende med adminnavigeringen. Pilar vänster/
+// höger, Home och End flyttar mellan flikarna (WAI-ARIA tabs).
+function EventTabs({
+  tab,
+  onChange,
+  labels,
+}: {
+  tab: EventTab
+  onChange: (tab: EventTab) => void
+  labels: Record<EventTab, string>
+}) {
+  function onKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    const i = EVENT_TABS.indexOf(tab)
+    let next = i
+    if (e.key === 'ArrowRight') next = (i + 1) % EVENT_TABS.length
+    else if (e.key === 'ArrowLeft') next = (i - 1 + EVENT_TABS.length) % EVENT_TABS.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = EVENT_TABS.length - 1
+    else return
+    e.preventDefault()
+    onChange(EVENT_TABS[next])
+    document.getElementById(`event-tab-${EVENT_TABS[next]}`)?.focus()
+  }
+  return (
+    <div role="tablist" aria-label="Ordrar, väntelista och biljetter" className="event-tabs">
+      {EVENT_TABS.map((t) => (
+        <button
+          key={t}
+          type="button"
+          role="tab"
+          id={`event-tab-${t}`}
+          aria-selected={tab === t}
+          aria-controls={`event-panel-${t}`}
+          tabIndex={tab === t ? 0 : -1}
+          className={`event-tab ${tab === t ? 'active' : ''}`}
+          onClick={() => onChange(t)}
+          onKeyDown={onKeyDown}
+        >
+          {labels[t]}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -547,8 +618,8 @@ function OrdersSection({
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-extrabold">Ordrar ({orders.length})</h2>
-        <label className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+        <h2 className="sr-only">Ordrar ({orders.length})</h2>
+        <label className="ml-auto flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
           <input
             type="checkbox"
             checked={showArchived}

@@ -426,6 +426,42 @@ input[type='radio'] {
     background: var(--accent);
     color: var(--accent-text);
   }
+
+  /* Flikar på en föreställnings adminsida (Ordrar / Väntelista / Biljetter).
+   * Samma pillform som adminnavigeringen. */
+  .event-tabs {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    margin: 0 0 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .event-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .event-tab {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .event-tab:hover {
+    background: var(--accent-soft);
+    color: var(--text);
+  }
+  .event-tab.active {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
   .admin-nav-actions {
     display: flex;
     align-items: center;
