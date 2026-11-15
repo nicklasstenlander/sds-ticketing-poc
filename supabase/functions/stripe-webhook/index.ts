@@ -103,6 +103,7 @@ import { attemptConfirmationEmail, type ConfirmationEmailAttemptInput } from '..
 import { shouldReleaseAfterExpiryUpdate } from './expiryGuard.ts'
 import { cancelPaidOrder } from '../_shared/cancelOrder.ts'
 import { isFullRefund, findOrderIdForRefund } from '../_shared/refundLookup.ts'
+import { attemptRefundEmail } from '../_shared/refundEmail.ts'
 import { finalizePaidOrder, mapFinalizeOutcome, type FinalizeHandlerOutcome } from '../_shared/finalizeOrder.ts'
 import { scheduleOrderPaidBroadcast } from '../_shared/orderBroadcast.ts'
 import { decideRetryAction, type WebhookEventStatus } from './webhookEventRetry.ts'
@@ -157,6 +158,16 @@ function scheduleConfirmationEmail(input: Omit<ConfirmationEmailAttemptInput, 'f
   } else {
     task.catch((err) => console.error('attemptConfirmationEmail (utan EdgeRuntime):', err))
   }
+}
+
+/** Köar återbetalningsmejlet i bakgrunden, samma mönster som
+ * scheduleConfirmationEmail. attemptRefundEmail kastar aldrig, men
+ * .catch finns som sista skyddsnät mot en unhandled rejection. */
+function scheduleRefundEmail(input: Parameters<typeof attemptRefundEmail>[0]): void {
+  const task = attemptRefundEmail(input).catch((err) => console.error('attemptRefundEmail (oväntat fel):', err))
+  const edgeRuntime = (globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } })
+    .EdgeRuntime
+  if (edgeRuntime) edgeRuntime.waitUntil(task)
 }
 
 // checkout.session.completed (se filkommentaren högst upp). Returnerar
@@ -427,6 +438,17 @@ async function handleChargeRefunded(charge: Stripe.Charge, connectedAccountId: s
   const result = await cancelPaidOrder(supabase, orderId)
   tick('cancel_paid_order')
   console.log('charge.refunded (full) ->', orderId, result.cancelled ? 'avbokad' : 'redan avbokad/fel status sedan innan')
+
+  // Köparmejl (ordern "Skicka mejl till köparen vid full återbetalning"
+  // 2026-11). Bara när DEN HÄR händelsen faktiskt avbokade ordern
+  // (cancelled:true) - en redan avbokad order eller ett omlevererat event
+  // ger cancelled:false och därmed inget mejl. Resten av villkoren
+  // (totalOre>0, inte testorder, e-post finns) avgörs i
+  // attemptRefundEmail när orderdatan lästs. Körs i bakgrunden och
+  // kastar aldrig - ett mejlfel får inte ge Stripe ett 500-svar.
+  if (result.cancelled) {
+    scheduleRefundEmail({ supabase, orderId, fullRefund: true, cancelled: true, refundedOre: charge.amount_refunded })
+  }
 }
 
 await instrumentEdgeFunctions()
